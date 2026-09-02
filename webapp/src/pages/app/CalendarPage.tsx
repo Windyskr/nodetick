@@ -72,6 +72,23 @@ function dayNumber(day: string): number {
   return Number(day.slice(8, 10));
 }
 
+function lunarDayLabel(day: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', { day: 'numeric' }).formatToParts(new Date(`${day}T00:00:00`));
+    const value = Number(parts.find((part) => part.type === 'day')?.value);
+    if (!Number.isInteger(value) || value < 1 || value > 30) return '';
+    if (value === 10) return '初十';
+    if (value === 20) return '二十';
+    if (value === 30) return '三十';
+    const ones = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+    if (value < 10) return `初${ones[value]}`;
+    if (value < 20) return `十${ones[value - 10]}`;
+    return `廿${ones[value - 20]}`;
+  } catch {
+    return '';
+  }
+}
+
 function shiftYear(day: string, delta: number): string {
   const year = Number(day.slice(0, 4)) + delta;
   const month0 = Number(day.slice(5, 7)) - 1;
@@ -115,7 +132,7 @@ function CalendarTask({
   task: Task;
   selected: boolean;
   compact?: boolean;
-  variant?: 'list' | 'event';
+  variant?: 'list' | 'event' | 'agenda';
   showClock?: boolean;
   accent?: string;
   style?: CSSProperties;
@@ -125,8 +142,10 @@ function CalendarTask({
   onDragEnd: () => void;
 }) {
   const event = variant === 'event';
+  const agenda = variant === 'agenda';
+  const agendaAccent = agenda && accent ? `color-mix(in srgb, ${accent} 78%, var(--nt-surface))` : accent;
   const tintedStyle = !selected && accent
-    ? { backgroundColor: `color-mix(in srgb, ${accent} ${event ? 30 : 16}%, transparent)`, borderLeft: `${event ? 4 : 2}px solid ${accent}`, color: event ? `color-mix(in srgb, ${accent} 45%, var(--color-ink))` : undefined, ...style }
+    ? { backgroundColor: `color-mix(in srgb, ${accent} ${event ? 30 : agenda ? 8 : 16}%, transparent)`, borderLeft: `${event || agenda ? 4 : 2}px solid ${agendaAccent}`, color: event ? `color-mix(in srgb, ${accent} 45%, var(--color-ink))` : undefined, ...style }
     : style;
   return (
     <div
@@ -139,7 +158,7 @@ function CalendarTask({
       onDragEnd={onDragEnd}
       onClick={() => onSelect(task.id)}
       style={tintedStyle}
-      className={`${event ? 'block overflow-hidden rounded-[4px] px-2 py-1' : `flex items-center gap-1 rounded px-1 ${compact ? 'py-[2px] text-[11.5px]' : 'py-1 text-[12px]'}`} cursor-pointer ${
+      className={`${event ? 'block overflow-hidden rounded-[4px] px-2 py-1' : agenda ? 'flex min-h-[60px] flex-col items-stretch gap-0 overflow-hidden rounded-[6px] px-[14px] pt-[10px] pb-[10px]' : `flex items-center gap-1 rounded px-1 ${compact ? 'py-[2px] text-[11.5px]' : 'py-1 text-[12px]'}`} cursor-pointer ${
         selected
           ? 'bg-selected'
           : task.status === 2
@@ -147,11 +166,16 @@ function CalendarTask({
             : 'text-ink hover:bg-hover'
       }`}
     >
-      {!event && <RoundCheck checked={task.status === 2} priority={task.priority} size={compact ? 12 : 14} onClick={() => onToggle(task)} />}
+      {!event && !agenda && <RoundCheck checked={task.status === 2} priority={task.priority} size={compact ? 12 : 14} onClick={() => onToggle(task)} />}
       {event ? (
         <>
           <span className={`block max-w-full overflow-hidden text-clip break-words text-[12px] font-medium leading-4 ${task.status === 2 ? 'line-through' : ''}`}>{task.title}</span>
           {showClock && taskClock(task, '-') && <span className="block h-[14px] max-w-full overflow-hidden text-clip text-[10px] leading-[14px]" style={{ color: accent ? `color-mix(in srgb, ${accent} 60%, transparent)` : undefined }}>{taskClock(task, '-')}</span>}
+        </>
+      ) : agenda ? (
+        <>
+          {showClock && taskClock(task, ' - ') && <span className="block max-w-full truncate text-[13px] leading-[18px] text-tt">{taskClock(task, ' - ')}</span>}
+          <span className={`block max-w-full overflow-hidden break-words text-[14px] font-medium leading-5 ${task.status === 2 ? 'line-through text-ink-3' : ''}`}>{task.title}</span>
         </>
       ) : (
         <>
@@ -159,6 +183,47 @@ function CalendarTask({
           {showClock && taskClock(task) && <span className="shrink-0 text-[10px] text-ink-3">{taskClock(task)}</span>}
         </>
       )}
+    </div>
+  );
+}
+
+function AgendaTask({
+  task,
+  selected,
+  isLast,
+  accent,
+  onSelect,
+  onToggle,
+  onDragStart,
+  onDragEnd,
+}: {
+  task: Task;
+  selected: boolean;
+  isLast: boolean;
+  accent: string;
+  onSelect: (id: string) => void;
+  onToggle: (task: Task) => void;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+}) {
+  const start = timeOf(task.startDate) ?? timeOf(task.dueDate);
+  return (
+    <div className={`relative ${isLast ? '' : 'mb-6'}`}>
+      {!isLast && <span className="pointer-events-none absolute bottom-[-34px] left-[-35px] top-[31px] w-px bg-line" />}
+      <div className="absolute left-[-46px] top-[9px] z-10">
+        <RoundCheck checked={task.status === 2} priority={task.priority} size={22} onClick={() => onToggle(task)} />
+      </div>
+      {start && <span className="absolute left-[-100px] top-3 text-[13px] leading-4 tabular-nums text-ink-3">{start}</span>}
+      <CalendarTask
+        task={task}
+        selected={selected}
+        variant="agenda"
+        accent={accent}
+        onSelect={onSelect}
+        onToggle={onToggle}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+      />
     </div>
   );
 }
@@ -383,79 +448,79 @@ function AgendaView({
   onAdd: (day: string) => void;
 }) {
   return (
-    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-xl border border-line">
-      {days.map((day) => {
-        const list = byDay.get(day) ?? [];
-        const allDay = list.filter((task) => !isTimed(task));
-        const timed = list.filter(isTimed);
-        return (
-          <section
-            key={day}
-            onDragOver={(event) => {
-              event.preventDefault();
-              onDragOver(day);
-            }}
-            onDrop={(event) => onDrop(day, event)}
-            className={`group flex min-h-[122px] border-b border-line/70 last:border-b-0 ${dragOverDay === day ? 'bg-tt-light/40' : ''}`}
-          >
-            <div className={`w-[84px] shrink-0 border-r border-line/70 px-3 py-4 text-center ${day === today ? 'text-tt' : 'text-ink-3'}`}>
-              <div className="text-[11px]">{WEEKDAYS[lang][weekdayOf(day)]}</div>
-              <div className={`mx-auto mt-1 flex h-8 w-8 items-center justify-center rounded-full text-[20px] font-semibold ${day === today ? 'bg-tt text-white' : 'text-ink-2'}`}>{dayNumber(day)}</div>
-            </div>
-            <div className="min-w-0 flex-1 px-3 py-3">
-              {allDay.length > 0 && (
-                <div className="mb-1.5">
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-ink-3">{allDayLabel}</div>
-                  <div className="space-y-1">
-                    {allDay.map((task) => (
-                      <CalendarTask
-                        key={task.id}
-                        task={task}
-                        selected={selectedTaskId === task.id}
-                        compact
-                        showClock={false}
-                        accent={taskAccent(task)}
-                        onSelect={onSelect}
-                        onToggle={onToggle}
-                        onDragStart={onDragStart}
-                        onDragEnd={onDragEnd}
-                      />
-                    ))}
+    <div className="min-h-0 min-w-0 flex-1 overflow-auto rounded-2xl border border-line">
+        {days.map((day) => {
+          const list = byDay.get(day) ?? [];
+          const allDay = list.filter((task) => !isTimed(task));
+          const timed = list.filter(isTimed);
+          return (
+            <section
+              key={day}
+              onDragOver={(event) => {
+                event.preventDefault();
+                onDragOver(day);
+              }}
+              onDrop={(event) => onDrop(day, event)}
+              className={`group min-h-[120px] border-b border-line/70 last:border-b-0 ${dragOverDay === day ? 'bg-tt-light/40' : ''}`}
+            >
+              <div className="relative flex min-w-[760px] flex-col pl-[230px] pr-4 pt-6 pb-9">
+                <div className="relative -mt-[9px] flex min-w-0 flex-col pl-[100px] pt-[9px]">
+                  <div className={`absolute left-[-130px] top-1 flex items-start ${day === today ? 'text-tt' : 'text-ink-2'}`}>
+                    <span className="mr-2 text-[24px] font-bold leading-[30px]">{dayNumber(day)}</span>
+                    <span className={`flex flex-col text-[12px] font-medium leading-4 ${day === today ? 'text-tt/80' : 'text-ink-3'}`}>
+                      <span>{WEEKDAYS[lang][weekdayOf(day)]}</span>
+                      {lang === 'zh' && <span className="origin-left scale-[.92]">{lunarDayLabel(day)}</span>}
+                    </span>
                   </div>
-                </div>
-              )}
-              {timed.length > 0 ? (
-                <div className="space-y-1.5">
-                  {timed.map((task) => (
-                    <div key={task.id} className="flex items-start gap-2">
-                      <span className="w-[58px] shrink-0 pt-1 text-right text-[11px] tabular-nums text-ink-3">{taskClock(task)}</span>
-                      <div className="min-w-0 flex-1">
-                        <CalendarTask
-                          task={task}
-                          selected={selectedTaskId === task.id}
-                          showClock={false}
-                          accent={taskAccent(task)}
-                          onSelect={onSelect}
-                          onToggle={onToggle}
-                          onDragStart={onDragStart}
-                          onDragEnd={onDragEnd}
-                        />
+
+                  {allDay.length > 0 && (
+                    <div className="mb-6">
+                      <div className="mb-1 text-[10px] uppercase tracking-wide text-ink-3">{allDayLabel}</div>
+                      <div className="space-y-1">
+                        {allDay.map((task) => (
+                          <CalendarTask
+                            key={task.id}
+                            task={task}
+                            selected={selectedTaskId === task.id}
+                            compact
+                            showClock={false}
+                            accent={taskAccent(task)}
+                            onSelect={onSelect}
+                            onToggle={onToggle}
+                            onDragStart={onDragStart}
+                            onDragEnd={onDragEnd}
+                          />
+                        ))}
                       </div>
                     </div>
-                  ))}
+                  )}
+
+                  {timed.length > 0 ? timed.map((task, index) => (
+                    <AgendaTask
+                      key={task.id}
+                      task={task}
+                      selected={selectedTaskId === task.id}
+                      isLast={index === timed.length - 1}
+                      accent={taskAccent(task)}
+                      onSelect={onSelect}
+                      onToggle={onToggle}
+                      onDragStart={onDragStart}
+                      onDragEnd={onDragEnd}
+                    />
+                  )) : list.length === 0 ? (
+                    <div className="py-1 text-[14px] text-ink-3">{noTasksLabel}</div>
+                  ) : null}
+
+                  {addingDay === day ? quickAdd(day) : (
+                    <button type="button" title={addTaskLabel} onClick={() => onAdd(day)} className="absolute right-4 top-6 flex h-5 w-5 items-center justify-center rounded text-ink-3 opacity-0 hover:bg-hover hover:text-tt group-hover:opacity-100">
+                      <Plus size={12} />
+                    </button>
+                  )}
                 </div>
-              ) : list.length === 0 ? (
-                <div className="py-2 text-[12px] text-ink-3">{noTasksLabel}</div>
-              ) : null}
-              {addingDay === day ? quickAdd(day) : (
-                <button type="button" title={addTaskLabel} onClick={() => onAdd(day)} className="mt-2 flex h-5 w-5 items-center justify-center rounded text-ink-3 opacity-0 hover:bg-hover hover:text-tt group-hover:opacity-100">
-                  <Plus size={12} />
-                </button>
-              )}
-            </div>
-          </section>
-        );
-      })}
+              </div>
+            </section>
+          );
+        })}
     </div>
   );
 }

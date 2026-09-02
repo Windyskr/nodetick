@@ -30,19 +30,19 @@ export default function MatrixPage() {
   }, [tasks]);
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto">
-      <div className="px-5 pb-1 pt-4">
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+      <div className="min-w-0 px-5 pb-1 pt-4">
         <h1 className="text-[20px] font-bold">{t('matrixTitle')}</h1>
       </div>
-      <div className="grid flex-1 grid-cols-1 gap-3 p-4 xl:grid-cols-2">
+      <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 p-4 xl:grid-cols-[repeat(2,minmax(0,1fr))]">
         {QUADRANTS.map((q) => {
           const list = byPriority.get(q.priority) ?? [];
           return (
-            <div key={q.priority} className="flex min-h-[220px] flex-col rounded-xl border border-line">
-              <div className="flex items-baseline gap-2 border-b border-line/70 px-4 py-3">
+            <div key={q.priority} className="flex min-w-0 max-w-full min-h-[220px] flex-col rounded-xl border border-line">
+              <div className="flex min-w-0 items-baseline gap-2 border-b border-line/70 px-4 py-3">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: q.tint }} />
                 <span className="text-[14px] font-semibold">{t(q.titleKey)}</span>
-                <span className="text-[12px] text-ink-3">{t(q.hintKey)}</span>
+                <span className="min-w-0 truncate text-[12px] text-ink-3">{t(q.hintKey)}</span>
                 <span className="ml-auto text-[12px] text-ink-3">{list.length}</span>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
