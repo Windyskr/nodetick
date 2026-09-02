@@ -32,6 +32,10 @@ export default function AppLayout() {
   }
   if (!me) return null;
 
+  // The secondary task sidebar belongs to the task workspace only. Calendar
+  // and the other top-level tools use the full content area, like TickTick.
+  const showSidebar = location.pathname.startsWith('/app/tasks');
+
   // The detail panel accompanies the task-centric pages only.
   const showDetail =
     selectedTaskId !== null &&
@@ -41,7 +45,7 @@ export default function AppLayout() {
   return (
     <div className="flex h-full overflow-hidden">
       <IconRail />
-      <Sidebar />
+      {showSidebar && <Sidebar />}
       <div className="flex min-w-0 flex-1 border-l border-line">
         <Outlet />
       </div>

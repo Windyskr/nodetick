@@ -1,16 +1,44 @@
+import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { CalendarDays, CheckSquare, Clock3, Hourglass, KeyRound, Languages, LayoutGrid, LogOut, Search, Target } from 'lucide-react';
+import { CalendarDays, CheckSquare, Clock3, Hourglass, KeyRound, Languages, LayoutGrid, LogOut, Palette, Search, Target } from 'lucide-react';
 import { Popover } from '../../components/Popover';
 import { useI18n, useT } from '../../i18n';
 import { useStore } from '../../stores/store';
 
 const RAIL = 'flex h-full w-12 shrink-0 flex-col items-center border-r border-line bg-[#fbfbfb] py-3';
+type Theme = 'blue' | 'violet' | 'green' | 'dark';
+const THEMES: { id: Theme; color: string }[] = [
+  { id: 'blue', color: '#4772fa' },
+  { id: 'violet', color: '#7c5ce6' },
+  { id: 'green', color: '#2e9b72' },
+  { id: 'dark', color: '#202a38' },
+];
+
+function initialTheme(): Theme {
+  try {
+    const stored = localStorage.getItem('ntk_theme');
+    if (stored === 'blue' || stored === 'violet' || stored === 'green' || stored === 'dark') return stored;
+  } catch {
+    // no localStorage — use the default theme
+  }
+  return 'blue';
+}
 
 export default function IconRail() {
   const navigate = useNavigate();
   const { me, logout } = useStore();
   const t = useT();
   const { lang, setLang } = useI18n();
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem('ntk_theme', theme);
+    } catch {
+      // storage may be disabled; the current tab still keeps the theme
+    }
+  }, [theme]);
 
   const item = (to: string, label: string, Icon: typeof CheckSquare) => (
     <NavLink
@@ -59,6 +87,25 @@ export default function IconRail() {
             >
               <Languages size={14} /> {t('langToggle')}
             </button>
+            <div className="mt-1 flex items-center gap-1.5 border-t border-line px-3 pb-1 pt-2 text-[11px] font-medium text-ink-3"><Palette size={12} />{t('appearance')}</div>
+            <div className="grid grid-cols-4 gap-1 px-3 pb-2">
+              {THEMES.map((item) => {
+                const label = item.id === 'blue' ? t('themeBlue') : item.id === 'violet' ? t('themeViolet') : item.id === 'green' ? t('themeGreen') : t('themeDark');
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    title={label}
+                    aria-label={label}
+                    aria-pressed={theme === item.id}
+                    onClick={() => setTheme(item.id)}
+                    className={`flex h-7 items-center justify-center rounded-md border ${theme === item.id ? 'border-tt bg-tt-light' : 'border-line hover:bg-hover'}`}
+                  >
+                    <span className="h-3.5 w-3.5 rounded-full" style={{ backgroundColor: item.color }} />
+                  </button>
+                );
+              })}
+            </div>
             <button
               type="button"
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-hover"
