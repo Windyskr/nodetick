@@ -1,0 +1,32 @@
+name = "nodetick"
+main = "src/index.ts"
+compatibility_date = "2025-05-05"
+
+# Import schema.sql as a text module (used by the auto-init in src/db.ts).
+[[rules]]
+type = "Text"
+globs = ["**/*.sql"]
+
+# Serve the React SPA (webapp/) as static assets with SPA fallback, while
+# API routes always hit the worker. Build with: npm run build -w webapp
+[assets]
+directory = "../webapp/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/oauth/*", "/open/v1/*"]
+
+# The D1 database is auto-initialized on first request (see src/db.ts).
+# Create it with:  npx wrangler d1 create nodetick-db
+# then paste the returned database_id below.
+[[d1_databases]]
+binding = "DB"
+database_name = "nodetick-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[vars]
+# Optional invite code required to register additional users after the first
+# (the very first user is always the admin and registers without a code).
+# INVITE_CODE = "change-me"
+
+# Secrets (set with `npx wrangler secret put ...`):
+#   SESSION_SECRET - random 32+ char string used to sign CSRF tokens

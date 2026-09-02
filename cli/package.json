@@ -1,0 +1,32 @@
+{
+  "name": "@nodetick/cli",
+  "version": "0.1.0",
+  "description": "Command-line client for NodeTick, a self-hosted TickTick-compatible server",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "nodetick": "dist/index.js",
+    "nodetick-cli": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}
