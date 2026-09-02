@@ -140,6 +140,15 @@ export interface HabitYear {
   checkins: CheckinRow[];
 }
 
+export interface HabitRecord {
+  id: string;
+  habitId: string;
+  stamp: number;
+  content: string;
+  emoji: number;
+  opTime: string | null;
+}
+
 export interface Focus {
   id: string;
   type: number;

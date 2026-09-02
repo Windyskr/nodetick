@@ -6,6 +6,7 @@ import {
   serializeFocus,
   serializeFilter,
   serializeHabit,
+  serializeHabitRecord,
   serializeTag,
 } from '../serialize.js';
 import { genId, nowIso, readJsonObject } from '../util.js';
@@ -19,6 +20,7 @@ const MAX_HABIT_IDS = 100;
 const MAX_CHECKIN_RANGE_DAYS = 366;
 const MAX_REMINDERS = 100;
 const MAX_REMINDER_LENGTH = 512;
+const MAX_HABIT_RECORD_CONTENT = 8192;
 const MAX_FOCUS_NOTE = 64 * 1024;
 const MAX_FOCUS_RESULTS = 5000;
 const MAX_RELATION_TYPES = 32;
@@ -291,6 +293,30 @@ misc.get('/habit/checkins', async (c) => {
   return c.json(out);
 });
 
+misc.get('/habit/:habitId/records', async (c) => {
+  const userId = c.get('userId');
+  const habitId = c.req.param('habitId');
+  const habit = await c.env.DB.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?')
+    .bind(habitId, userId)
+    .first();
+  if (!habit) return c.json({ error: 'habit not found' }, 404);
+
+  const from = validStamp(c.req.query('from'));
+  const to = validStamp(c.req.query('to'));
+  if (from == null || to == null) {
+    return c.json({ error: 'from and to are required (YYYYMMDD stamps)' }, 400);
+  }
+  if (to < from || stampDay(to) - stampDay(from) > MAX_CHECKIN_RANGE_DAYS) {
+    return c.json({ error: `record range must not exceed ${MAX_CHECKIN_RANGE_DAYS} days` }, 400);
+  }
+  const rows = await c.env.DB.prepare(
+    'SELECT * FROM habit_records WHERE habit_id = ? AND user_id = ? AND stamp BETWEEN ? AND ? ORDER BY stamp ASC',
+  )
+    .bind(habitId, userId, from, to)
+    .all();
+  return c.json(rows.results.map(serializeHabitRecord));
+});
+
 misc.get('/habit/:habitId', async (c) => {
   const userId = c.get('userId');
   const row = await c.env.DB.prepare('SELECT * FROM habits WHERE id = ? AND user_id = ?')
@@ -444,6 +470,43 @@ misc.post('/habit/:habitId/checkin', async (c) => {
     .bind(habitId, userId, year)
     .all();
   return c.json({ habitId, year, checkins: rows.results.map(serializeCheckin) });
+});
+
+misc.post('/habit/:habitId/record', async (c) => {
+  const userId = c.get('userId');
+  const habitId = c.req.param('habitId');
+  const habit = await c.env.DB.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?')
+    .bind(habitId, userId)
+    .first();
+  if (!habit) return c.json({ error: 'habit not found' }, 404);
+
+  const b = await readJsonObject(c.req);
+  const stamp = validStamp(b.stamp);
+  if (stamp == null || typeof b.content !== 'string' || b.content.length > MAX_HABIT_RECORD_CONTENT) {
+    return c.json({ error: `stamp must be YYYYMMDD and content must be a string of at most ${MAX_HABIT_RECORD_CONTENT} characters` }, 400);
+  }
+  const emoji = b.emoji === undefined ? 50 : b.emoji;
+  if (typeof emoji !== 'number' || !Number.isInteger(emoji) || emoji < 0 || emoji > 100) {
+    return c.json({ error: 'emoji must be an integer between 0 and 100' }, 400);
+  }
+
+  await c.env.DB.prepare(
+    `INSERT INTO habit_records (id, user_id, habit_id, stamp, content, emoji, op_time, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(habit_id, stamp) DO UPDATE SET
+       content = excluded.content,
+       emoji = excluded.emoji,
+       op_time = excluded.op_time`,
+  )
+    .bind(genId(), userId, habitId, stamp, b.content, emoji, nowIso(), Date.now())
+    .run();
+
+  const row = await c.env.DB.prepare(
+    'SELECT * FROM habit_records WHERE habit_id = ? AND user_id = ? AND stamp = ?',
+  )
+    .bind(habitId, userId, stamp)
+    .first();
+  return c.json(serializeHabitRecord(row!));
 });
 
 // --- Focus records ---

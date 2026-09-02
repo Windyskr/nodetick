@@ -3,6 +3,7 @@ import type {
   Countdown,
   Focus,
   Habit,
+  HabitRecord,
   HabitYear,
   Me,
   Project,
@@ -106,12 +107,16 @@ export const api = {
   createHabit: (input: Record<string, unknown>) => post<Habit>('/open/v1/habit', input),
   updateHabit: (id: string, patch: Record<string, unknown>) => post<Habit>(`/open/v1/habit/${id}`, patch),
   deleteHabit: (id: string) => post<Habit>(`/open/v1/habit/${id}`, { status: 2 }),
-  checkin: (habitId: string, stamp: number, value: number) =>
-    post<HabitYear>(`/open/v1/habit/${habitId}/checkin`, { stamp, value }),
+  checkin: (habitId: string, stamp: number, value: number, options: { goal?: number; status?: number } = {}) =>
+    post<HabitYear>(`/open/v1/habit/${habitId}/checkin`, { stamp, value, ...options }),
   listCheckins: (habitIds: string[], from: number, to: number) =>
     get<HabitYear[]>(
       `/open/v1/habit/checkins?habitIds=${habitIds.join(',')}&from=${from}&to=${to}`,
     ),
+  listHabitRecords: (habitId: string, from: number, to: number) =>
+    get<HabitRecord[]>(`/open/v1/habit/${habitId}/records?from=${from}&to=${to}`),
+  addHabitRecord: (habitId: string, stamp: number, content: string, emoji: number) =>
+    post<HabitRecord>(`/open/v1/habit/${habitId}/record`, { stamp, content, emoji }),
 
   // --- Focus ---
   listFocus: (from: string, to: string, type = 0) =>

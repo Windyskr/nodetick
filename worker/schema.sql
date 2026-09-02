@@ -171,6 +171,19 @@ CREATE TABLE IF NOT EXISTS habit_checkins (
 );
 CREATE INDEX IF NOT EXISTS idx_checkins_habit ON habit_checkins(habit_id, stamp);
 
+CREATE TABLE IF NOT EXISTS habit_records (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  habit_id TEXT NOT NULL,
+  stamp INTEGER NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  emoji INTEGER NOT NULL DEFAULT 50,
+  op_time TEXT,
+  created_at INTEGER NOT NULL,
+  UNIQUE(habit_id, stamp)
+);
+CREATE INDEX IF NOT EXISTS idx_habit_records_habit ON habit_records(habit_id, stamp);
+
 CREATE TABLE IF NOT EXISTS focus_records (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,

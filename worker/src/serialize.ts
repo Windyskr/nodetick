@@ -151,6 +151,17 @@ export function serializeCheckin(r: Row): CheckinRow {
   };
 }
 
+export function serializeHabitRecord(r: Row) {
+  return {
+    id: String(r.id),
+    habitId: String(r.habit_id),
+    stamp: Number(r.stamp),
+    content: str(r.content) ?? '',
+    emoji: r.emoji == null ? 50 : Number(r.emoji),
+    opTime: str(r.op_time),
+  };
+}
+
 export function serializeFocus(r: Row) {
   return {
     id: String(r.id),

@@ -941,6 +941,30 @@ describe('habits / focus / countdown', () => {
     ).json()) as Record<string, unknown>[];
     expect(rows[0].habitId).toBe(habit.id);
     expect((rows[0].checkins as Record<string, unknown>[])[0].value).toBe(7);
+
+    const record = await SELF.fetch(`${HOST}/open/v1/habit/${habit.id}/record`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ stamp: 20260801, content: 'small win', emoji: 80 }),
+    });
+    expect(record.status).toBe(200);
+    expect((await record.json() as Record<string, unknown>).content).toBe('small win');
+
+    const records = await SELF.fetch(
+      `${HOST}/open/v1/habit/${habit.id}/records?from=20260801&to=20260831`,
+      { headers: auth(token) },
+    );
+    expect(records.status).toBe(200);
+    expect(await records.json()).toEqual([
+      expect.objectContaining({ stamp: 20260801, content: 'small win', emoji: 80 }),
+    ]);
+
+    const malformedRecord = await SELF.fetch(`${HOST}/open/v1/habit/${habit.id}/record`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ stamp: 20260801, content: { nope: true } }),
+    });
+    expect(malformedRecord.status).toBe(400);
   });
 
   it('covers focus records and enforces the 30-day window', async () => {
