@@ -39,6 +39,8 @@ export default function TokensPage() {
   const revoke = async (id: string) => {
     if (!window.confirm(t('revokeConfirm'))) return;
     await api.revokeToken(id);
+    setMinted(null);
+    setCopied(false);
     await load();
   };
 

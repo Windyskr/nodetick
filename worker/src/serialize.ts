@@ -193,6 +193,14 @@ export function serializeCountdown(r: Row) {
     id: String(r.id),
     name: str(r.name),
     date: str(r.date),
+    kind: str(r.kind) ?? 'countdown',
+    reminders: parseJsonArray<string>(r.reminders as string),
+    repeatFlag: str(r.repeat_flag),
+    calculation: str(r.calculation) ?? 'standard',
+    displayMode: str(r.display_mode) ?? 'on-day',
+    style: Number(r.style ?? 0),
+    color: str(r.color) ?? '#4772FA',
+    icon: str(r.icon),
     sortOrder: Number(r.sort_order ?? 0),
   };
 }

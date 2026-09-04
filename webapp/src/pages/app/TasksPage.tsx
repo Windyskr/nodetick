@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  Activity,
   AlignLeft,
   CalendarClock,
   Check,
@@ -27,11 +26,14 @@ import {
   bucketLabel,
   bucketOf,
   dayOf,
+  stampOf,
+  stampToday,
   todayStr,
   weekdayShort,
 } from '../../lib/date';
-import type { Tag, Task } from '../../lib/types';
+import type { Habit, HabitYear, Tag, Task } from '../../lib/types';
 import { projectDisplayName } from '../../lib/project';
+import { api, yearRange } from '../../lib/api';
 import { TaskRow } from './TaskRow';
 import { TaskGroup } from './TaskGroup';
 import { QuickAdd } from './QuickAdd';
@@ -134,7 +136,7 @@ export default function TasksPage() {
     if (scope === 'next7')
       return tasks.filter((t) => {
         const day = dayOf(t.dueDate);
-        return day !== null && day >= todayStr() && day <= addDays(todayStr(), 7);
+        return day !== null && day <= addDays(todayStr(), 7);
       });
     return tasks;
   }, [isTrash, isCompleted, savedFilter, project, tagName, scope, tasks, completed, trash]);
@@ -145,13 +147,25 @@ export default function TasksPage() {
   );
 
   const completedInScope = useMemo(() => {
-    if (isTrash || isCompleted || smartBucketed) return [];
+    if (isTrash || isCompleted) return [];
     if (savedFilter) return filterSavedTasks(completed, savedFilter);
     if (project) return filterTasks(completed.filter((t) => t.projectId === project.id), filters);
     if (tagName) return filterTasks(completed.filter((t) => t.tags.includes(tagName)), filters);
     if (scope === 'inbox') return filterTasks(completed.filter((t) => t.projectId === INBOX_ID), filters);
+    if (scope === 'today') {
+      return filterTasks(completed.filter((t) => {
+        const day = dayOf(t.dueDate);
+        return day !== null && day <= todayStr();
+      }), filters);
+    }
+    if (scope === 'next7') {
+      return filterTasks(completed.filter((t) => {
+        const day = dayOf(t.dueDate);
+        return day !== null && day <= addDays(todayStr(), 7);
+      }), filters);
+    }
     return filterTasks(completed, filters);
-  }, [isTrash, isCompleted, smartBucketed, savedFilter, project, tagName, scope, completed, filters]);
+  }, [isTrash, isCompleted, savedFilter, project, tagName, scope, completed, filters]);
 
   // ---- render: kanban board ----
   if (project && project.viewMode === 'kanban') {
@@ -278,7 +292,11 @@ export default function TasksPage() {
                 </TaskGroup>
               ));
           })()}
-        {visible.length === 0 && <Empty text={t('emptyCalm')} />}
+        {(scope === 'today' || scope === 'next7') && habitSmartListsEnabled() && <SmartHabitGroup />}
+        {completedInScope.length > 0 && !hideCompleted && (
+          <CompletedGroup tasks={completedInScope} showProject={scope === 'all'} showDetails={showDetails} />
+        )}
+        {visible.length === 0 && (completedInScope.length === 0 || hideCompleted) && <Empty text={t('emptyCalm')} />}
       </>
     );
   } else {
@@ -333,6 +351,85 @@ export default function TasksPage() {
   );
 }
 
+function habitSmartListsEnabled(): boolean {
+  try {
+    return localStorage.getItem('ntk_habits_in_smart_lists') !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function SmartHabitGroup() {
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [years, setYears] = useState<Map<string, HabitYear>>(new Map());
+  const t = useT();
+  const stamp = stampToday();
+  const day = todayStr();
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const list = (await api.listHabits()).filter((habit) => habit.status !== 2);
+      const checkins = list.length
+        ? await api.listCheckins(list.map((habit) => habit.id), ...yearRange(stamp))
+        : [];
+      if (live) {
+        setHabits(list);
+        setYears(new Map(checkins.map((item) => [item.habitId, item])));
+      }
+    })();
+    return () => { live = false; };
+  }, [stamp]);
+
+  const done = (habit: Habit) => {
+    const row = years.get(habit.id)?.checkins.find((item) => item.stamp === stampOf(day));
+    return (row?.value ?? 0) >= Math.max(1, row?.goal ?? habit.goal ?? 1);
+  };
+  const ordered = [...habits];
+  try {
+    if (localStorage.getItem('ntk_habits_group_status') === '1') {
+      ordered.sort((a, b) => Number(done(a)) - Number(done(b)));
+    }
+  } catch {
+    // Keep the server order when storage is unavailable.
+  }
+  if (!ordered.length) return null;
+
+  return (
+    <TaskGroup label={t('habitTitle')} count={ordered.length}>
+      {ordered.map((habit) => {
+        const checked = done(habit);
+        const color = habit.color ?? '#97e38b';
+        return (
+          <div key={habit.id} className="flex h-10 items-center px-5 hover:bg-hover">
+            <button
+              type="button"
+              aria-label={`${habit.name} ${checked ? 'checked' : ''}`}
+              aria-pressed={checked}
+              onClick={async () => {
+                const goal = Math.max(1, habit.goal ?? 1);
+                const next = await api.checkin(habit.id, stamp, checked ? 0 : goal, {
+                  goal,
+                  status: checked ? 0 : 2,
+                });
+                setYears((current) => new Map(current).set(habit.id, next));
+              }}
+              className="mr-3 flex h-[18px] w-[18px] items-center justify-center rounded-full border-2"
+              style={{ borderColor: color, backgroundColor: checked ? color : 'transparent', color: 'white' }}
+            >
+              {checked && <Check size={12} strokeWidth={2.8} />}
+            </button>
+            <span className={`min-w-0 flex-1 truncate text-[14px] ${checked ? 'text-ink-3 line-through' : 'text-ink'}`}>
+              {habit.name}
+            </span>
+            <span className="ml-3 text-[12px] text-ink-3">{t('habitTitle')}</span>
+          </div>
+        );
+      })}
+    </TaskGroup>
+  );
+}
+
 function ListHeader({
   title,
   project,
@@ -370,7 +467,6 @@ function ListHeader({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(project?.name ?? title);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     setTitleDraft(project?.name ?? title);
@@ -396,7 +492,7 @@ function ListHeader({
 
   return (
     <>
-      <div className="flex items-center gap-2 px-5 pb-1 pt-4">
+      <div className="flex h-16 shrink-0 items-center gap-2 px-[22px]">
         {project && project.id !== INBOX_ID ? (
           editingTitle ? (
             <input
@@ -562,31 +658,27 @@ function ListHeader({
                       setSettingsOpen(true);
                     }}
                   />
-                  <MenuItem
-                    icon={<Plus size={15} />}
-                    label={t('addGroup')}
-                    onClick={() => {
-                      close();
-                      const name = window.prompt(t('groupName'));
-                      if (name?.trim()) void addGroup(name.trim());
-                    }}
-                  />
-                  <MenuItem
-                    icon={<Share2 size={15} />}
-                    label={t('share')}
-                    onClick={() => {
-                      close();
-                      void shareList();
-                    }}
-                  />
-                  <MenuItem
-                    icon={<Activity size={15} />}
-                    label={t('activity')}
-                    onClick={() => {
-                      close();
-                      setActivityOpen(true);
-                    }}
-                  />
+                  {project && (
+                    <>
+                      <MenuItem
+                        icon={<Plus size={15} />}
+                        label={t('addGroup')}
+                        onClick={() => {
+                          close();
+                          const name = window.prompt(t('groupName'));
+                          if (name?.trim()) void addGroup(name.trim());
+                        }}
+                      />
+                      <MenuItem
+                        icon={<Share2 size={15} />}
+                        label={t('share')}
+                        onClick={() => {
+                          close();
+                          void shareList();
+                        }}
+                      />
+                    </>
+                  )}
                   <MenuItem
                     icon={<Printer size={15} />}
                     label={t('print')}
@@ -632,7 +724,6 @@ function ListHeader({
           onClose={() => setSettingsOpen(false)}
         />
       )}
-      {activityOpen && <ActivityDialog onClose={() => setActivityOpen(false)} />}
     </>
   );
 }
@@ -871,29 +962,6 @@ function SettingToggle({ checked, label, onClick }: { checked: boolean; label: s
         <span className="h-4 w-4 rounded-full bg-white shadow-sm" />
       </span>
     </button>
-  );
-}
-
-function ActivityDialog({ onClose }: { onClose: () => void }) {
-  const t = useT();
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 px-4" onMouseDown={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('activityTitle')}
-        className="w-full max-w-sm rounded-xl border border-line bg-white p-4 shadow-[0_12px_40px_rgba(0,0,0,0.18)]"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-[16px] font-semibold">{t('activityTitle')}</h2>
-          <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-[12px] text-ink-3 hover:bg-hover hover:text-ink">
-            {t('close')}
-          </button>
-        </div>
-        <div className="rounded-lg bg-hover px-3 py-8 text-center text-[13px] text-ink-3">{t('activityEmpty')}</div>
-      </div>
-    </div>
   );
 }
 

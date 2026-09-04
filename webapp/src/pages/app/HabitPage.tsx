@@ -4,19 +4,23 @@ import {
   Bell,
   Check,
   ChevronDown,
+  Download,
   Flame,
   Grid2X2,
   HelpCircle,
+  List,
   MoreHorizontal,
   Pencil,
   Plus,
   Smile,
+  Settings2,
   X,
 } from 'lucide-react';
 import { api, yearRange } from '../../lib/api';
 import type { Habit, HabitYear } from '../../lib/types';
 import { addDays, lastNDays, stampOf, stampToday, todayStr, weekdayShort } from '../../lib/date';
 import { useI18n, useT } from '../../i18n';
+import { MenuItem, Popover } from '../../components/Popover';
 
 const PRIMARY = '#4772fa';
 const COLORS = ['#97e38b', '#9dc9ff', '#f6c684', '#f3a7a7', '#c9b4f7', '#8edbd4'];
@@ -217,7 +221,10 @@ function HabitDayStatus({
       aria-label={day + ' ' + (done ? label : '')}
       aria-pressed={done}
       disabled={!active}
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
       className="flex h-10 w-5 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-hover disabled:cursor-default disabled:hover:bg-transparent"
     >
       <span
@@ -260,6 +267,8 @@ function HabitRow({
   progressOn,
   activeOn,
   streak,
+  variant,
+  onSelect,
 }: {
   habit: Habit;
   days: string[];
@@ -269,13 +278,14 @@ function HabitRow({
   progressOn: (habit: Habit, day: string) => { value: number; goal: number };
   activeOn: (habit: Habit, day: string) => boolean;
   streak: number;
+  variant: 'grid' | 'list';
+  onSelect: () => void;
 }) {
   const t = useT();
   const completedDays = days.filter((day) => activeOn(habit, day) && doneOn(habit, day)).length;
   const color = habit.color ?? COLORS[0];
-  return (
-    <div className="h-[70px] border-b border-line/70 px-[22px] py-[5px] last:border-b-0">
-      <div className="flex h-[60px] min-w-0 items-center rounded-[10px] bg-white px-4 shadow-[0_0_12px_rgba(25,25,25,0.025)]">
+  const identity = (
+    <>
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white" style={{ backgroundColor: color }}>
           <HabitIcon habit={habit} size={18} />
         </span>
@@ -286,7 +296,10 @@ function HabitRow({
             <span className="flex items-center gap-1"><Flame size={11} className="text-[#ff6f6f]" />{streak} {t('habitDays')}</span>
           </div>
         </div>
-        <div className="flex w-[200px] shrink-0 items-center justify-between">
+    </>
+  );
+  const statuses = (
+        <div className={`flex shrink-0 items-center justify-between ${variant === 'grid' ? 'w-full' : 'w-[200px]'}`}>
           {days.map((day) => (
             <HabitDayStatus
               key={day}
@@ -301,6 +314,19 @@ function HabitRow({
             />
           ))}
         </div>
+  );
+  if (variant === 'grid') {
+    return (
+      <div role="button" tabIndex={0} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onSelect(); }} className="flex h-[110px] min-w-0 cursor-pointer flex-col rounded-[10px] bg-white px-4 pb-2 pt-3 shadow-[0_0_12px_rgba(25,25,25,0.035)]">
+        <div className="flex min-w-0 items-center">{identity}</div>
+        <div className="mt-auto">{statuses}</div>
+      </div>
+    );
+  }
+  return (
+    <div role="button" tabIndex={0} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onSelect(); }} className="h-[70px] cursor-pointer border-b border-line/70 px-[22px] py-[5px] last:border-b-0">
+      <div className="flex h-[60px] min-w-0 items-center rounded-[10px] bg-white px-4 shadow-[0_0_12px_rgba(25,25,25,0.025)]">
+        {identity}{statuses}
       </div>
     </div>
   );
@@ -315,9 +341,14 @@ export default function HabitPage() {
   const [years, setYears] = useState<Map<string, HabitYear>>(new Map());
   const [loaded, setLoaded] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const [resetTarget, setResetTarget] = useState<HabitActionTarget | null>(null);
   const [countTarget, setCountTarget] = useState<HabitActionTarget | null>(null);
   const [logTarget, setLogTarget] = useState<HabitActionTarget | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    try { return localStorage.getItem('ntk_habit_view') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; }
+  });
   const today = todayStr();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const days = useMemo(() => lastNDays(7), [today]);
@@ -445,30 +476,72 @@ export default function HabitPage() {
   };
 
   return (
-    <div className="h-full min-w-0 flex-1 overflow-hidden">
-      <div className="flex h-full w-full max-w-[872px] min-w-0 flex-col overflow-hidden">
+    <div className="flex h-full min-w-0 flex-1 overflow-hidden">
+      <div className="flex h-full w-full min-w-0 flex-col overflow-hidden lg:w-[64%]">
         <header className="flex h-16 shrink-0 items-center border-b border-line/50 px-[26px]">
-          <button type="button" className="flex items-center gap-1 text-left" title={t('habitViewOptions')}>
-            <h1 className="text-[20px] font-bold">{t('habitTitle')}</h1>
-            <ChevronDown size={14} className="mt-0.5 text-ink-3" />
-          </button>
+          <Popover
+            align="left"
+            panelClass="w-[180px]"
+            trigger={(open, toggle) => (
+              <button
+                type="button"
+                onClick={toggle}
+                aria-expanded={open}
+                className="flex items-center gap-1 text-left"
+                title={t('habitViewOptions')}
+              >
+                <h1 className="text-[20px] font-bold">{t('habitTitle')}</h1>
+                <ChevronDown size={14} className="mt-0.5 text-ink-3" />
+              </button>
+            )}
+          >
+            {(close) => (
+              <MenuItem
+                icon={<Check size={15} />}
+                label={lang === 'zh' ? '全部习惯' : 'All habits'}
+                onClick={close}
+              />
+            )}
+          </Popover>
           <div className="ml-auto flex items-center gap-4">
-            <button type="button" title={t('habitViewOptions')} aria-label={t('habitViewOptions')} className="flex h-8 w-5 items-center justify-center rounded-lg text-ink-2 hover:bg-hover hover:text-ink"><Grid2X2 size={19} strokeWidth={1.8} /></button>
+            <button
+              type="button"
+              title={t('habitViewOptions')}
+              aria-label={t('habitViewOptions')}
+              aria-pressed={viewMode === 'grid'}
+              onClick={() => setViewMode((current) => {
+                const next = current === 'grid' ? 'list' : 'grid';
+                try { localStorage.setItem('ntk_habit_view', next); } catch { /* storage can be unavailable */ }
+                return next;
+              })}
+              className="flex h-8 w-5 items-center justify-center rounded-lg text-ink-2 hover:bg-hover hover:text-ink"
+            >
+              {viewMode === 'grid' ? <Grid2X2 size={19} strokeWidth={1.8} /> : <List size={20} strokeWidth={1.8} />}
+            </button>
             <button type="button" title={t('newHabit')} aria-label={t('newHabit')} onClick={() => setShowNew(true)} className="flex h-8 w-5 items-center justify-center rounded-lg text-ink-2 hover:bg-hover hover:text-ink"><Plus size={23} strokeWidth={1.8} /></button>
-            <button type="button" title={t('habitViewOptions')} aria-label={t('habitViewOptions')} className="flex h-8 w-5 items-center justify-center rounded-lg text-ink-2 hover:bg-hover hover:text-ink"><MoreHorizontal size={20} /></button>
+            <Popover
+              align="right"
+              panelClass="w-[162px]"
+              trigger={(_open, toggle) => <button type="button" onClick={toggle} title={t('habitViewOptions')} aria-label={t('habitViewOptions')} className="flex h-8 w-5 items-center justify-center rounded-lg text-ink-2 hover:bg-hover hover:text-ink"><MoreHorizontal size={20} /></button>}
+            >
+              {(close) => <>
+                <MenuItem icon={<Settings2 size={15} />} label={lang === 'zh' ? '设置' : 'Settings'} onClick={() => { close(); setShowSettings(true); }} />
+                <MenuItem icon={<Download size={15} />} label={lang === 'zh' ? '导出' : 'Export'} onClick={() => { close(); exportHabits(habits, years); }} />
+              </>}
+            </Popover>
           </div>
         </header>
 
-        <div className="grid h-[102px] shrink-0 grid-cols-7">
+        <div className="mx-[30px] flex h-[102px] shrink-0 justify-between">
           {days.map((day) => {
             const isToday = day === today;
             const progress = daySummary(day);
             return (
-              <button key={day} type="button" className={'mx-auto mt-0.5 flex h-[84px] w-16 flex-col items-center pt-[10px] text-[12px] ' + (isToday ? 'text-tt' : 'text-ink-3')}>
+              <div key={day} className={'mt-0.5 flex h-[84px] w-16 flex-col items-center pt-[10px] text-[12px] ' + (isToday ? 'text-tt' : 'text-ink-3')}>
                 <span className="leading-[17px]">{weekdayShort(day, lang)}</span>
                 <span className={'text-[14px] leading-[21px] ' + (isToday ? 'font-semibold' : 'font-medium')}>{Number(day.slice(8, 10))}</span>
                 <HeaderDayStatus today={isToday} completed={progress.completed} total={progress.total} />
-              </button>
+              </div>
             );
           })}
         </div>
@@ -485,7 +558,7 @@ export default function HabitPage() {
               </div>
             </div>
           ) : (
-            <div>
+            <div className={viewMode === 'grid' ? 'grid grid-cols-2 gap-[10px] px-5 pt-[5px]' : ''}>
               {habits.map((habit) => (
                 <HabitRow
                   key={habit.id}
@@ -497,12 +570,30 @@ export default function HabitPage() {
                   progressOn={dayProgress}
                   activeOn={isHabitActiveOnDate}
                   streak={streak(habit)}
+                  variant={viewMode}
+                  onSelect={() => setSelectedHabitId(habit.id)}
                 />
               ))}
             </div>
           )}
         </main>
       </div>
+
+      {selectedHabitId && habits.find((habit) => habit.id === selectedHabitId) && (
+        <HabitDetailPanel
+          habit={habits.find((habit) => habit.id === selectedHabitId)!}
+          year={years.get(selectedHabitId)}
+          today={today}
+          streak={streak(habits.find((habit) => habit.id === selectedHabitId)!)}
+          onClose={() => setSelectedHabitId(null)}
+          onDelete={async () => {
+            if (!window.confirm(lang === 'zh' ? '删除这个习惯？' : 'Delete this habit?')) return;
+            await api.deleteHabit(selectedHabitId);
+            setSelectedHabitId(null);
+            await load();
+          }}
+        />
+      )}
 
       {showNew && (
         <NewHabitModal
@@ -514,6 +605,7 @@ export default function HabitPage() {
           }}
         />
       )}
+      {showSettings && <HabitSettingsDialog onClose={() => setShowSettings(false)} />}
       {resetTarget && (
         <ResetHabitModal
           onClose={() => setResetTarget(null)}
@@ -542,6 +634,136 @@ export default function HabitPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function exportHabits(habits: Habit[], years: Map<string, HabitYear>) {
+  const payload = habits.map((habit) => ({ ...habit, checkins: years.get(habit.id)?.checkins ?? [] }));
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `nodetick-habits-${todayStr()}.json`;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function HabitDetailPanel({
+  habit,
+  year,
+  today,
+  streak,
+  onClose,
+  onDelete,
+}: {
+  habit: Habit;
+  year?: HabitYear;
+  today: string;
+  streak: number;
+  onClose: () => void;
+  onDelete: () => Promise<void>;
+}) {
+  const lang = useI18n((state) => state.lang);
+  const month = today.slice(0, 7);
+  const rows = year?.checkins ?? [];
+  const completed = rows.filter((row) => {
+    const goal = Math.max(1, row.goal ?? habit.goal ?? 1);
+    return (row.value ?? 0) >= goal;
+  });
+  const monthCompleted = completed.filter((row) => String(row.stamp).startsWith(month.replace('-', '')));
+  const monthStart = month + '-01';
+  const elapsedDays = Number(today.slice(8, 10));
+  const scheduled = Array.from({ length: elapsedDays }, (_, index) => addDays(monthStart, index))
+    .filter((day) => isHabitActiveOnDate(habit, day)).length;
+  const monthRate = scheduled ? Math.round(monthCompleted.length / scheduled * 100) : 0;
+  const monthAmount = rows.filter((row) => String(row.stamp).startsWith(month.replace('-', ''))).reduce((sum, row) => sum + (row.value ?? 0), 0);
+  const totalAmount = rows.reduce((sum, row) => sum + (row.value ?? 0), 0);
+  const stats = lang === 'zh'
+    ? [['月打卡', monthCompleted.length, '天'], ['总打卡', completed.length, '天'], ['月完成率', monthRate, '%'], ['当前连续', streak, '天'], ['月完成量', monthAmount, habit.unit || '次'], ['总完成量', totalAmount, habit.unit || '次']]
+    : [['This month', monthCompleted.length, 'days'], ['Total', completed.length, 'days'], ['Monthly rate', monthRate, '%'], ['Current streak', streak, 'days'], ['Monthly amount', monthAmount, habit.unit || 'times'], ['Total amount', totalAmount, habit.unit || 'times']];
+
+  return (
+    <aside className="hidden min-w-0 flex-1 border-l border-line lg:block">
+      <header className="flex h-[76px] items-center px-[22px]">
+        <div className="min-w-0 flex-1 truncate text-[16px] font-medium">{habit.name}</div>
+        <Popover
+          align="right"
+          panelClass="w-[160px]"
+          trigger={(_open, toggle) => <button type="button" onClick={toggle} aria-label={lang === 'zh' ? '更多' : 'More'} className="rounded-md p-1.5 text-ink-3 hover:bg-hover hover:text-ink"><MoreHorizontal size={19} /></button>}
+        >
+          {(close) => <>
+            <MenuItem label={lang === 'zh' ? '关闭详情' : 'Close details'} onClick={() => { close(); onClose(); }} />
+            <MenuItem label={lang === 'zh' ? '删除习惯' : 'Delete habit'} danger onClick={() => { close(); void onDelete(); }} />
+          </>}
+        </Popover>
+      </header>
+      <main className="h-[calc(100%-76px)] overflow-y-auto px-[22px] pb-8">
+        <div className="grid grid-cols-2">
+          {stats.map(([label, value, unit]) => (
+            <div key={String(label)} className="h-[81px] px-3 py-3">
+              <div className="text-[12px] text-ink-3">{label}</div>
+              <div className="mt-1 flex items-baseline gap-1"><span className="text-[20px] font-medium">{value}</span><span className="text-[12px] text-ink-3">{unit}</span></div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 rounded-lg bg-[#fafafa] px-4 py-3">
+          <div className="text-[13px] font-medium">{monthCompleted.length}/{Math.max(scheduled, monthCompleted.length)}</div>
+          <div className="mt-1 text-[12px] text-ink-3">{lang === 'zh' ? `本月已完成 ${monthCompleted.length} 天` : `${monthCompleted.length} completed this month`}</div>
+        </div>
+        <HabitMonthCalendar habit={habit} rows={rows} today={today} />
+      </main>
+    </aside>
+  );
+}
+
+function HabitMonthCalendar({ habit, rows, today }: { habit: Habit; rows: HabitYear['checkins']; today: string }) {
+  const lang = useI18n((state) => state.lang);
+  const year = Number(today.slice(0, 4));
+  const monthIndex = Number(today.slice(5, 7)) - 1;
+  const first = new Date(year, monthIndex, 1);
+  const start = new Date(year, monthIndex, 1 - first.getDay());
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
+  const doneStamps = new Set(rows.filter((row) => (row.value ?? 0) >= Math.max(1, row.goal ?? habit.goal ?? 1)).map((row) => row.stamp));
+  const weekdays = lang === 'zh' ? ['日', '一', '二', '三', '四', '五', '六'] : ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  return (
+    <section className="mt-3 rounded-lg border border-line px-3 pb-4 pt-3">
+      <h3 className="mb-3 text-[13px] font-medium">{lang === 'zh' ? `${year}年${monthIndex + 1}月` : new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(first)}</h3>
+      <div className="grid grid-cols-7 gap-y-2 text-center text-[11px] text-ink-3">
+        {weekdays.map((day, index) => <div key={index}>{day}</div>)}
+        {days.map((day) => {
+          const inMonth = Number(day.slice(5, 7)) === monthIndex + 1;
+          const done = doneStamps.has(stampOf(day));
+          const active = isHabitActiveOnDate(habit, day);
+          return <div key={day} className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full ${done ? 'bg-tt text-white' : inMonth ? 'text-ink-2' : 'text-[#d8d8d8]'} ${!active ? 'opacity-45' : ''}`}>{Number(day.slice(8, 10))}</div>;
+        })}
+      </div>
+    </section>
+  );
+}
+
+function HabitSettingsDialog({ onClose }: { onClose: () => void }) {
+  const lang = useI18n((state) => state.lang);
+  const [showInSmartLists, setShowInSmartLists] = useState(() => localStorage.getItem('ntk_habits_in_smart_lists') !== '0');
+  const [groupByStatus, setGroupByStatus] = useState(() => localStorage.getItem('ntk_habits_group_status') === '1');
+  const update = (key: string, value: boolean, setter: (value: boolean) => void) => {
+    setter(value);
+    localStorage.setItem(key, value ? '1' : '0');
+    window.dispatchEvent(new Event('nodetick:habit-settings'));
+  };
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-transparent px-4" onMouseDown={onClose}>
+      <div className="w-[440px] max-w-full overflow-hidden rounded-xl bg-white shadow-[0_5px_18px_rgba(0,0,0,0.2)]" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="flex h-14 items-center px-5"><h2 className="text-[16px] font-semibold">{lang === 'zh' ? '打卡设置' : 'Check-in settings'}</h2><button type="button" onClick={onClose} className="ml-auto rounded-md p-1 text-ink-3 hover:bg-hover"><X size={18} /></button></header>
+        <div className="px-5 pb-5">
+          <label className="flex h-14 items-center border-b border-line/70 text-[13px]"><span className="flex-1">{lang === 'zh' ? '在“今天”、“最近7天”中显示' : 'Show in Today and Next 7 Days'}</span><input type="checkbox" checked={showInSmartLists} onChange={(event) => update('ntk_habits_in_smart_lists', event.target.checked, setShowInSmartLists)} className="h-4 w-4 accent-[#4772fa]" /></label>
+          <label className="flex min-h-16 items-start pt-4 text-[13px]"><span className="flex-1 pr-4"><span className="block">{lang === 'zh' ? '按完成状态分类显示' : 'Group by completion status'}</span><span className="mt-1 block text-[12px] text-ink-3">{lang === 'zh' ? '开启后，未打卡的项目将聚合展示在列表上方。' : 'Unchecked habits are grouped above completed ones.'}</span></span><input type="checkbox" checked={groupByStatus} onChange={(event) => update('ntk_habits_group_status', event.target.checked, setGroupByStatus)} className="mt-0.5 h-4 w-4 accent-[#4772fa]" /></label>
+        </div>
+      </div>
     </div>
   );
 }

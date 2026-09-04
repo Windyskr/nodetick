@@ -1004,7 +1004,7 @@ export default function CalendarPage() {
 
         {view === 'year' && (
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 pb-28 pt-0 sm:px-8 xl:px-11">
-            <div className="grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-2 xl:grid-cols-4 xl:gap-x-11">
+            <div className="grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-4 lg:gap-x-11">
               {Array.from({ length: 12 }, (_, month0) => {
                 const days = monthGrid(cursor.year, month0);
                 const monthPrefix = `${cursor.year}-${pad(month0 + 1)}`;

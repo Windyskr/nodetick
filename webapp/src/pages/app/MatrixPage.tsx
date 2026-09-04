@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, type DragEvent } from 'react';
 import { useStore } from '../../stores/store';
 import { useT } from '../../i18n';
 import type { Task } from '../../lib/types';
@@ -16,8 +16,10 @@ const QUADRANTS: { titleKey: 'q1' | 'q2' | 'q3' | 'q4'; hintKey: 'q1hint' | 'q2h
 ];
 
 export default function MatrixPage() {
-  const tasks = useStore((s) => s.tasks);
+  const { tasks, saveTask } = useStore();
   const t = useT();
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverPriority, setDragOverPriority] = useState<number | null>(null);
 
   const byPriority = useMemo(() => {
     const map = new Map<number, Task[]>();
@@ -29,16 +31,42 @@ export default function MatrixPage() {
     return map;
   }, [tasks]);
 
+  const dropTask = (priority: number, event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const taskId = draggedTaskId ?? event.dataTransfer.getData('text/plain');
+    setDraggedTaskId(null);
+    setDragOverPriority(null);
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task || task.priority === priority) return;
+    void saveTask(task.id, { projectId: task.projectId, priority });
+  };
+
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-      <div className="min-w-0 px-5 pb-1 pt-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex h-16 min-w-0 shrink-0 items-center px-5">
         <h1 className="text-[20px] font-bold">{t('matrixTitle')}</h1>
       </div>
-      <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 p-4 xl:grid-cols-[repeat(2,minmax(0,1fr))]">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 overflow-y-auto px-[22px] pb-[15px] lg:grid-cols-[repeat(2,minmax(0,1fr))] lg:grid-rows-2 lg:overflow-hidden">
         {QUADRANTS.map((q) => {
           const list = byPriority.get(q.priority) ?? [];
           return (
-            <div key={q.priority} className="flex min-w-0 max-w-full min-h-[220px] flex-col rounded-xl border border-line">
+            <div
+              key={q.priority}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                setDragOverPriority(q.priority);
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setDragOverPriority((current) => current === q.priority ? null : current);
+                }
+              }}
+              onDrop={(event) => dropTask(q.priority, event)}
+              className={`flex min-h-[220px] min-w-0 max-w-full flex-col rounded-xl border transition-colors ${
+                dragOverPriority === q.priority ? 'border-tt bg-tt-light/30 ring-2 ring-tt/10' : 'border-line'
+              }`}
+            >
               <div className="flex min-w-0 items-baseline gap-2 border-b border-line/70 px-4 py-3">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: q.tint }} />
                 <span className="text-[14px] font-semibold">{t(q.titleKey)}</span>
@@ -49,7 +77,24 @@ export default function MatrixPage() {
                 {list.length === 0 ? (
                   <div className="px-4 py-6 text-center text-[12px] text-ink-3">{t('matrixEmpty')}</div>
                 ) : (
-                  list.map((t2) => <TaskRow key={t2.id} task={t2} showProject />)
+                  list.map((t2) => (
+                    <div
+                      key={t2.id}
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', t2.id);
+                        setDraggedTaskId(t2.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedTaskId(null);
+                        setDragOverPriority(null);
+                      }}
+                      className={draggedTaskId === t2.id ? 'opacity-45' : ''}
+                    >
+                      <TaskRow task={t2} showProject />
+                    </div>
+                  ))
                 )}
               </div>
             </div>

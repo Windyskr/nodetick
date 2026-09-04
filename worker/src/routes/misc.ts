@@ -26,11 +26,36 @@ const MAX_FOCUS_RESULTS = 5000;
 const MAX_RELATION_TYPES = 32;
 const MAX_COUNTDOWN_NAME = 128;
 const MAX_COUNTDOWN_DATE = 32;
+const MAX_COUNTDOWN_REMINDERS = 10;
 const MAX_FOCUS_SECONDS = 366 * 24 * 60 * 60;
 const MAX_FILTER_NAME = 128;
 const MAX_FILTER_VALUES = 100;
 const MAX_FILTER_VALUE_LENGTH = 128;
 const MAX_FILTER_DATE_LENGTH = 10;
+
+function focusType(value: string | undefined): 0 | 1 | null {
+  if (value === '0') return 0;
+  if (value === '1') return 1;
+  return null;
+}
+
+function strictFocusNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+const FOCUS_ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})$/;
+
+function validFocusDate(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 64 && FOCUS_ISO_DATE.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+function invalidFocusRelation(value: unknown): boolean {
+  return value != null && (
+    !Array.isArray(value) ||
+    value.length > MAX_RELATION_TYPES ||
+    value.some((item) => typeof item !== 'number' || !Number.isInteger(item))
+  );
+}
 
 function invalidStringArray(value: unknown, maxItems: number, maxItemLength: number): boolean {
   return Array.isArray(value) && (value.length > maxItems || value.some((item) => String(item).length > maxItemLength));
@@ -58,6 +83,79 @@ function finiteNumber(value: unknown, fallback: number | null = null): number | 
   if (value == null || value === '') return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+const COUNTDOWN_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const COUNTDOWN_KINDS = ['countdown', 'anniversary', 'birthday', 'holiday'] as const;
+const COUNTDOWN_CALCULATIONS = ['standard', 'workday'] as const;
+const COUNTDOWN_DISPLAY_MODES = ['on-day', 'always'] as const;
+
+function validCountdownDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !COUNTDOWN_DATE.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function countdownInput(b: Record<string, unknown>, partial = false) {
+  const name = b.name;
+  const date = b.date;
+  if ((!partial || name != null) && (typeof name !== 'string' || !name.trim() || name.trim().length > MAX_COUNTDOWN_NAME)) {
+    return { error: `name must be 1-${MAX_COUNTDOWN_NAME} chars` } as const;
+  }
+  if ((!partial || date != null) && (!validCountdownDate(date) || date.length > MAX_COUNTDOWN_DATE)) {
+    return { error: 'date must be a valid YYYY-MM-DD date' } as const;
+  }
+  const sortOrder = b.sortOrder;
+  if (sortOrder != null && (typeof sortOrder !== 'number' || !Number.isFinite(sortOrder))) {
+    return { error: 'sortOrder must be a finite number' } as const;
+  }
+  const kind = b.kind;
+  if (kind != null && (typeof kind !== 'string' || !COUNTDOWN_KINDS.includes(kind as typeof COUNTDOWN_KINDS[number]))) {
+    return { error: 'kind is invalid' } as const;
+  }
+  const calculation = b.calculation;
+  if (calculation != null && (typeof calculation !== 'string' || !COUNTDOWN_CALCULATIONS.includes(calculation as typeof COUNTDOWN_CALCULATIONS[number]))) {
+    return { error: 'calculation is invalid' } as const;
+  }
+  const displayMode = b.displayMode;
+  if (displayMode != null && (typeof displayMode !== 'string' || !COUNTDOWN_DISPLAY_MODES.includes(displayMode as typeof COUNTDOWN_DISPLAY_MODES[number]))) {
+    return { error: 'displayMode is invalid' } as const;
+  }
+  const reminders = b.reminders;
+  if (reminders != null && (!Array.isArray(reminders) || reminders.length > MAX_COUNTDOWN_REMINDERS || reminders.some((item) => typeof item !== 'string' || item.length > 64))) {
+    return { error: `reminders must contain at most ${MAX_COUNTDOWN_REMINDERS} strings` } as const;
+  }
+  const repeatFlag = b.repeatFlag;
+  if (repeatFlag != null && (typeof repeatFlag !== 'string' || repeatFlag.length > 128)) {
+    return { error: 'repeatFlag must be a string' } as const;
+  }
+  const style = b.style;
+  if (style != null && (typeof style !== 'number' || !Number.isInteger(style) || style < 0 || style > 4)) {
+    return { error: 'style must be an integer from 0 to 4' } as const;
+  }
+  const color = b.color;
+  if (color != null && (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color))) {
+    return { error: 'color must be a hex color' } as const;
+  }
+  const icon = b.icon;
+  if (icon != null && (typeof icon !== 'string' || icon.length > 32)) {
+    return { error: 'icon must be a string' } as const;
+  }
+  return {
+    value: {
+      name: typeof name === 'string' ? name.trim() : null,
+      date: typeof date === 'string' ? date : null,
+      kind: typeof kind === 'string' ? kind : null,
+      reminders: Array.isArray(reminders) ? reminders : null,
+      repeatFlag: typeof repeatFlag === 'string' ? repeatFlag : null,
+      calculation: typeof calculation === 'string' ? calculation : null,
+      displayMode: typeof displayMode === 'string' ? displayMode : null,
+      style: typeof style === 'number' ? style : null,
+      color: typeof color === 'string' ? color : null,
+      icon: typeof icon === 'string' ? icon : null,
+      sortOrder: typeof sortOrder === 'number' ? sortOrder : null,
+    },
+  } as const;
 }
 
 function invalidFiniteNumber(value: unknown): boolean {
@@ -517,13 +615,13 @@ misc.get('/focus', async (c) => {
   const userId = c.get('userId');
   const from = c.req.query('from');
   const to = c.req.query('to');
-  const type = Number(c.req.query('type'));
-  if (!from || !to || !Number.isInteger(type) || (type !== 0 && type !== 1)) {
+  const type = focusType(c.req.query('type'));
+  if (!from || !to || type == null) {
     return c.json({ error: 'from, to and type are required' }, 400);
   }
   const fromMs = Date.parse(from);
   const toMs = Date.parse(to);
-  if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+  if (!validFocusDate(from) || !validFocusDate(to) || Number.isNaN(fromMs) || Number.isNaN(toMs)) {
     return c.json({ error: 'from/to must be valid ISO 8601 dates' }, 400);
   }
   if (toMs < fromMs) return c.json({ error: 'to must not precede from' }, 400);
@@ -548,8 +646,8 @@ misc.get('/focus', async (c) => {
 
 misc.get('/focus/:focusId', async (c) => {
   const userId = c.get('userId');
-  const type = Number(c.req.query('type'));
-  if (!Number.isInteger(type) || (type !== 0 && type !== 1)) return c.json({ error: 'type is required' }, 400);
+  const type = focusType(c.req.query('type'));
+  if (type == null) return c.json({ error: 'type is required' }, 400);
   const row = await c.env.DB.prepare(
     'SELECT * FROM focus_records WHERE id = ? AND type = ? AND user_id = ?',
   )
@@ -562,38 +660,45 @@ misc.get('/focus/:focusId', async (c) => {
 misc.post('/focus', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
-  const type = Number(b.type);
-  if (type !== 0 && type !== 1) return c.json({ error: 'type must be 0 (pomodoro) or 1 (timing)' }, 400);
-  if (b.note != null && String(b.note).length > MAX_FOCUS_NOTE) {
-    return c.json({ error: 'note is too long' }, 400);
+  const type = b.type === 0 || b.type === 1 ? b.type : null;
+  if (type == null) return c.json({ error: 'type must be 0 (pomodoro) or 1 (timing)' }, 400);
+  if (b.note != null && (typeof b.note !== 'string' || b.note.length > MAX_FOCUS_NOTE)) {
+    return c.json({ error: 'note must be a string of at most 65536 characters' }, 400);
   }
-  if (invalidNumericArray(b.relationType, MAX_RELATION_TYPES)) {
+  if (invalidFocusRelation(b.relationType)) {
     return c.json({ error: 'relationType must contain at most 32 integer values' }, 400);
   }
-  const taskId = b.taskId != null && String(b.taskId).trim() ? String(b.taskId).trim() : null;
+  if (b.taskId != null && typeof b.taskId !== 'string') {
+    return c.json({ error: 'taskId must be a string' }, 400);
+  }
+  const taskId = typeof b.taskId === 'string' && b.taskId.trim() ? b.taskId.trim() : null;
   if (taskId) {
     const task = await c.env.DB.prepare('SELECT id FROM tasks WHERE id = ? AND user_id = ?')
       .bind(taskId, userId)
       .first();
     if (!task) return c.json({ error: 'task not found' }, 404);
   }
+  let startTime: string | null = null;
+  let endTime: string | null = null;
   for (const key of ['startTime', 'endTime'] as const) {
-    if (b[key] != null && (String(b[key]).length > 64 || Number.isNaN(Date.parse(String(b[key]))))) {
+    if (b[key] != null && !validFocusDate(b[key])) {
       return c.json({ error: `${key} must be a valid ISO 8601 date` }, 400);
     }
+    if (key === 'startTime' && typeof b[key] === 'string') startTime = b[key];
+    if (key === 'endTime' && typeof b[key] === 'string') endTime = b[key];
   }
-  const pauseDuration = finiteNumber(b.pauseDuration);
+  const pauseDuration = strictFocusNumber(b.pauseDuration);
   if (b.pauseDuration != null && (pauseDuration == null || pauseDuration < 0 || pauseDuration > MAX_FOCUS_SECONDS)) {
     return c.json({ error: 'pauseDuration must be a non-negative number' }, 400);
   }
   const id = genId();
-  let duration = finiteNumber(b.duration);
+  let duration = strictFocusNumber(b.duration);
   if (b.duration != null && (duration == null || duration < 0 || duration > MAX_FOCUS_SECONDS)) {
     return c.json({ error: 'duration must be a non-negative number' }, 400);
   }
-  if (duration == null && b.startTime && b.endTime) {
-    const startMs = Date.parse(String(b.startTime));
-    const endMs = Date.parse(String(b.endTime));
+  if (duration == null && startTime && endTime) {
+    const startMs = Date.parse(startTime);
+    const endMs = Date.parse(endTime);
     if (endMs < startMs) return c.json({ error: 'endTime must not precede startTime' }, 400);
     const ms = endMs - startMs;
     if (!Number.isNaN(ms) && ms > 0) duration = Math.round(ms / 1000);
@@ -611,12 +716,12 @@ misc.post('/focus', async (c) => {
       userId,
       type,
       taskId,
-      b.note != null ? String(b.note) : null,
-      b.startTime != null ? String(b.startTime) : null,
-      b.endTime != null ? String(b.endTime) : null,
+      b.note != null ? b.note : null,
+      startTime,
+      endTime,
       duration,
       pauseDuration,
-      Array.isArray(b.relationType) ? JSON.stringify(b.relationType.map(Number)) : null,
+      Array.isArray(b.relationType) ? JSON.stringify(b.relationType) : null,
       Date.now(),
     )
     .run();
@@ -628,8 +733,8 @@ misc.post('/focus', async (c) => {
 
 misc.delete('/focus/:focusId', async (c) => {
   const userId = c.get('userId');
-  const type = Number(c.req.query('type'));
-  if (!Number.isInteger(type) || (type !== 0 && type !== 1)) return c.json({ error: 'type is required' }, 400);
+  const type = focusType(c.req.query('type'));
+  if (type == null) return c.json({ error: 'type is required' }, 400);
   const row = await c.env.DB.prepare(
     'SELECT * FROM focus_records WHERE id = ? AND type = ? AND user_id = ?',
   )
@@ -659,17 +764,23 @@ misc.get('/countdown', async (c) => {
 misc.post('/countdown', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
-  const name = String(b.name ?? '').trim();
-  const date = String(b.date ?? '').trim();
-  if (!name || name.length > MAX_COUNTDOWN_NAME) return c.json({ error: `name is required (max ${MAX_COUNTDOWN_NAME} chars)` }, 400);
-  if (!date || date.length > MAX_COUNTDOWN_DATE) return c.json({ error: `date is required (max ${MAX_COUNTDOWN_DATE} chars)` }, 400);
-  const sortOrder = finiteNumber(b.sortOrder, 0);
-  if (sortOrder == null) return c.json({ error: 'sortOrder must be a finite number' }, 400);
+  const parsed = countdownInput(b);
+  if ('error' in parsed) return c.json({ error: parsed.error }, 400);
+  const value = parsed.value;
   const id = genId();
   await c.env.DB.prepare(
-    'INSERT INTO countdowns (id, user_id, name, date, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    `INSERT INTO countdowns (
+      id, user_id, name, date, kind, reminders, repeat_flag, calculation,
+      display_mode, style, color, icon, sort_order, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, userId, name, date, sortOrder, Date.now())
+    .bind(
+      id, userId, value.name, value.date, value.kind ?? 'countdown',
+      JSON.stringify(value.reminders ?? []), value.repeatFlag,
+      value.calculation ?? 'standard', value.displayMode ?? 'on-day',
+      value.style ?? 0, value.color ?? '#4772FA', value.icon,
+      value.sortOrder ?? 0, Date.now(),
+    )
     .run();
   const row = await c.env.DB.prepare('SELECT * FROM countdowns WHERE id = ? AND user_id = ?')
     .bind(id, userId)
@@ -680,21 +791,24 @@ misc.post('/countdown', async (c) => {
 misc.post('/countdown/:countdownId', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
-  if (b.name != null && (!String(b.name).trim() || String(b.name).trim().length > MAX_COUNTDOWN_NAME)) {
-    return c.json({ error: `name must be 1-${MAX_COUNTDOWN_NAME} chars` }, 400);
-  }
-  if (b.date != null && (!String(b.date).trim() || String(b.date).trim().length > MAX_COUNTDOWN_DATE)) {
-    return c.json({ error: `date must be 1-${MAX_COUNTDOWN_DATE} chars` }, 400);
-  }
-  const sortOrder = finiteNumber(b.sortOrder);
-  if (b.sortOrder != null && sortOrder == null) return c.json({ error: 'sortOrder must be a finite number' }, 400);
+  const parsed = countdownInput(b, true);
+  if ('error' in parsed) return c.json({ error: parsed.error }, 400);
+  const value = parsed.value;
   const res = await c.env.DB.prepare(
-    'UPDATE countdowns SET name = COALESCE(?, name), date = COALESCE(?, date), sort_order = COALESCE(?, sort_order) WHERE id = ? AND user_id = ?',
+    `UPDATE countdowns SET
+      name = COALESCE(?, name), date = COALESCE(?, date), kind = COALESCE(?, kind),
+      reminders = COALESCE(?, reminders), repeat_flag = CASE WHEN ? THEN ? ELSE repeat_flag END,
+      calculation = COALESCE(?, calculation), display_mode = COALESCE(?, display_mode),
+      style = COALESCE(?, style), color = COALESCE(?, color),
+      icon = CASE WHEN ? THEN ? ELSE icon END, sort_order = COALESCE(?, sort_order)
+      WHERE id = ? AND user_id = ?`,
   )
     .bind(
-      b.name != null ? String(b.name) : null,
-      b.date != null ? String(b.date) : null,
-      sortOrder,
+      value.name, value.date, value.kind,
+      value.reminders ? JSON.stringify(value.reminders) : null,
+      Object.hasOwn(b, 'repeatFlag') ? 1 : 0, value.repeatFlag,
+      value.calculation, value.displayMode, value.style, value.color,
+      Object.hasOwn(b, 'icon') ? 1 : 0, value.icon, value.sortOrder,
       c.req.param('countdownId'),
       userId,
     )

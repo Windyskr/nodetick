@@ -167,6 +167,14 @@ export interface Countdown {
   id: string;
   name: string | null;
   date: string | null;
+  kind: 'countdown' | 'anniversary' | 'birthday' | 'holiday';
+  reminders: string[];
+  repeatFlag: string | null;
+  calculation: 'standard' | 'workday';
+  displayMode: 'on-day' | 'always';
+  style: number;
+  color: string;
+  icon: string | null;
   sortOrder: number;
 }
 

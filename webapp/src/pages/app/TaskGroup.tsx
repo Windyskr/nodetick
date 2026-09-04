@@ -20,7 +20,7 @@ export function TaskGroup({
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div>
-      <div className="flex items-center gap-1 px-5 pb-1 pt-4">
+      <div className="flex h-7 items-center gap-1 px-5">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}

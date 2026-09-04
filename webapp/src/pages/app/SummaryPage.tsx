@@ -14,10 +14,9 @@ import {
   ListOrdered,
   Plus,
   Quote,
-  Redo2,
   Strikethrough,
   Underline,
-  Undo2,
+  X,
 } from 'lucide-react';
 import { useStore } from '../../stores/store';
 import { useI18n, useT } from '../../i18n';
@@ -27,6 +26,30 @@ import type { Task } from '../../lib/types';
 
 type SummaryStatus = 'all' | 'active' | 'completed';
 type SummaryGroup = 'status' | 'list' | 'date';
+
+type SummaryTemplate = {
+  id: string;
+  name: string;
+  start: string;
+  end: string;
+  projectId: string;
+  status: SummaryStatus;
+  tag: string;
+  group: SummaryGroup;
+  showContent: boolean;
+  includeNext: boolean;
+};
+
+const SUMMARY_TEMPLATES_KEY = 'nodetick.summary.templates';
+
+function loadTemplates(): SummaryTemplate[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(SUMMARY_TEMPLATES_KEY) ?? '[]');
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
 
 function localDay(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -64,7 +87,7 @@ function ToolButton({ title, onClick, children }: { title: string; onClick?: () 
       title={title}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-ink-2 hover:bg-hover hover:text-ink"
+      className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md text-ink-2 hover:bg-hover hover:text-ink"
     >
       {children}
     </button>
@@ -73,7 +96,7 @@ function ToolButton({ title, onClick, children }: { title: string; onClick?: () 
 
 function SettingRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-h-[56px] items-center justify-between gap-3 px-4 py-2.5">
+    <div className="flex min-h-[42px] items-center justify-between gap-3 px-[18px] py-2">
       <span className="text-[14px] text-ink">{label}</span>
       <span className="min-w-0 text-right">{children}</span>
     </div>
@@ -110,6 +133,10 @@ export default function SummaryPage() {
   const [group, setGroup] = useState<SummaryGroup>('status');
   const [showContent, setShowContent] = useState(true);
   const [includeNext, setIncludeNext] = useState(false);
+  const [templates, setTemplates] = useState<SummaryTemplate[]>(loadTemplates);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
 
   const all = useMemo(() => [...tasks, ...completed], [tasks, completed]);
@@ -146,32 +173,50 @@ export default function SummaryPage() {
     document.execCommand(command, false, value);
   };
 
-  const share = async () => {
+  const copySummary = async () => {
     try {
-      await navigator.clipboard?.writeText(window.location.href);
-      showToast({ messageKey: 'shareCopied' });
+      await navigator.clipboard?.writeText(editorRef.current?.innerText ?? '');
+      showToast({ messageKey: 'summaryCopied' });
     } catch {
       // Clipboard is optional on localhost.
     }
   };
 
+  const saveTemplate = () => {
+    const name = templateName.trim();
+    if (!name) return;
+    const next = [...templates, {
+      id: crypto.randomUUID(), name, start, end, projectId, status, tag, group,
+      showContent, includeNext,
+    }];
+    setTemplates(next);
+    localStorage.setItem(SUMMARY_TEMPLATES_KEY, JSON.stringify(next));
+    setTemplateName('');
+    setTemplateDialogOpen(false);
+    showToast({ messageKey: 'summaryTemplateSaved' });
+  };
+
+  const applyTemplate = (template: SummaryTemplate) => {
+    setStart(template.start);
+    setEnd(template.end);
+    setProjectId(template.projectId);
+    setStatus(template.status);
+    setTag(template.tag);
+    setGroup(template.group);
+    setShowContent(template.showContent);
+    setIncludeNext(template.includeNext);
+  };
+
   return (
-    <div className="flex h-full min-w-0 flex-1">
+    <div className="flex h-full min-w-0 flex-1 gap-5 bg-white">
       <main className="flex min-w-0 flex-1 flex-col bg-white">
-        <div className="flex items-center gap-2 px-6 pb-3 pt-5">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-hover text-ink-2">
-            <List size={23} />
-          </div>
-          <h1 className="text-[24px] font-bold">{t('summary')}</h1>
-          <div className="ml-auto flex items-center gap-1 text-ink-3">
-            <ToolButton title={t('undo')} onClick={() => exec('undo')}><Undo2 size={18} /></ToolButton>
-            <ToolButton title={t('redo')} onClick={() => exec('redo')}><Redo2 size={18} /></ToolButton>
-            <ToolButton title={t('share')} onClick={() => void share()}><Link2 size={18} /></ToolButton>
-          </div>
+        <div className="flex h-[58px] shrink-0 items-center gap-2 px-5">
+          <List size={20} className="text-ink-2" />
+          <h1 className="text-[20px] font-bold leading-8">{t('summary')}</h1>
         </div>
 
-        <div className="mx-6 flex flex-wrap items-center gap-0.5 border-b border-line px-1 py-1 text-ink-2">
-          <ToolButton title={t('summaryHeading')} onClick={() => exec('formatBlock', 'h2')}><span className="text-[20px] font-medium">H</span></ToolButton>
+        <div className="mx-5 flex h-[38px] shrink-0 items-center gap-0.5 overflow-hidden rounded-t-lg border border-line px-3 text-ink-2">
+          <ToolButton title={t('summaryHeading')} onClick={() => exec('formatBlock', 'h2')}><span className="text-[18px] font-medium">H</span></ToolButton>
           <ToolButton title={t('summaryBold')} onClick={() => exec('bold')}><Bold size={19} /></ToolButton>
           <ToolButton title={t('summaryHighlight')} onClick={() => exec('hiliteColor', '#dfff00')}><span className="rounded bg-[#dfff00] px-1 text-[17px] text-ink">A</span></ToolButton>
           <ToolbarDivider />
@@ -199,7 +244,7 @@ export default function SummaryPage() {
           ref={editorRef}
           contentEditable
           suppressContentEditableWarning
-          className="min-h-0 flex-1 overflow-y-auto px-7 pb-12 pt-7 text-[16px] leading-relaxed text-ink outline-none"
+          className="mx-5 min-h-0 flex-1 overflow-y-auto border-x border-line px-4 pb-12 pt-3 text-[16px] leading-relaxed text-ink outline-none"
         >
           <h2 className="mb-4 text-[23px] font-bold">{rangeLabel}</h2>
           {filtered.length === 0 ? (
@@ -223,19 +268,32 @@ export default function SummaryPage() {
             </>
           )}
         </div>
+        <div className="mx-5 flex h-12 shrink-0 items-center justify-end gap-4 border-x border-b border-line px-4 text-[14px] text-ink-2">
+          <button type="button" className="hover:text-ink" onClick={() => setTemplateDialogOpen(true)}>{t('summarySaveAs')}</button>
+          <button type="button" className="hover:text-ink" onClick={() => void copySummary()}>{t('copy')}</button>
+        </div>
       </main>
 
-      <aside className="hidden w-[320px] shrink-0 overflow-y-auto border-l border-line bg-white xl:block">
-        <div className="flex items-center justify-between px-6 pb-2 pt-6">
-          <h2 className="text-[17px] font-bold">{t('summaryTemplates')}</h2>
-          <button type="button" title={t('summaryNewTemplate')} className="flex h-9 w-9 items-center justify-center rounded-full bg-hover text-ink-3 hover:bg-tt-light hover:text-tt">
+      <aside className="hidden w-[320px] shrink-0 overflow-y-auto bg-white pr-5 lg:block">
+        <div className="h-[113px] pt-5">
+          <h2 className="text-[16px] font-bold leading-5">{t('summaryTemplates')}</h2>
+          <button type="button" title={t('summaryNewTemplate')} onClick={() => setTemplateDialogOpen(true)} className="mt-3 flex h-7 w-7 items-center justify-center rounded-full bg-hover text-ink-3 hover:bg-tt-light hover:text-tt">
             <Plus size={20} />
           </button>
+          {templates.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {templates.map((template) => (
+                <button key={template.id} type="button" onClick={() => applyTemplate(template)} className="rounded-md bg-hover px-2.5 py-1 text-[13px] text-ink-2 hover:bg-tt-light hover:text-tt">
+                  {template.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        <h3 className="px-6 pb-2 pt-7 text-[17px] font-bold">{t('summaryFilterSettings')}</h3>
-        <div className="mx-5 overflow-hidden rounded-xl bg-[#fafafa]">
-          <SummaryDateRow start={start} end={end} onStart={setStart} onEnd={setEnd} label={t('summaryDate')} value={rangeLabel} />
+        <h3 className="h-[26px] text-[16px] font-bold leading-5">{t('summaryFilterSettings')}</h3>
+        <div className="relative overflow-visible rounded-xl bg-[#fafafa]">
+          <SummaryDateRow start={start} end={end} onStart={setStart} onEnd={setEnd} label={t('summaryDate')} value={rangeLabel} open={datePickerOpen} onToggle={() => setDatePickerOpen((value) => !value)} />
           <SettingRow label={t('filterList')}>
             <SettingSelect value={projectId} onChange={setProjectId}>
               <option value="">{t('summaryAllLists')}</option>
@@ -257,8 +315,8 @@ export default function SummaryPage() {
           </SettingRow>
         </div>
 
-        <h3 className="px-6 pb-2 pt-7 text-[17px] font-bold">{t('summaryDisplaySettings')}</h3>
-        <div className="mx-5 overflow-hidden rounded-xl bg-[#fafafa]">
+        <h3 className="h-[46px] pt-5 text-[16px] font-bold leading-5">{t('summaryDisplaySettings')}</h3>
+        <div className="overflow-hidden rounded-xl bg-[#fafafa]">
           <SettingRow label={t('groupBy')}>
             <SettingSelect value={group} onChange={(value) => setGroup(value as SummaryGroup)}>
               <option value="status">{t('summaryGroupStatus')}</option>
@@ -274,28 +332,47 @@ export default function SummaryPage() {
           </SettingRow>
         </div>
 
-        <div className="flex items-center justify-between px-6 py-6 text-[16px] font-semibold">
+        <div className="flex h-[46px] items-end justify-between pb-1 text-[16px] font-semibold">
           <span>{t('summaryNextPeriod')}</span>
           <button type="button" role="switch" aria-checked={includeNext} onClick={() => setIncludeNext((value) => !value)} className={`flex h-6 w-11 items-center rounded-full p-0.5 transition-colors ${includeNext ? 'justify-end bg-tt' : 'justify-start bg-[#e4e4e4]'}`}>
             <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
           </button>
         </div>
       </aside>
+
+      {templateDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onMouseDown={() => setTemplateDialogOpen(false)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="summary-template-title" className="w-[440px] rounded-2xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="flex h-14 items-center px-5">
+              <h2 id="summary-template-title" className="text-[17px] font-bold">{t('summarySaveAs')} {t('summaryTemplates')}</h2>
+              <button type="button" title={t('close')} className="ml-auto text-ink-3 hover:text-ink" onClick={() => setTemplateDialogOpen(false)}><X size={20} /></button>
+            </div>
+            <div className="px-5 pb-5">
+              <p className="mb-4 text-[14px] text-ink-2">{t('summaryTemplateDescription')}</p>
+              <input autoFocus value={templateName} onChange={(event) => setTemplateName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveTemplate(); }} placeholder={t('summaryTemplateName')} className="h-9 w-full rounded-md border border-line px-3 text-[14px] outline-none focus:border-tt" />
+            </div>
+            <div className="flex h-[58px] items-center justify-end gap-2 border-t border-line px-5">
+              <button type="button" className="h-[30px] min-w-[100px] rounded-md border border-line px-4 text-[14px]" onClick={() => setTemplateDialogOpen(false)}>{t('close')}</button>
+              <button type="button" disabled={!templateName.trim()} className="h-[30px] min-w-[100px] rounded-md bg-tt px-4 text-[14px] text-white disabled:opacity-40" onClick={saveTemplate}>{t('save')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function SummaryDateRow({ start, end, onStart, onEnd, label, value }: { start: string; end: string; onStart: (value: string) => void; onEnd: (value: string) => void; label: string; value: string }) {
+function SummaryDateRow({ start, end, onStart, onEnd, label, value, open, onToggle }: { start: string; end: string; onStart: (value: string) => void; onEnd: (value: string) => void; label: string; value: string; open: boolean; onToggle: () => void }) {
   return (
-    <div className="border-b border-white px-4 py-3">
-      <div className="flex items-center justify-between gap-2">
+    <div className="border-b border-white">
+      <button type="button" onClick={onToggle} className="flex min-h-[42px] w-full items-center justify-between gap-2 px-[18px] py-2">
         <span className="text-[14px] text-ink">{label}</span>
         <span className="text-[13px] text-ink-3">{value}</span>
-      </div>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <input type="date" value={start} onChange={(event) => onStart(event.target.value)} className="min-w-0 rounded-md border border-line bg-white px-2 py-1.5 text-[11px] text-ink-2" aria-label={label} />
-        <input type="date" value={end} onChange={(event) => onEnd(event.target.value)} className="min-w-0 rounded-md border border-line bg-white px-2 py-1.5 text-[11px] text-ink-2" aria-label={label} />
-      </div>
+      </button>
+      {open && <div className="absolute left-0 top-[44px] z-20 grid w-full grid-cols-2 gap-2 rounded-lg border border-line bg-white p-3 shadow-lg">
+        <input type="date" value={start} onChange={(event) => onStart(event.target.value)} className="min-w-0 rounded-md border border-line bg-white px-2 py-1.5 text-[11px] text-ink-2" aria-label={`${label} start`} />
+        <input type="date" value={end} onChange={(event) => onEnd(event.target.value)} className="min-w-0 rounded-md border border-line bg-white px-2 py-1.5 text-[11px] text-ink-2" aria-label={`${label} end`} />
+      </div>}
     </div>
   );
 }

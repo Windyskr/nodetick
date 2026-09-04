@@ -5,7 +5,14 @@ import type { Me, Project, ProjectGroup, Tag, Task, TaskFilter } from '../lib/ty
 export { INBOX_ID } from '../lib/project';
 
 export interface ToastState {
-  messageKey: 'toastCompleted' | 'toastTrashed' | 'movedToast' | 'shareCopied';
+  messageKey:
+    | 'toastCompleted'
+    | 'toastTrashed'
+    | 'movedToast'
+    | 'shareCopied'
+    | 'summaryCopied'
+    | 'summaryTemplateSaved'
+    | 'searchFilterSaved';
   messageArg?: string;
   undo?: () => void;
 }
@@ -98,8 +105,9 @@ export const useStore = create<AppState>((set, getState) => ({
   boot: async () => {
     try {
       const me = await api.me();
-      set({ me, booted: true });
+      set({ me });
       await getState().refresh();
+      set({ booted: true, error: null });
       return true;
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -200,8 +208,14 @@ export const useStore = create<AppState>((set, getState) => ({
   },
 
   saveTask: async (id, patch) => {
-    const current = getState().selectedTask();
+    const state = getState();
+    const current =
+      state.tasks.find((task) => task.id === id) ??
+      state.completed.find((task) => task.id === id) ??
+      state.trash.find((task) => task.id === id) ??
+      null;
     const projectId = (patch.projectId as string) ?? current?.projectId;
+    if (!projectId) throw new Error('Task project not found');
     const task = await api.updateTask(id, { ...patch, projectId });
     // projectId may have changed → refresh lists conservatively but cheaply:
     set((s) => {

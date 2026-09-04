@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { serverError, useT } from '../i18n';
@@ -12,6 +12,10 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    document.title = '登录 · NodeTick';
+  }, []);
 
   // OAuth sends an absolute same-origin URL; only allow those (no open redirect).
   const resolveNext = (): string => {

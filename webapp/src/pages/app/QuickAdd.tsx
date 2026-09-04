@@ -206,14 +206,14 @@ export function QuickAdd({ projectId, placeholder }: { projectId: string; placeh
   };
 
   return (
-    <div className="mx-5 mb-2 mt-1 flex min-h-[58px] items-center gap-2 rounded-xl border border-line bg-white px-3 transition-colors focus-within:border-tt focus-within:shadow-[0_0_0_2px_rgba(71,114,250,0.08)]">
-      <Plus size={19} className="shrink-0 text-ink-3" />
+    <div className="group mx-[29px] mb-[15px] mt-[9px] flex min-h-[30px] items-center gap-2 rounded-md bg-hover/70 px-2 transition-colors focus-within:bg-white focus-within:shadow-[0_0_0_1px_rgba(71,114,250,0.35)]">
+      <Plus size={16} className="shrink-0 text-ink-3" />
       <div className="relative min-w-0 flex-1 overflow-hidden">
         {!isComposing && (
           <div
             ref={highlightRef}
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 z-10 flex items-center overflow-hidden whitespace-pre text-[15px] leading-normal text-ink"
+            className="pointer-events-none absolute inset-0 z-10 flex items-center overflow-hidden whitespace-pre text-[14px] leading-normal text-ink"
           >
             {rawText ? (inlineDate ? (
                 <>
@@ -287,12 +287,12 @@ export function QuickAdd({ projectId, placeholder }: { projectId: string; placeh
               submit();
             }
           }}
-          className={`relative z-0 w-full bg-transparent text-[15px] leading-normal outline-none placeholder:text-transparent ${isComposing ? 'text-ink' : 'text-transparent caret-ink'}`}
+          className={`relative z-0 h-[30px] w-full bg-transparent text-[14px] leading-normal outline-none placeholder:text-transparent ${isComposing ? 'text-ink' : 'text-transparent caret-ink'}`}
           aria-label={placeholder}
         />
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 text-ink-3">
+      <div className="pointer-events-none flex shrink-0 items-center gap-0.5 text-ink-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
         <Popover
           align="right"
           panelClass="p-0"
@@ -301,9 +301,9 @@ export function QuickAdd({ projectId, placeholder }: { projectId: string; placeh
               type="button"
               onClick={toggle}
               title={t('schedule')}
-              className={`rounded-md p-2 hover:bg-hover hover:text-ink ${schedule.startDate || schedule.dueDate ? 'text-tt' : ''}`}
+              className={`rounded-md p-1 hover:bg-hover hover:text-ink ${schedule.startDate || schedule.dueDate ? 'text-tt' : ''}`}
             >
-              <CalendarDays size={20} />
+              <CalendarDays size={17} />
             </button>
           )}
         >
@@ -329,9 +329,9 @@ export function QuickAdd({ projectId, placeholder }: { projectId: string; placeh
               type="button"
               onClick={toggle}
               title={t('inputSettings')}
-              className="rounded-xl bg-hover p-2 hover:text-ink"
+              className="rounded-md p-1 hover:bg-hover hover:text-ink"
             >
-              <ChevronDown size={21} />
+              <ChevronDown size={17} />
             </button>
           )}
         >

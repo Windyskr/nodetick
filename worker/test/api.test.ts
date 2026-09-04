@@ -983,6 +983,25 @@ describe('habits / focus / countdown', () => {
     ).json()) as Record<string, unknown>;
     expect(focus.duration).toBe(1500);
 
+    const malformedType = await SELF.fetch(`${HOST}/open/v1/focus`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({
+        type: '0',
+        startTime: '2026-08-01T09:00:00+0000',
+        endTime: '2026-08-01T09:01:00+0000',
+        duration: 60,
+      }),
+    });
+    expect(malformedType.status).toBe(400);
+
+    const malformedDuration = await SELF.fetch(`${HOST}/open/v1/focus`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ type: 0, duration: '60' }),
+    });
+    expect(malformedDuration.status).toBe(400);
+
     const list = (await (
       await SELF.fetch(
         `${HOST}/open/v1/focus?from=2026-08-01T00:00:00%2B0000&to=2026-08-29T00:00:00%2B0000&type=0`,
@@ -1030,12 +1049,32 @@ describe('habits / focus / countdown', () => {
       await SELF.fetch(`${HOST}/open/v1/countdown`, {
         method: 'POST',
         headers: auth(token),
-        body: JSON.stringify({ name: 'Launch day', date: '2026-12-31', sortOrder: 2 }),
+        body: JSON.stringify({
+          name: 'Launch day',
+          date: '2026-12-31',
+          kind: 'anniversary',
+          reminders: ['same-day', '3-days'],
+          repeatFlag: 'yearly',
+          calculation: 'workday',
+          displayMode: 'always',
+          style: 2,
+          color: '#E5484D',
+          icon: '🚀',
+          sortOrder: 2,
+        }),
       })
     ).json()) as Record<string, unknown>;
     expect(created.name).toBe('Launch day');
     expect(created.date).toBe('2026-12-31');
     expect(created.sortOrder).toBe(2);
+    expect(created.kind).toBe('anniversary');
+    expect(created.reminders).toEqual(['same-day', '3-days']);
+    expect(created.repeatFlag).toBe('yearly');
+    expect(created.calculation).toBe('workday');
+    expect(created.displayMode).toBe('always');
+    expect(created.style).toBe(2);
+    expect(created.color).toBe('#E5484D');
+    expect(created.icon).toBe('🚀');
 
     // validation errors
     const noName = await SELF.fetch(`${HOST}/open/v1/countdown`, {
@@ -1050,6 +1089,12 @@ describe('habits / focus / countdown', () => {
       body: JSON.stringify({ name: 'x' }),
     });
     expect(noDate.status).toBe(400);
+    const malformed = await SELF.fetch(`${HOST}/open/v1/countdown`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ name: ['not', 'text'], date: { year: 2026 }, style: '2' }),
+    });
+    expect(malformed.status).toBe(400);
 
     // update
     const updated = (await (

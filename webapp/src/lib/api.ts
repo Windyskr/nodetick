@@ -125,9 +125,9 @@ export const api = {
 
   // --- Countdowns ---
   listCountdowns: () => get<Countdown[]>('/open/v1/countdown'),
-  createCountdown: (name: string, date: string) =>
-    post<Countdown>('/open/v1/countdown', { name, date }),
-  updateCountdown: (id: string, patch: { name?: string; date?: string }) =>
+  createCountdown: (input: Omit<Countdown, 'id' | 'sortOrder'> & { sortOrder?: number }) =>
+    post<Countdown>('/open/v1/countdown', input),
+  updateCountdown: (id: string, patch: Partial<Omit<Countdown, 'id'>>) =>
     post<Countdown>(`/open/v1/countdown/${id}`, patch),
   deleteCountdown: (id: string) => del<void>(`/open/v1/countdown/${id}`),
 };

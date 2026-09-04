@@ -5,7 +5,7 @@ import { Popover } from '../../components/Popover';
 import { useI18n, useT } from '../../i18n';
 import { useStore } from '../../stores/store';
 
-const RAIL = 'flex h-full w-12 shrink-0 flex-col items-center border-r border-line bg-[#fbfbfb] py-3';
+const RAIL = 'flex h-full w-[50px] shrink-0 flex-col items-center border-r border-line bg-[#fbfbfb] py-4';
 type Theme = 'blue' | 'violet' | 'green' | 'dark';
 const THEMES: { id: Theme; color: string }[] = [
   { id: 'blue', color: '#4772fa' },
@@ -46,12 +46,12 @@ export default function IconRail() {
       to={to}
       title={label}
       className={({ isActive }) =>
-        `flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+        `flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
           isActive ? 'text-tt' : 'text-[#8c8c8c] hover:bg-hover hover:text-ink-2'
         }`
       }
     >
-      <Icon size={19} strokeWidth={1.8} />
+      <Icon size={20} strokeWidth={1.8} />
     </NavLink>
   );
 
@@ -65,7 +65,7 @@ export default function IconRail() {
             type="button"
             onClick={toggle}
             title={me?.email}
-            className={`mb-3 flex h-8 w-8 items-center justify-center rounded-full text-[13px] font-semibold text-white ${
+            className={`mb-4 flex h-8 w-8 items-center justify-center rounded-full text-[13px] font-semibold text-white ${
               open ? 'ring-2 ring-tt/40' : ''
             }`}
             style={{ background: '#b0b6bf' }}
@@ -131,12 +131,12 @@ export default function IconRail() {
         )}
       </Popover>
 
-      <div className="flex flex-col items-center gap-2">
+      <div className="flex flex-col items-center gap-2.5">
         {item('/app/tasks/all', t('navTasks'), CheckSquare)}
         {item('/app/calendar', t('navCalendar'), CalendarDays)}
         {item('/app/matrix', t('navMatrix'), LayoutGrid)}
-        {item('/app/habit', t('navHabits'), Clock3)}
         {item('/app/focus', t('navFocus'), Target)}
+        {item('/app/habit', t('navHabits'), Clock3)}
         {item('/app/countdown', t('navCountdowns'), Hourglass)}
         {item('/app/search', t('navSearch'), Search)}
       </div>

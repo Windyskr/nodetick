@@ -61,7 +61,7 @@ export function TaskRow({
       tabIndex={0}
       onClick={() => selectTask(task.id)}
       onKeyDown={(e) => e.key === 'Enter' && selectTask(task.id)}
-      className={`group flex cursor-pointer items-center gap-3 border-b border-line/70 px-5 py-[10px] transition-colors ${
+      className={`group flex cursor-pointer items-center gap-3 border-b border-line/70 px-5 py-[9px] transition-colors ${
         selected ? 'bg-selected' : 'hover:bg-hover'
       }`}
     >

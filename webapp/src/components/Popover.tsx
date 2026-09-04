@@ -7,11 +7,13 @@ export function Popover({
   trigger,
   children,
   align = 'left',
+  side = 'bottom',
   panelClass = '',
 }: {
   trigger: (open: boolean, toggle: () => void) => ReactNode;
   children: (close: () => void) => ReactNode;
   align?: 'left' | 'right';
+  side?: 'top' | 'bottom';
   panelClass?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -38,7 +40,7 @@ export function Popover({
       {trigger(open, () => setOpen((v) => !v))}
       {open && (
         <div
-          className={`absolute z-50 mt-1 rounded-lg border border-line bg-white py-1 shadow-[0_4px_16px_rgba(0,0,0,0.12)] ${align === 'right' ? 'right-0' : 'left-0'} ${panelClass}`}
+          className={`absolute z-50 rounded-lg border border-line bg-white py-1 shadow-[0_4px_16px_rgba(0,0,0,0.12)] ${align === 'right' ? 'right-0' : 'left-0'} ${side === 'top' ? 'bottom-full mb-1' : 'mt-1'} ${panelClass}`}
         >
           {children(() => setOpen(false))}
         </div>

@@ -206,6 +206,14 @@ CREATE TABLE IF NOT EXISTS countdowns (
   user_id TEXT NOT NULL,
   name TEXT,
   date TEXT,
+  kind TEXT NOT NULL DEFAULT 'countdown',
+  reminders TEXT NOT NULL DEFAULT '[]',
+  repeat_flag TEXT,
+  calculation TEXT NOT NULL DEFAULT 'standard',
+  display_mode TEXT NOT NULL DEFAULT 'on-day',
+  style INTEGER NOT NULL DEFAULT 0,
+  color TEXT NOT NULL DEFAULT '#4772FA',
+  icon TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );

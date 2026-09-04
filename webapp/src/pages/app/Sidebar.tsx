@@ -84,7 +84,7 @@ export default function Sidebar() {
   const scopeActive = (prefix: string) => location.pathname.startsWith(`/app/tasks/${prefix}`);
 
   const itemClass = (active: boolean) =>
-    `group mx-2 flex items-center gap-2.5 rounded-md px-2.5 py-[7px] text-left text-[14px] transition-colors ${
+    `group mx-[10px] flex h-9 items-center gap-2.5 rounded-md px-2.5 text-left text-[14px] transition-colors ${
       active ? 'bg-selected font-medium text-ink' : 'text-ink-2 hover:bg-hover'
     }`;
 
@@ -115,7 +115,7 @@ export default function Sidebar() {
     <>
       <aside className="flex h-full w-[240px] shrink-0 flex-col overflow-y-auto bg-[#fbfbfb] pb-2">
       {/* Smart lists */}
-      <div className="pt-3">
+      <div className="space-y-0.5 pt-[14px]">
         <Link to="/app/tasks/all" className={itemClass(scopeActive('all'))}>
           <ListTodo size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
           <span className="flex-1 truncate">{t('smartAll')}</span>
@@ -370,9 +370,6 @@ export default function Sidebar() {
           <span className="flex-1 truncate">{t('navTrash')}</span>
           <span className="text-[12px] text-ink-3">{trash.length}</span>
         </Link>
-        <div className="mx-3 mt-3 border-t border-line pt-3 text-center text-[11px] text-ink-3">
-          {t('sidebarFooter')}
-        </div>
       </div>
       </aside>
       {filterEditorOpen && (

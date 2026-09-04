@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Calendar, Flag, Inbox, Plus, Trash2, X } from 'lucide-react';
+import { Calendar, Flag, Inbox, MessageSquare, MoreHorizontal, Plus, Trash2, X } from 'lucide-react';
 import type { Task, TaskComment } from '../../lib/types';
 import { useStore, INBOX_ID } from '../../stores/store';
 import { api } from '../../lib/api';
@@ -15,7 +15,7 @@ import { projectDisplayName } from '../../lib/project';
  * Right-hand task detail panel, TickTick-style: title, description,
  * subtasks, tags, comments, and a bottom bar with list + actions.
  */
-export default function TaskDetail({ task }: { task: Task }) {
+export default function TaskDetail({ task, variant = 'panel' }: { task: Task; variant?: 'panel' | 'modal' }) {
   const { projects, saveTask, toggleComplete, trashTask, selectTask } = useStore();
   const t = useT();
   const f = useTF();
@@ -26,6 +26,7 @@ export default function TaskDetail({ task }: { task: Task }) {
   const [newSubtask, setNewSubtask] = useState('');
   const [tagDraft, setTagDraft] = useState('');
   const [addingTag, setAddingTag] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
 
   useEffect(() => {
     setTitle(task.title);
@@ -114,9 +115,9 @@ export default function TaskDetail({ task }: { task: Task }) {
   const project = projects.find((p) => p.id === task.projectId);
 
   return (
-    <aside className="flex h-full w-[420px] shrink-0 flex-col border-l border-line bg-white">
+    <aside className={`flex shrink-0 flex-col bg-white ${variant === 'modal' ? 'h-auto max-h-[calc(100vh-80px)] min-h-[300px] w-[400px] overflow-hidden rounded-xl border border-line shadow-[0_12px_36px_rgba(0,0,0,0.18)]' : 'h-full w-[423px] border-l border-line'}`}>
       {/* top row */}
-      <div className="flex items-center gap-3 px-5 pb-2 pt-4">
+      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-6">
         <RoundCheck checked={done} priority={priority} onClick={() => void toggleComplete(task)} />
         <Popover
           trigger={(_o, toggle) => (
@@ -177,7 +178,7 @@ export default function TaskDetail({ task }: { task: Task }) {
       </div>
 
       {/* scrollable body */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-5">
+      <div className="group/detail min-h-0 flex-1 overflow-y-auto px-6 pt-4">
         {task.focusSummaries?.[0]?.estimatedPomo != null && (
           <div className="mb-2 text-[12px] text-tt">
             {f('estimatedPomo', task.focusSummaries[0].estimatedPomo ?? 0)}
@@ -194,7 +195,7 @@ export default function TaskDetail({ task }: { task: Task }) {
               (e.target as HTMLTextAreaElement).blur();
             }
           }}
-          className="w-full resize-none bg-transparent text-[20px] font-bold leading-snug text-ink"
+          className="w-full resize-none bg-transparent text-[20px] font-bold leading-snug text-ink outline-none"
           style={{ height: 'auto' }}
           onInput={(e) => {
             const el = e.target as HTMLTextAreaElement;
@@ -204,18 +205,20 @@ export default function TaskDetail({ task }: { task: Task }) {
         />
         <textarea
           value={desc}
-            placeholder={t('description')}
-          rows={4}
+          placeholder={t('taskContentPlaceholder')}
+          rows={5}
           onChange={(e) => setDesc(e.target.value)}
           onBlur={commitDesc}
-          className="mt-2 w-full bg-transparent text-[13.5px] leading-relaxed text-ink-2 placeholder:text-ink-3"
+          className={`mt-1 w-full resize-none bg-transparent text-[13.5px] leading-relaxed text-ink-2 outline-none placeholder:text-ink-3 ${variant === 'modal' ? 'min-h-[48px]' : 'min-h-[96px]'}`}
         />
 
         {/* subtasks */}
-        <div className="mt-4">
-          <div className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-3">
-            {t('subtasks')} {task.items.length > 0 && `· ${task.items.filter((i) => i.status === 2).length}/${task.items.length}`}
-          </div>
+        <div className="mt-2">
+          {task.items.length > 0 && (
+            <div className="mb-1 text-[12px] font-semibold text-ink-3">
+              {t('subtasks')} · {task.items.filter((i) => i.status === 2).length}/{task.items.length}
+            </div>
+          )}
           {task.items.map((item) => (
             <div key={item.id} className="group flex items-center gap-2.5 py-[6px]">
               <RoundCheck checked={item.status === 2} size={16} onClick={() => toggleItem(item.id)} />
@@ -232,7 +235,7 @@ export default function TaskDetail({ task }: { task: Task }) {
               </button>
             </div>
           ))}
-          <div className="flex items-center gap-2.5 py-[6px]">
+          <div className={`flex items-center gap-2.5 py-[6px] transition-opacity ${task.items.length > 0 || newSubtask ? 'opacity-100' : 'opacity-0 group-hover/detail:opacity-100 focus-within:opacity-100'}`}>
             <Plus size={16} className="text-ink-3" />
             <input
               value={newSubtask}
@@ -245,7 +248,7 @@ export default function TaskDetail({ task }: { task: Task }) {
         </div>
 
         {/* tags */}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className={`mt-3 flex flex-wrap items-center gap-2 transition-opacity ${task.tags.length > 0 || addingTag ? 'opacity-100' : 'opacity-0 group-hover/detail:opacity-100'}`}>
           {task.tags.map((t) => (
             <span
               key={t}
@@ -279,8 +282,8 @@ export default function TaskDetail({ task }: { task: Task }) {
         </div>
 
         {/* comments */}
-        <div className="mt-6">
-          <div className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-ink-3">{t('comments')}</div>
+        {commentsOpen && <div className="mt-6 border-t border-line pt-3">
+          <div className="mb-1 text-[12px] font-semibold text-ink-3">{t('comments')}</div>
           {comments.map((c) => (
             <div key={c.id} className="border-b border-line/60 py-2">
               <div className="text-[13.5px] text-ink">{c.title}</div>
@@ -294,13 +297,14 @@ export default function TaskDetail({ task }: { task: Task }) {
             onKeyDown={(e) => e.key === 'Enter' && void sendComment()}
             className="mt-2 w-full rounded-md bg-hover px-3 py-2 text-[13px] placeholder:text-ink-3"
           />
-        </div>
+        </div>}
         <div className="h-6" />
       </div>
 
       {/* bottom bar */}
-      <div className="flex items-center gap-2 border-t border-line px-4 py-2 text-ink-3">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-t border-line px-6 text-ink-3">
         <Popover
+          side="top"
           trigger={(_o, toggle) => (
             <button
               type="button"
@@ -330,15 +334,35 @@ export default function TaskDetail({ task }: { task: Task }) {
         <span className="flex-1" />
         <button
           type="button"
-          title={t('deleteToTrash')}
-          className="rounded-md p-1.5 hover:bg-hover hover:text-p-high"
-          onClick={() => {
-            void trashTask(task);
-            selectTask(null);
-          }}
+          title={t('comments')}
+          aria-pressed={commentsOpen}
+          className={`rounded-md p-1.5 hover:bg-hover ${commentsOpen ? 'text-tt' : 'hover:text-ink'}`}
+          onClick={() => setCommentsOpen((open) => !open)}
         >
-          <Trash2 size={16} />
+          <MessageSquare size={17} />
         </button>
+        <Popover
+          align="right"
+          side="top"
+          trigger={(_open, toggle) => (
+            <button type="button" title={t('viewOptions')} onClick={toggle} className="rounded-md p-1.5 hover:bg-hover hover:text-ink">
+              <MoreHorizontal size={18} />
+            </button>
+          )}
+        >
+          {(close) => (
+            <MenuItem
+              icon={<Trash2 size={15} />}
+              label={t('deleteToTrash')}
+              danger
+              onClick={() => {
+                close();
+                void trashTask(task);
+                selectTask(null);
+              }}
+            />
+          )}
+        </Popover>
       </div>
     </aside>
   );

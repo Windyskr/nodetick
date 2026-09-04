@@ -15,7 +15,7 @@ export default function Register() {
 
   // The very first account is the admin and needs no invite code.
   useEffect(() => {
-    document.title = 'Create account · NodeTick';
+    document.title = '创建账号 · NodeTick';
   }, []);
 
   const submit = async (e: FormEvent) => {
