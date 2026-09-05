@@ -129,7 +129,12 @@ export function TaskRow({
             {task.tags.slice(0, 3).map((tag) => (
               <span key={tag} className="shrink-0">#{tag}</span>
             ))}
-            {subtasks > 0 && <span className="shrink-0">☑ {task.items.filter((i) => i.status === 2).length}/{subtasks}</span>}
+            {subtasks > 0 && (
+              <span className="inline-flex shrink-0 items-center gap-0.5">
+                <CheckSquare size={12} />
+                {task.items.filter((i) => i.status === 2).length}/{subtasks}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -146,7 +151,10 @@ export function TaskRow({
         )}
       </span>
       {subtasks > 0 && !done && !showDetails && (
-        <span className="text-[12px] text-ink-3">☑ {task.items.filter((i) => i.status === 2).length}/{subtasks}</span>
+        <span className="inline-flex shrink-0 items-center gap-0.5 text-[12px] text-ink-3">
+          <CheckSquare size={12} />
+          {task.items.filter((i) => i.status === 2).length}/{subtasks}
+        </span>
       )}
       {badge && (
         <span className="hidden items-center gap-1 text-[12px] text-ink-3 sm:flex">
