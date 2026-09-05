@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { Check, Copy, Download, FileUp, Plus, X } from 'lucide-react';
+import { Check, Copy, Download, FileUp, Link2, Plus, RefreshCw, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { ApiToken } from '../../lib/types';
 import { useT, useTF } from '../../i18n';
@@ -16,6 +16,8 @@ export default function TokensPage() {
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [feedToken, setFeedToken] = useState<string | null>(null);
+  const [feedCopied, setFeedCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -24,6 +26,7 @@ export default function TokensPage() {
   };
   useEffect(() => {
     void load();
+    api.getFeedToken().then((r) => setFeedToken(r.token)).catch(() => setFeedToken(null));
   }, []);
 
   const create = async (e: FormEvent) => {
@@ -196,6 +199,47 @@ export default function TokensPage() {
           {importResult && <div className="mt-2 text-[12px] text-tt">{importResult}</div>}
           {error && <div className="mt-2 text-[12px] text-p-high">{error}</div>}
           <p className="mt-2 text-[12px] leading-snug text-ink-3">{t('backupHint')}</p>
+        </div>
+
+        <h2 className="mb-2 mt-8 text-[15px] font-semibold">{t('feedTitle')}</h2>
+        <div className="rounded-xl border border-line p-4">
+          {feedToken ? (
+            <div className="flex items-center gap-2">
+              <code className="flex-1 truncate rounded-md bg-[#0d1117] px-3 py-2 font-mono text-[12px] text-[#c9d1d9]">
+                {`${origin}/open/v1/feed.ics?token=${feedToken}`}
+              </code>
+              <button
+                type="button"
+                title={t('copy')}
+                className="rounded-md border border-line p-2 text-ink-3 hover:border-tt hover:text-tt"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(`${origin}/open/v1/feed.ics?token=${feedToken}`);
+                  setFeedCopied(true);
+                  setTimeout(() => setFeedCopied(false), 1500);
+                }}
+              >
+                {feedCopied ? <Check size={15} /> : <Copy size={15} />}
+              </button>
+              <button
+                type="button"
+                title={t('feedRegenerate')}
+                className="rounded-md border border-line p-2 text-ink-3 hover:border-tt hover:text-tt"
+                onClick={async () => {
+                  if (!window.confirm(t('feedRegenerateConfirm'))) return;
+                  const { token } = await api.regenerateFeed();
+                  setFeedToken(token);
+                }}
+              >
+                <RefreshCw size={15} />
+              </button>
+            </div>
+          ) : (
+            <div className="py-1 text-[13px] text-ink-3">{t('loading')}</div>
+          )}
+          <p className="mt-2 flex items-start gap-1.5 text-[12px] leading-snug text-ink-3">
+            <Link2 size={13} className="mt-0.5 shrink-0" />
+            {t('feedHint')}
+          </p>
         </div>
 
         <h2 className="mb-2 mt-8 text-[15px] font-semibold">{t('connectCli')}</h2>

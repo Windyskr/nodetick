@@ -28,6 +28,7 @@ import {
   writeAuditEvent,
 } from '../services/security.js';
 import { BackupImportError, exportBackup, importBackup } from '../services/backup.js';
+import { buildIcsCalendar } from '../ics.js';
 type State = { Bindings: Env; Variables: { userId?: string } };
 
 export const web = new Hono<State>();
@@ -404,40 +405,36 @@ web.get('/export/calendar.ics', async (c) => {
   )
     .bind(userId)
     .all<Record<string, unknown>>();
-
-  const basic = (value: unknown): string | null => {
-    if (typeof value !== 'string') return null;
-    const ms = Date.parse(value);
-    return Number.isNaN(ms) ? null : new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  };
-  const escapeText = (value: string) =>
-    value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
-  const day = (value: unknown): string | null => {
-    const match = typeof value === 'string' ? /^(\d{4}-\d{2}-\d{2})/.exec(value) : null;
-    return match ? match[1].replace(/-/g, '') : null;
-  };
-
-  const now = basic(new Date().toISOString())!;
-  const lines: string[] = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//NodeTick//Backup//EN', 'CALSCALE:GREGORIAN'];
-  for (const r of rows.results) {
-    const allDay = Number(r.is_all_day ?? 0) === 1;
-    const dtStart = allDay ? day(r.start_date ?? r.due_date) : basic(r.start_date ?? r.due_date);
-    if (!dtStart) continue;
-    const dtEnd = allDay ? day(r.due_date ?? r.start_date) : basic(r.due_date);
-    lines.push('BEGIN:VEVENT', `UID:${String(r.id)}@nodetick`, `DTSTAMP:${now}`);
-    lines.push(allDay ? `DTSTART;VALUE=DATE:${dtStart}` : `DTSTART:${dtStart}`);
-    if (dtEnd && dtEnd >= dtStart) lines.push(allDay ? `DTEND;VALUE=DATE:${dtEnd}` : `DTEND:${dtEnd}`);
-    lines.push(`SUMMARY:${escapeText(String(r.title ?? ''))}`);
-    if (r.content) lines.push(`DESCRIPTION:${escapeText(String(r.content)).slice(0, 900)}`);
-    lines.push('END:VEVENT');
-  }
-  lines.push('END:VCALENDAR');
-  return new Response(lines.join('\r\n'), {
+  return new Response(buildIcsCalendar(rows.results), {
     headers: {
       'Content-Type': 'text/calendar; charset=utf-8',
       'Content-Disposition': 'attachment; filename="nodetick-tasks.ics"',
     },
   });
+});
+
+/** TickTick-style calendar subscription: a stable secret URL that external
+ * calendar clients (Google/Apple Calendar) poll without a browser session.
+ * The token is generated lazily; regenerating revokes the old URL. */
+web.get('/feed', async (c) => {
+  const userId = await getSessionUser(c);
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const row = await c.env.DB.prepare('SELECT feed_token FROM users WHERE id = ?').bind(userId).first<{ feed_token: string | null }>();
+  let token = row?.feed_token ?? null;
+  if (!token) {
+    token = randomHex(16);
+    await c.env.DB.prepare('UPDATE users SET feed_token = ? WHERE id = ?').bind(token, userId).run();
+  }
+  return c.json({ token });
+});
+
+web.post('/feed/regenerate', async (c) => {
+  const userId = await getSessionUser(c);
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const token = randomHex(16);
+  await c.env.DB.prepare('UPDATE users SET feed_token = ? WHERE id = ?').bind(token, userId).run();
+  await writeAuditEvent(c.env.DB, { userId, action: 'feed.regenerate' });
+  return c.json({ token });
 });
 
 web.get('/me', async (c) => {

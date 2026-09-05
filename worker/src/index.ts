@@ -8,6 +8,7 @@ import { projects } from './routes/projects.js';
 import { misc } from './routes/misc.js';
 import { notifications } from './routes/notifications.js';
 import { web } from './routes/web.js';
+import { feed } from './routes/feed.js';
 import { dispatchDueNotifications } from './services/notifications.js';
 import { limitRequestBody, RequestBodyTooLargeError } from './util.js';
 
@@ -62,6 +63,9 @@ app.route('/api', web);
 app.route('/oauth', oauth);
 
 // --- TickTick Open API v1 compatible surface (Bearer token or session cookie) ---
+// The calendar subscription feed mounts first: its query-token auth must win
+// for /feed.ics, which external calendar clients call without cookies.
+app.route('/open/v1', feed);
 const api = new Hono<{ Bindings: Env; Variables: { userId: string } }>();
 api.use('*', requireApiToken);
 api.route('/', tasks);

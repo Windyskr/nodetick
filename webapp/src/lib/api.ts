@@ -70,6 +70,10 @@ export const api = {
   createToken: (name: string) => post<{ token: string }>('/api/tokens', { name }),
   revokeToken: (id: string) => post<{ ok: true }>(`/api/tokens/${id}/revoke`),
 
+  // --- Calendar subscription feed (/api) ---
+  getFeedToken: () => get<{ token: string }>('/api/feed'),
+  regenerateFeed: () => post<{ token: string }>('/api/feed/regenerate', {}),
+
   // --- Browser notifications ---
   notificationConfig: () => get<NotificationConfig>('/open/v1/notification/config'),
   updateNotificationSettings: (settings: NotificationSettings) =>

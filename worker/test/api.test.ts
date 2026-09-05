@@ -1573,6 +1573,53 @@ describe('open backup endpoints', () => {
   });
 });
 
+describe('calendar subscription feed', () => {
+  it('serves dated tasks via a secret URL and rotates on regenerate', async () => {
+    const { token, cookie } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    await SELF.fetch(`${HOST}/open/v1/task`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ title: 'Feed task', projectId: 'inbox', dueDate: '2026-09-10', isAllDay: true }),
+    });
+
+    // First call lazily mints the feed token.
+    const feedRes = await SELF.fetch(`${HOST}/api/feed`, { headers: { Cookie: cookie } });
+    expect(feedRes.status).toBe(200);
+    const first = ((await feedRes.json()) as { token: string }).token;
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+
+    // The subscription URL works without cookies or Bearer headers.
+    const icsRes = await SELF.fetch(`${HOST}/open/v1/feed.ics?token=${first}`);
+    expect(icsRes.status).toBe(200);
+    expect(icsRes.headers.get('Content-Type')).toContain('text/calendar');
+    const ics = await icsRes.text();
+    expect(ics).toContain('BEGIN:VCALENDAR');
+    expect(ics).toContain('SUMMARY:Feed task');
+
+    // Unknown tokens are rejected.
+    const bad = await SELF.fetch(`${HOST}/open/v1/feed.ics?token=${'0'.repeat(32)}`);
+    expect(bad.status).toBe(403);
+
+    // Regenerating revokes the old URL immediately.
+    const regenRes = await SELF.fetch(`${HOST}/api/feed/regenerate`, {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    });
+    expect(regenRes.status).toBe(200);
+    const second = ((await regenRes.json()) as { token: string }).token;
+    expect(second).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).not.toBe(first);
+    expect((await SELF.fetch(`${HOST}/open/v1/feed.ics?token=${first}`)).status).toBe(403);
+    expect((await SELF.fetch(`${HOST}/open/v1/feed.ics?token=${second}`)).status).toBe(200);
+
+    // The session-auth ICS download still shares the same renderer.
+    const download = await SELF.fetch(`${HOST}/api/export/calendar.ics`, { headers: { Cookie: cookie } });
+    expect(download.status).toBe(200);
+    expect(await download.text()).toContain('SUMMARY:Feed task');
+  });
+});
+
 describe('password change and admin user management', () => {
   it('changes the password only with the correct current password and drops other sessions', async () => {
     const { cookie } = await bootstrap();

@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
   is_admin INTEGER NOT NULL DEFAULT 0,
+  feed_token TEXT,
   created_at INTEGER NOT NULL
 );
 
