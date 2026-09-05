@@ -27,6 +27,13 @@ database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 # Optional invite code required to register additional users after the first
 # (the very first user is always the admin and registers without a code).
 # INVITE_CODE = "change-me"
+# Public Web Push configuration. Keep VAPID_PRIVATE_KEY in a Wrangler secret.
+# VAPID_PUBLIC_KEY = "replace-with-your-public-vapid-key"
+# VAPID_SUBJECT = "mailto:admin@example.com"
+
+[triggers]
+crons = ["* * * * *"]
 
 # Secrets (set with `npx wrangler secret put ...`):
 #   SESSION_SECRET - random 32+ char string used to sign CSRF tokens
+#   VAPID_PRIVATE_KEY - private half of the Web Push VAPID key pair

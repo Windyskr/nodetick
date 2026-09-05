@@ -6,7 +6,9 @@ import { oauth } from './oauth.js';
 import { tasks } from './routes/tasks.js';
 import { projects } from './routes/projects.js';
 import { misc } from './routes/misc.js';
+import { notifications } from './routes/notifications.js';
 import { web } from './routes/web.js';
+import { dispatchDueNotifications } from './services/notifications.js';
 import { limitRequestBody, RequestBodyTooLargeError } from './util.js';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -65,6 +67,7 @@ api.use('*', requireApiToken);
 api.route('/', tasks);
 api.route('/', projects);
 api.route('/', misc);
+api.route('/', notifications);
 app.route('/open/v1', api);
 
 app.notFound((c) => c.json({ error: 'not found' }, 404));
@@ -78,4 +81,9 @@ app.onError((err, c) => {
   return withSecurityHeaders(c.json({ error: 'internal server error' }, 500));
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  scheduled(controller, env, ctx) {
+    ctx.waitUntil(dispatchDueNotifications(env, controller.scheduledTime));
+  },
+} satisfies ExportedHandler<Env>;

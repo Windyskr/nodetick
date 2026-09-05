@@ -1,0 +1,13 @@
+{
+  "name": "NodeTick",
+  "short_name": "NodeTick",
+  "description": "Self-hosted tasks, habits and focus",
+  "start_url": "/app/tasks/today",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4772fa",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

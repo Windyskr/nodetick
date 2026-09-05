@@ -18,6 +18,9 @@ export default function AppLayout() {
         navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`, {
           replace: true,
         });
+      } else {
+        const taskId = new URLSearchParams(window.location.search).get('task');
+        if (taskId) useStore.getState().selectTask(taskId);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

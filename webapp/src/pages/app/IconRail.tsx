@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { CalendarDays, CheckSquare, Clock3, Hourglass, KeyRound, Languages, LayoutGrid, LogOut, Palette, Search, Target } from 'lucide-react';
+import { Bell, CalendarDays, CheckSquare, Clock3, Hourglass, KeyRound, Languages, LayoutGrid, LogOut, Palette, Search, Target } from 'lucide-react';
 import { Popover } from '../../components/Popover';
 import { useI18n, useT } from '../../i18n';
 import { useStore } from '../../stores/store';
+import NotificationSettingsDialog, { unsubscribeCurrentBrowser } from './NotificationSettingsDialog';
 
 const RAIL = 'flex h-full w-[50px] shrink-0 flex-col items-center border-r border-line bg-[#fbfbfb] py-4';
 type Theme = 'blue' | 'violet' | 'green' | 'dark';
@@ -30,6 +31,7 @@ export default function IconRail() {
   const t = useT();
   const { lang, setLang } = useI18n();
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -121,6 +123,7 @@ export default function IconRail() {
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-hover"
               onClick={async () => {
                 close();
+                await unsubscribeCurrentBrowser().catch(() => undefined);
                 await logout();
                 window.location.href = '/';
               }}
@@ -140,7 +143,18 @@ export default function IconRail() {
         {item('/app/countdown', t('navCountdowns'), Hourglass)}
         {item('/app/search', t('navSearch'), Search)}
       </div>
-
+      <div className="mt-auto">
+        <button
+          type="button"
+          title="通知与提醒"
+          aria-label="通知与提醒"
+          onClick={() => setNotificationsOpen(true)}
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-[#8c8c8c] transition-colors hover:bg-hover hover:text-ink-2"
+        >
+          <Bell size={20} strokeWidth={1.8} />
+        </button>
+      </div>
+      {notificationsOpen && <NotificationSettingsDialog onClose={() => setNotificationsOpen(false)} />}
     </div>
   );
 }

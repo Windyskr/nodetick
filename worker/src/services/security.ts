@@ -211,7 +211,7 @@ export async function writeAuditEvent(db: D1Database, input: AuditEventInput, ip
       )
       .bind(input.userId ?? null, input.action, input.level ?? 'info', ip ?? null, metadataOf(input), Date.now())
       .run();
-    void maybeTrimAuditLog(db);
+    void maybeTrimAuditLog(db).catch((error) => console.error('audit cleanup failed:', error));
   } catch (e) {
     // Audit must never break the request path.
     console.error('audit write failed:', e);

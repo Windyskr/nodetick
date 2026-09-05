@@ -6,6 +6,8 @@ import type {
   HabitRecord,
   HabitYear,
   Me,
+  NotificationConfig,
+  NotificationSettings,
   Project,
   ProjectData,
   ProjectGroup,
@@ -55,6 +57,16 @@ export const api = {
   listTokens: () => get<ApiToken[]>('/api/tokens'),
   createToken: (name: string) => post<{ token: string }>('/api/tokens', { name }),
   revokeToken: (id: string) => post<{ ok: true }>(`/api/tokens/${id}/revoke`),
+
+  // --- Browser notifications ---
+  notificationConfig: () => get<NotificationConfig>('/open/v1/notification/config'),
+  updateNotificationSettings: (settings: NotificationSettings) =>
+    request<{ ok: true }>('/open/v1/notification/settings', { method: 'PUT', body: JSON.stringify(settings) }),
+  subscribeNotifications: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    post<{ ok: true }>('/open/v1/notification/subscribe', subscription),
+  unsubscribeNotifications: (endpoint: string) =>
+    request<{ ok: true }>('/open/v1/notification/subscribe', { method: 'DELETE', body: JSON.stringify({ endpoint }) }),
+  testNotification: () => post<{ sent: number; failed: number }>('/open/v1/notification/test'),
 
   // --- Projects (/open/v1) ---
   listProjects: () => get<Project[]>('/open/v1/project'),

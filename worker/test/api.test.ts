@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { env, reset, SELF } from 'cloudflare:test';
 import { issueApiToken } from '../src/auth.js';
+import { pushConfigured } from '../src/services/notifications.js';
 
 // The Vitest 4 Cloudflare integration no longer exposes the old implicit
 // per-test storage option. Reset bindings explicitly so every test retains
@@ -1125,6 +1126,57 @@ describe('habits / focus / countdown', () => {
       await SELF.fetch(`${HOST}/open/v1/countdown`, { headers: auth(token) })
     ).json()) as Record<string, unknown>[];
     expect(list).toHaveLength(0);
+  });
+});
+
+describe('notifications', () => {
+  it('returns defaults and persists strictly validated settings', async () => {
+    const { token } = await bootstrap();
+    const initial = await SELF.fetch(`${HOST}/open/v1/notification/config`, { headers: auth(token) });
+    expect(initial.status).toBe(200);
+    const initialBody = (await initial.json()) as { configured: boolean; subscribedDevices: number; settings: Record<string, unknown> };
+    expect(initialBody.configured).toBe(pushConfigured(env));
+    expect(initialBody.subscribedDevices).toBe(0);
+    expect(initialBody.settings.enabled).toBe(false);
+
+    const settings = {
+      enabled: true,
+      taskEnabled: true,
+      habitEnabled: false,
+      countdownEnabled: true,
+      soundEnabled: false,
+      timezone: 'Asia/Singapore',
+      allDayTime: '08:30',
+    };
+    const saved = await SELF.fetch(`${HOST}/open/v1/notification/settings`, {
+      method: 'PUT', headers: auth(token), body: JSON.stringify(settings),
+    });
+    expect(saved.status).toBe(200);
+    const configured = (await (
+      await SELF.fetch(`${HOST}/open/v1/notification/config`, { headers: auth(token) })
+    ).json()) as { settings: typeof settings };
+    expect(configured.settings).toEqual(settings);
+  });
+
+  it('rejects malformed settings and handles subscription configuration', async () => {
+    const { token } = await bootstrap();
+    const malformed = await SELF.fetch(`${HOST}/open/v1/notification/settings`, {
+      method: 'PUT', headers: auth(token), body: JSON.stringify({ enabled: 'yes' }),
+    });
+    expect(malformed.status).toBe(400);
+
+    const invalidTime = await SELF.fetch(`${HOST}/open/v1/notification/settings`, {
+      method: 'PUT', headers: auth(token), body: JSON.stringify({
+        enabled: true, taskEnabled: true, habitEnabled: true, countdownEnabled: true,
+        soundEnabled: true, timezone: 'Not/AZone', allDayTime: '99:99',
+      }),
+    });
+    expect(invalidTime.status).toBe(400);
+
+    const subscribe = await SELF.fetch(`${HOST}/open/v1/notification/subscribe`, {
+      ...json({ endpoint: 'https://push.example/sub', keys: { p256dh: 'abc', auth: 'abc' } }, auth(token)),
+    });
+    expect(subscribe.status).toBe(pushConfigured(env) ? 200 : 503);
   });
 });
 

@@ -9,9 +9,11 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "generate:vapid": "node scripts/generate-vapid.mjs"
   },
   "dependencies": {
+    "@block65/webcrypto-web-push": "^2.0.0",
     "hono": "^4.9.0"
   },
   "devDependencies": {

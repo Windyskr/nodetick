@@ -53,6 +53,7 @@ Worker 在 `/` 托管 SPA（`webapp/` 构建为静态资源，SPA 回退）：
 - **任务**：智能清单（所有 / 今天 / 最近 7 天 / 收集箱）、清单与分组、标签、**智能快速添加**（`#标签`，`~今天/~明天/~周五/~9月5日` 日期，`!1 !2 !3` / `!高 !中 !低` 优先级）、过期一键顺延、**行内悬停快捷设日期**、行菜单复制 / 移动 / 删除、提醒-重复-描述角标、**撤销 toast**、已完成"查看更多"、详情面板（描述 / 子任务 / 标签 / 评论）、清单视图与看板视图、**全文搜索**
 - **日历**：年 / 月 / 周 / 日 / 日程 / 3日 / 2周视图 + 迷你月历导航 —— 任务按日期与时间段展示，拖拽到其他日期即可改期，格子内 `+` 直接新建带日期任务
 - **外观主题**：头像菜单可切换蓝、紫、绿和深色主题，偏好保存在浏览器本地
+- **浏览器通知**：Web Push 推送任务、习惯和纪念日提醒；支持多设备、分类开关、全天提醒时间、测试通知和点击直达
 - **四象限矩阵**（按优先级）、**习惯**（7 天打卡条 + 连胜）、**番茄专注**（计时器 + 周统计）、**倒计时**、**API 令牌**
 - 已完成与回收站（软删除，可恢复 / 彻底删除）
 
@@ -86,7 +87,16 @@ npm run deploy
 
 # 必填：用于签名 CSRF 的随机 32+ 字符密钥
 npx wrangler secret put SESSION_SECRET
-# （如果先部署后设置 secret，需要再 deploy 一次）
+
+# 可选：启用浏览器 Web Push 通知
+npm run generate:vapid -w worker
+# 把输出的 VAPID_PUBLIC_KEY 和联系邮箱写入 worker/wrangler.toml 的 [vars]
+# VAPID_PUBLIC_KEY = "..."
+# VAPID_SUBJECT = "mailto:admin@example.com"
+# 私钥只写入 Cloudflare Secret，不要写入文件或提交：
+npx wrangler secret put VAPID_PRIVATE_KEY
+
+# 如果先部署后设置变量或 secret，需要再 deploy 一次
 ```
 
 打开 `https://nodetick.<你的子域名>.workers.dev` —— 你注册的第一个用户即管理员。D1 schema 会在首个请求时自动初始化，无需手动建表。
@@ -94,6 +104,7 @@ npx wrangler secret put SESSION_SECRET
 `worker/wrangler.toml` 中的可选变量：
 
 - `INVITE_CODE` —— 第一个用户之后，注册需要此邀请码。不设置则关闭注册。
+- `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` —— Web Push 公钥与发送者联系方式；私钥必须通过 `VAPID_PRIVATE_KEY` secret 配置。密钥对可用 `npm run generate:vapid -w worker` 生成。
 
 > **注意**：`*.workers.dev` 域名在部分网络（如中国大陆）不可达，必要时在 Cloudflare 控制台绑定自定义域名。
 
@@ -131,7 +142,7 @@ nodetick countdown delete <countdownId>
 ## 安全模型
 
 - API 令牌（`ntk_…`，256 位）仅存 **SHA-256 哈希**，明文只显示一次。
-- 密码：PBKDF2-SHA-256（1 万次迭代 —— 保持在 Workers 免费版 CPU 预算内），随机 16 字节盐。
+- 密码：PBKDF2-SHA-256（60 万次迭代），每个密码使用独立的随机 16 字节盐。
 - Web 会话：HttpOnly SameSite=Lax Cookie；`/api/*` 只接受 JSON（配合 SameSite 即可免 CSRF 令牌）。OAuth 授权确认表单仍使用签名 CSRF 令牌。
 - 登录失败固定延时，抑制时序探测。
 - 这是"单租户信任"模型：任何持有令牌者都能读写**你的**数据。保管好令牌，可在网页应用中随时吊销。
@@ -183,7 +194,7 @@ Client id：`nodetick-cli`。
 
 - NodeTick 实现的是官方 CLI 所使用的 TickTick Open API *文档化*行为。与 TickTick（Appest Inc.）无任何关联；请不要把 NodeTick 的问题报给 TickTick。
 - 字段语义以 CLI 消费为准：`status`（0 未完成 / 2 完成 / -1 放弃）、`priority`（0/1/3/5）、`etag` 乐观锁、提醒 `TRIGGER` 字符串、`RRULE`/`ERULE` 重复规则。
-- 提醒与重复规则按原样存储并返回；NodeTick **不会触发**通知推送（没有调度器 —— 需要的话可以加 [Cron Trigger](https://developers.cloudflare.com/workers/configuration/cron-triggers/)）。
+- 提醒与重复规则按原样存储并返回；配置 VAPID 后，Cloudflare Cron Trigger 每分钟扫描到期提醒，并通过 Web Push 推送到已订阅的浏览器。
 - 记得备份数据：可用 `nodetick task filter --json` 等导出，或 `wrangler d1 export nodetick-db`。
 
 ## 许可

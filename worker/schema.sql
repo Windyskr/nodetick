@@ -218,6 +218,43 @@ CREATE TABLE IF NOT EXISTS countdowns (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS notification_settings (
+  user_id TEXT PRIMARY KEY,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  task_enabled INTEGER NOT NULL DEFAULT 1,
+  habit_enabled INTEGER NOT NULL DEFAULT 1,
+  countdown_enabled INTEGER NOT NULL DEFAULT 1,
+  sound_enabled INTEGER NOT NULL DEFAULT 1,
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  all_day_time TEXT NOT NULL DEFAULT '09:00',
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  user_agent TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);
+
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  dedupe_key TEXT NOT NULL UNIQUE,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  scheduled_at INTEGER NOT NULL,
+  sent_at INTEGER,
+  status TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_created ON notification_deliveries(created_at);
+
 CREATE TABLE IF NOT EXISTS login_attempts_ip (
   ip TEXT PRIMARY KEY,
   attempts INTEGER NOT NULL,

@@ -199,3 +199,20 @@ export interface TaskComment {
   title: string;
   createdTime: string | null;
 }
+
+export interface NotificationSettings {
+  enabled: boolean;
+  taskEnabled: boolean;
+  habitEnabled: boolean;
+  countdownEnabled: boolean;
+  soundEnabled: boolean;
+  timezone: string;
+  allDayTime: string;
+}
+
+export interface NotificationConfig {
+  configured: boolean;
+  publicKey: string;
+  subscribedDevices: number;
+  settings: NotificationSettings;
+}
