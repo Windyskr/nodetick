@@ -15,7 +15,7 @@ import {
   randomHex,
   RequestBodyTooLargeError,
   isRequestBodyTooLarge,
-  timingSafeEqualStr,
+  verifyPassword,
 } from '../util.js';
 import {
   checkLoginAttempt,
@@ -165,8 +165,7 @@ web.post('/login', async (c) => {
       is_admin: number;
     }>();
   if (user) {
-    const hash = await hashPassword(password, user.salt);
-    if (await timingSafeEqualStr(hash, user.password_hash)) {
+    if (await verifyPassword(password, user.salt, user.password_hash)) {
       await clearLoginAttempts(c.env.DB, ip, email);
       await createSession(c, user.id);
       await writeAuditEvent(c.env.DB, { userId: user.id, action: 'login.success', metadata: { email } }, ip);
@@ -212,8 +211,7 @@ web.post('/password', async (c) => {
     .bind(userId)
     .first<{ password_hash: string; salt: string }>();
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
-  const currentHash = await hashPassword(b.currentPassword, user.salt);
-  if (!(await timingSafeEqualStr(currentHash, user.password_hash))) {
+  if (!(await verifyPassword(b.currentPassword, user.salt, user.password_hash))) {
     return c.json({ error: 'Current password is incorrect.' }, 400);
   }
   const salt = randomHex(16);

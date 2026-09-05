@@ -55,11 +55,14 @@
 
 ### 关键实现要点（坑）
 
+- **Cloudflare 生产 runtime 的 PBKDF2 迭代上限是 100,000**：本地 workerd 允许更高（曾用 600,000，本地登录正常、线上注册直接 500 `NotSupportedError`）。现已改为 100,000，并且哈希格式改为自带迭代次数的 `<iterations>$<hex>`，`verifyPassword` 按存储值里的次数校验（旧纯 hex 哈希回退到当前常量），以后调整迭代数不会锁死老用户。
+- **注册接口有 IP 限流（15 分钟 5 次）**：测试注册连续失败几次后会被 429 挡住，开发时可 `DELETE FROM registration_attempts_ip` 清掉（生产同理，但先确认不是真实攻击）。
 - **路由挂载顺序**：`/open/v1/feed.ics` 必须挂在 token 鉴权子应用（`requireApiToken`）**之前**，否则会被 401 拦截——feed 用查询串密钥鉴权，日历客户端带不了 Bearer。
 - **IAB 内嵌浏览器无法订阅 Web Push**：`pushManager.subscribe` 抛 `AbortError: push service not available`，因为 webview 没接 FCM。真实订阅测试必须用桌面 Chrome（computer-use 驱动），登录 → 弹窗开关 → 浏览器原生权限框点「允许」→ 订阅成功。
 - computer-use 对 Chrome 页面内嵌弹窗元素的无障碍按压（AXPress）可能不生效，改用当前帧坐标点击即可。
 - `wrangler dev` 改 `.dev.vars` 后必须重启才生效；`wrangler deploy` 偶发 `fetch failed`（代理/网络抖动），重试即可。
 - 密码框类元素 `set_value` 回执可能报 `mismatched`，重新 `get_app_state` 确认实际已写入。
+- 线上排错用 `npx wrangler tail nodetick --format pretty` 复现一次请求就能拿到未捕获异常的堆栈（本次 PBKDF2 问题即靠它 30 秒定位）。
 
 ### 生产部署与配置
 

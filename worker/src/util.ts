@@ -159,7 +159,10 @@ export async function timingSafeEqualStr(a: string, b: string): Promise<boolean>
   return diff === 0;
 }
 
-const PASSWORD_HASH_ITERATIONS = 600_000;
+// Cloudflare's production runtime rejects PBKDF2 iteration counts above
+// 100,000 (workerd locally accepts more, which is how 600k slipped through),
+// so this is the ceiling, not a free choice.
+const PASSWORD_HASH_ITERATIONS = 100_000;
 
 export async function hashPassword(password: string, salt: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -174,7 +177,38 @@ export async function hashPassword(password: string, salt: string): Promise<stri
     key,
     256,
   );
-  return [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const hex = [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  // Store the iteration count with the hash so future retuning never locks
+  // existing users out: `<iterations>$<hex>`. Legacy plain-hex hashes fall
+  // back to the current constant in verifyPassword.
+  return `${PASSWORD_HASH_ITERATIONS}$${hex}`;
+}
+
+/** Constant-time password check against a stored `<iterations>$<hex>` (or
+ * legacy plain-hex) hash. */
+export async function verifyPassword(
+  password: string,
+  salt: string,
+  stored: string,
+): Promise<boolean> {
+  const match = /^(\d+)\$([0-9a-f]+)$/.exec(stored);
+  const iterations = match ? Number(match[1]) : PASSWORD_HASH_ITERATIONS;
+  const expected = match ? match[2] : stored;
+  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 10_000_000) return false;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: hexToBytes(salt), iterations },
+    key,
+    256,
+  );
+  const hex = [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return timingSafeEqualStr(hex, expected);
 }
 
 function hexToBytes(hex: string): Uint8Array {
