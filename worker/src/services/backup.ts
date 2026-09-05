@@ -17,7 +17,7 @@ export type BackupDocument = Record<string, unknown>;
 export class BackupImportError extends Error {
   constructor(
     message: string,
-    readonly status: number,
+    readonly status: 400 | 413,
   ) {
     super(message);
     this.name = 'BackupImportError';

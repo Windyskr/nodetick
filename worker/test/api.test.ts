@@ -1520,6 +1520,116 @@ describe('open backup endpoints', () => {
   });
 });
 
+describe('password change and admin user management', () => {
+  it('changes the password only with the correct current password and drops other sessions', async () => {
+    const { cookie } = await bootstrap();
+    // a second session for the same user, to prove invalidation
+    const relogin = await SELF.fetch(`${HOST}/api/login`, {
+      ...json({ email: EMAIL, password: PASSWORD }),
+      redirect: 'manual',
+    });
+    expect(relogin.status).toBe(200);
+    const secondCookie = relogin.headers.get('set-cookie')!.split(';')[0];
+
+    const wrong = await SELF.fetch(`${HOST}/api/password`, {
+      ...json({ currentPassword: 'wrong-password', newPassword: 'new-password-1' }, { Cookie: cookie }),
+    });
+    expect(wrong.status).toBe(400);
+
+    const short = await SELF.fetch(`${HOST}/api/password`, {
+      ...json({ currentPassword: PASSWORD, newPassword: 'short' }, { Cookie: cookie }),
+    });
+    expect(short.status).toBe(400);
+
+    const changed = await SELF.fetch(`${HOST}/api/password`, {
+      ...json({ currentPassword: PASSWORD, newPassword: 'new-password-1' }, { Cookie: cookie }),
+    });
+    expect(changed.status).toBe(200);
+
+    // the old password no longer logs in, the new one does
+    const oldLogin = await SELF.fetch(`${HOST}/api/login`, {
+      ...json({ email: EMAIL, password: PASSWORD }),
+      redirect: 'manual',
+    });
+    expect(oldLogin.status).toBe(401);
+    const newLogin = await SELF.fetch(`${HOST}/api/login`, {
+      ...json({ email: EMAIL, password: 'new-password-1' }),
+      redirect: 'manual',
+    });
+    expect(newLogin.status).toBe(200);
+
+    // every session except the one that performed the change is invalidated
+    const second = await SELF.fetch(`${HOST}/api/me`, { headers: { Cookie: secondCookie } });
+    expect(second.status).toBe(401);
+  });
+
+  it('lets the admin manage users and blocks non-admins', async () => {
+    const { cookie } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: { Cookie: cookie } }); // ensure inbox
+
+    // create a member
+    const created = await SELF.fetch(`${HOST}/api/admin/users`, {
+      ...json({ email: 'member@example.com', password: 'member-pass-1' }, { Cookie: cookie }),
+    });
+    expect(created.status).toBe(200);
+    const member = (await created.json()) as { id: string; email: string; isAdmin: boolean };
+    expect(member.isAdmin).toBe(false);
+
+    const duplicate = await SELF.fetch(`${HOST}/api/admin/users`, {
+      ...json({ email: 'member@example.com', password: 'member-pass-1' }, { Cookie: cookie }),
+    });
+    expect(duplicate.status).toBe(409);
+
+    // the member can log in but cannot touch the admin API
+    const memberLogin = await SELF.fetch(`${HOST}/api/login`, {
+      ...json({ email: 'member@example.com', password: 'member-pass-1' }),
+      redirect: 'manual',
+    });
+    expect(memberLogin.status).toBe(200);
+    const memberCookie = memberLogin.headers.get('set-cookie')!.split(';')[0];
+    const forbidden = await SELF.fetch(`${HOST}/api/admin/users`, { headers: { Cookie: memberCookie } });
+    expect(forbidden.status).toBe(403);
+
+    // admin lists both users
+    const listRes = await SELF.fetch(`${HOST}/api/admin/users`, { headers: { Cookie: cookie } });
+    expect(listRes.status).toBe(200);
+    const list = (await listRes.json()) as { id: string; email: string; tasks: number }[];
+    expect(list.map((u) => u.email)).toEqual([EMAIL, 'member@example.com']);
+
+    // reset the member password: old session dies, new password works
+    const reset = await SELF.fetch(`${HOST}/api/admin/users/${member.id}/password`, {
+      ...json({ password: 'member-pass-2' }, { Cookie: cookie }),
+    });
+    expect(reset.status).toBe(200);
+    const staleSession = await SELF.fetch(`${HOST}/api/me`, { headers: { Cookie: memberCookie } });
+    expect(staleSession.status).toBe(401);
+    const relogin = await SELF.fetch(`${HOST}/api/login`, {
+      ...json({ email: 'member@example.com', password: 'member-pass-2' }),
+      redirect: 'manual',
+    });
+    expect(relogin.status).toBe(200);
+
+    // an admin cannot delete their own account, and the member can be deleted
+    const meRes = await SELF.fetch(`${HOST}/api/me`, { headers: { Cookie: cookie } });
+    expect(meRes.status).toBe(200);
+    const adminId = ((await meRes.json()) as { id: string }).id;
+    const selfDelete = await SELF.fetch(`${HOST}/api/admin/users/${adminId}`, {
+      method: 'DELETE',
+      headers: { Cookie: cookie },
+    });
+    expect(selfDelete.status).toBe(400);
+    const memberGone = await SELF.fetch(`${HOST}/api/admin/users/${member.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: cookie },
+    });
+    expect(memberGone.status).toBe(200);
+    const afterList = (await (
+      await SELF.fetch(`${HOST}/api/admin/users`, { headers: { Cookie: cookie } })
+    ).json()) as { email: string }[];
+    expect(afterList.map((u) => u.email)).toEqual([EMAIL]);
+  });
+});
+
 describe('abandoned tasks', () => {
   it('supports status -1 and lists it separately from active/completed', async () => {
     const { token } = await bootstrap();

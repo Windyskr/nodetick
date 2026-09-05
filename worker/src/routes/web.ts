@@ -3,6 +3,7 @@ import { Env, Vars } from '../env.js';
 import {
   createSession,
   destroySession,
+  getSessionId,
   getSessionUser,
   issueApiToken,
 } from '../auth.js';
@@ -195,6 +196,172 @@ web.post('/login', async (c) => {
 
 web.post('/logout', async (c) => {
   await destroySession(c);
+  return c.json({ ok: true });
+});
+
+// --- Account: change password ---
+
+web.post('/password', async (c) => {
+  const userId = await getSessionUser(c);
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const b = await readJson(c);
+  if (typeof b.currentPassword !== 'string' || typeof b.newPassword !== 'string') {
+    return c.json({ error: 'Enter the current and the new password.' }, 400);
+  }
+  if (b.newPassword.length < 8 || b.newPassword.length > MAX_PASSWORD_LENGTH) {
+    return c.json({ error: 'The new password must be at least 8 characters.' }, 400);
+  }
+  const user = await c.env.DB.prepare('SELECT password_hash, salt FROM users WHERE id = ?')
+    .bind(userId)
+    .first<{ password_hash: string; salt: string }>();
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  const currentHash = await hashPassword(b.currentPassword, user.salt);
+  if (!(await timingSafeEqualStr(currentHash, user.password_hash))) {
+    return c.json({ error: 'Current password is incorrect.' }, 400);
+  }
+  const salt = randomHex(16);
+  const passwordHash = await hashPassword(b.newPassword, salt);
+  await c.env.DB.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?')
+    .bind(passwordHash, salt, userId)
+    .run();
+  // The old hash no longer matches, so drop every other session of this user.
+  await c.env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?')
+    .bind(userId, getSessionId(c) ?? '')
+    .run();
+  await writeAuditEvent(
+    c.env.DB,
+    { userId, action: 'user.password.change', metadata: {} },
+    clientIp(c.req.header('CF-Connecting-IP'), c.req.header('X-Forwarded-For')),
+  );
+  return c.json({ ok: true });
+});
+
+// --- Admin: user management (the first registered account is the admin) ---
+
+/** Whether the user id belongs to an admin account. */
+const isAdminUser = async (db: D1Database, userId: string): Promise<boolean> => {
+  const row = await db.prepare('SELECT is_admin FROM users WHERE id = ?')
+    .bind(userId)
+    .first<{ is_admin: number }>();
+  return !!row?.is_admin;
+};
+
+web.get('/admin/users', async (c) => {
+  const userId = await getSessionUser(c);
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  if (!(await isAdminUser(c.env.DB, userId))) return c.json({ error: 'Admin only.' }, 403);
+  const rows = await c.env.DB.prepare(
+    `SELECT u.id, u.email, u.is_admin, u.created_at,
+       (SELECT COUNT(*) FROM tasks t WHERE t.user_id = u.id) AS task_count
+     FROM users u ORDER BY u.created_at ASC, u.id ASC`,
+  ).all<{ id: string; email: string; is_admin: number; created_at: number; task_count: number }>();
+  return c.json(
+    rows.results.map((r) => ({
+      id: r.id,
+      email: r.email,
+      isAdmin: !!r.is_admin,
+      createdAt: r.created_at,
+      tasks: r.task_count,
+    })),
+  );
+});
+
+web.post('/admin/users', async (c) => {
+  const userId = await getSessionUser(c);
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  if (!(await isAdminUser(c.env.DB, userId))) return c.json({ error: 'Admin only.' }, 403);
+  const b = await readJson(c);
+  if (typeof b.email !== 'string' || typeof b.password !== 'string') {
+    return c.json({ error: 'Enter a valid email and a password of at least 8 characters.' }, 400);
+  }
+  const email = b.email.trim().toLowerCase();
+  const password = b.password;
+  if (!EMAIL_RE.test(email) || email.length > MAX_EMAIL_LENGTH || password.length < 8 || password.length > MAX_PASSWORD_LENGTH) {
+    return c.json({ error: 'Enter a valid email and a password of at least 8 characters.' }, 400);
+  }
+  const exists = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+  if (exists) return c.json({ error: 'That email is already registered.' }, 409);
+  const salt = randomHex(16);
+  const id = genId();
+  const passwordHash = await hashPassword(password, salt);
+  const isAdmin = b.admin === true ? 1 : 0;
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO users (id, email, password_hash, salt, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    )
+      .bind(id, email, passwordHash, salt, isAdmin, Date.now())
+      .run();
+  } catch (error) {
+    const duplicate = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+    if (duplicate) return c.json({ error: 'That email is already registered.' }, 409);
+    throw error;
+  }
+  await writeAuditEvent(
+    c.env.DB,
+    { userId, action: 'admin.user.create', metadata: { email } },
+    clientIp(c.req.header('CF-Connecting-IP'), c.req.header('X-Forwarded-For')),
+  );
+  return c.json({ id, email, isAdmin: !!isAdmin });
+});
+
+web.post('/admin/users/:id/password', async (c) => {
+  const userId = await getSessionUser(c);
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  if (!(await isAdminUser(c.env.DB, userId))) return c.json({ error: 'Admin only.' }, 403);
+  const b = await readJson(c);
+  if (typeof b.password !== 'string' || b.password.length < 8 || b.password.length > MAX_PASSWORD_LENGTH) {
+    return c.json({ error: 'The password must be at least 8 characters.' }, 400);
+  }
+  const target = await c.env.DB.prepare('SELECT id, email FROM users WHERE id = ?')
+    .bind(c.req.param('id'))
+    .first<{ id: string; email: string }>();
+  if (!target) return c.json({ error: 'User not found.' }, 404);
+  const salt = randomHex(16);
+  const passwordHash = await hashPassword(b.password, salt);
+  await c.env.DB.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?')
+    .bind(passwordHash, salt, target.id)
+    .run();
+  await c.env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(target.id).run();
+  await writeAuditEvent(
+    c.env.DB,
+    { userId, action: 'admin.user.password_reset', metadata: { email: target.email } },
+    clientIp(c.req.header('CF-Connecting-IP'), c.req.header('X-Forwarded-For')),
+  );
+  return c.json({ ok: true });
+});
+
+web.delete('/admin/users/:id', async (c) => {
+  const userId = await getSessionUser(c);
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  if (!(await isAdminUser(c.env.DB, userId))) return c.json({ error: 'Admin only.' }, 403);
+  const id = c.req.param('id');
+  if (id === userId) return c.json({ error: 'You cannot delete your own account.' }, 400);
+  const target = await c.env.DB.prepare('SELECT id, email, is_admin FROM users WHERE id = ?')
+    .bind(id)
+    .first<{ id: string; email: string; is_admin: number }>();
+  if (!target) return c.json({ error: 'User not found.' }, 404);
+  if (target.is_admin) {
+    const remaining = await c.env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM users WHERE is_admin = 1 AND id != ?',
+    )
+      .bind(id)
+      .first<{ n: number }>();
+    if (!remaining?.n) return c.json({ error: 'Cannot delete the last admin.' }, 400);
+  }
+  for (const table of [
+    'sessions', 'api_tokens', 'oauth_codes', 'project_groups', 'projects', 'task_columns',
+    'tasks', 'task_comments', 'tags', 'filters', 'habits', 'habit_checkins', 'habit_records',
+    'focus_records', 'countdowns', 'notification_settings', 'push_subscriptions',
+    'notification_deliveries',
+  ]) {
+    await c.env.DB.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(id).run();
+  }
+  await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+  await writeAuditEvent(
+    c.env.DB,
+    { userId, action: 'admin.user.delete', metadata: { email: target.email } },
+    clientIp(c.req.header('CF-Connecting-IP'), c.req.header('X-Forwarded-For')),
+  );
   return c.json({ ok: true });
 });
 
