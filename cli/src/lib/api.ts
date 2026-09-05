@@ -308,6 +308,19 @@ export class NodeTickApi {
   async deleteCountdown(countdownId: string): Promise<void> {
     await this.request(`/countdown/${countdownId}`, { method: 'DELETE' });
   }
+
+  // --- Backup ---
+
+  async exportBackup(): Promise<Record<string, unknown>> {
+    return this.request('/backup/export');
+  }
+
+  async importBackup(backup: unknown): Promise<{ imported: number }> {
+    return this.request('/backup/import', {
+      method: 'POST',
+      body: JSON.stringify(backup),
+    });
+  }
 }
 
 export async function getApi(): Promise<NodeTickApi> {

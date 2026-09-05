@@ -129,6 +129,10 @@ nodetick focus list --from "2026-08-01T00:00:00+0000" --to "2026-08-30T23:59:59+
 nodetick countdown create --name "发布日" --date 2026-12-31
 nodetick countdown update <countdownId> --date 2027-01-01
 nodetick countdown delete <countdownId>
+
+nodetick backup export                    # 全量导出到 nodetick-backup-<今天>.json
+nodetick backup export ./my-backup.json   # 指定输出路径
+nodetick backup import ./my-backup.json   # 合并导入（按 id upsert）
 ```
 
 任何命令加 `--json` 输出原始 API JSON。服务器地址记录在 `~/.config/nodetick/config.json`；环境变量 `NODETICK_SERVER` / `NODETICK_TOKEN` 可覆盖（CI 场景友好）。

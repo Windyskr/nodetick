@@ -9,7 +9,8 @@ import {
   serializeHabitRecord,
   serializeTag,
 } from '../serialize.js';
-import { genId, nowIso, parseJsonArray, readJsonObject } from '../util.js';
+import { genId, nowIso, parseJsonArray, readJsonObject, RequestBodyTooLargeError, isRequestBodyTooLarge } from '../util.js';
+import { BackupImportError, exportBackup, importBackup } from '../services/backup.js';
 
 type State = { Bindings: Env; Variables: Vars };
 
@@ -907,4 +908,28 @@ misc.delete('/countdown/:countdownId', async (c) => {
     .run();
   if (!res.meta.changes) return c.json({ error: 'countdown not found' }, 404);
   return c.body(null, 200);
+});
+
+// --- Backup ---
+// NodeTick extension: the same full-account JSON backup the web UI serves,
+// exposed to token-authenticated API clients (the CLI).
+
+misc.get('/backup/export', async (c) => {
+  return c.json(await exportBackup(c.env, c.get('userId')));
+});
+
+misc.post('/backup/import', async (c) => {
+  let parsed: unknown;
+  try {
+    parsed = await c.req.json<unknown>();
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError || isRequestBodyTooLarge(c.req)) throw error;
+    return c.json({ error: 'expected a NodeTick backup JSON object' }, 400);
+  }
+  try {
+    return c.json(await importBackup(c.env, c.get('userId'), parsed));
+  } catch (error) {
+    if (error instanceof BackupImportError) return c.json({ error: error.message }, error.status);
+    throw error;
+  }
 });

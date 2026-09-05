@@ -40,6 +40,10 @@ const commands: Record<string, [string, () => Promise<unknown>]> = {
     'Manage countdowns',
     async () => (await import('./commands/countdown.js')).registerCountdownCommand,
   ],
+  backup: [
+    'Export or import a full account backup',
+    async () => (await import('./commands/backup.js')).registerBackupCommand,
+  ],
 };
 
 // Register lightweight placeholders (fast top-level --help), but load the real

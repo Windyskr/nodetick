@@ -1469,6 +1469,57 @@ describe('backup export/import', () => {
   });
 });
 
+describe('open backup endpoints', () => {
+  it('exports and imports a full backup via API token', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ title: 'CLI export', projectId: 'inbox' }),
+      })
+    ).json()) as Record<string, unknown>;
+
+    const exportRes = await SELF.fetch(`${HOST}/open/v1/backup/export`, { headers: auth(token) });
+    expect(exportRes.status).toBe(200);
+    const backup = (await exportRes.json()) as Record<string, unknown>;
+    expect(backup.app).toBe('nodetick');
+    expect((backup.tasks as { id: string }[]).map((t) => t.id)).toContain(task.id);
+
+    // Without a token the backup is unreachable, like every other open route.
+    expect((await SELF.fetch(`${HOST}/open/v1/backup/export`)).status).toBe(401);
+
+    // Round-trip: change the task server-side, then restore via import.
+    await SELF.fetch(`${HOST}/open/v1/task/${task.id}`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ title: 'Changed' }),
+    });
+    const importRes = await SELF.fetch(`${HOST}/open/v1/backup/import`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify(backup),
+    });
+    expect(importRes.status).toBe(200);
+    expect(((await importRes.json()) as { imported: number }).imported).toBeGreaterThan(0);
+    const restored = (await (
+      await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${task.id}`, { headers: auth(token) })
+    ).json()) as { title: string };
+    expect(restored.title).toBe('CLI export');
+  });
+
+  it('rejects foreign backup files', async () => {
+    const { token } = await bootstrap();
+    const res = await SELF.fetch(`${HOST}/open/v1/backup/import`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ app: 'other' }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('abandoned tasks', () => {
   it('supports status -1 and lists it separately from active/completed', async () => {
     const { token } = await bootstrap();

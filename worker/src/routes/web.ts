@@ -26,6 +26,7 @@ import {
   REGISTRATION_WINDOW_MINUTES,
   writeAuditEvent,
 } from '../services/security.js';
+import { BackupImportError, exportBackup, importBackup } from '../services/backup.js';
 type State = { Bindings: Env; Variables: { userId?: string } };
 
 export const web = new Hono<State>();
@@ -199,45 +200,10 @@ web.post('/logout', async (c) => {
 
 // --- Backup: full JSON export/import + iCal export (session, same-origin) ---
 
-const MAX_IMPORT_ITEMS = 5000;
-
-/** Dump every user-owned row as a single JSON backup document. */
 web.get('/export', async (c) => {
   const userId = await getSessionUser(c);
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
-  const all = async (table: string, order: string) =>
-    (await c.env.DB.prepare(`SELECT * FROM ${table} WHERE user_id = ? ORDER BY ${order}`).bind(userId).all()).results;
-  const [projects, groups, tags, filters, tasks, habits, checkins, habitRecords, focus, countdowns] = await Promise.all([
-    all('projects', 'sort_order'),
-    all('project_groups', 'sort_order'),
-    all('tags', 'sort_order'),
-    all('filters', 'sort_order'),
-    all('tasks', 'created_time'),
-    all('habits', 'sort_order'),
-    c.env.DB.prepare(
-      'SELECT c.* FROM habit_checkins c JOIN habits h ON h.id = c.habit_id WHERE c.user_id = ?',
-    ).bind(userId).all().then((r) => r.results),
-    c.env.DB.prepare(
-      'SELECT r.* FROM habit_records r JOIN habits h ON h.id = r.habit_id WHERE r.user_id = ?',
-    ).bind(userId).all().then((r) => r.results),
-    all('focus_records', 'created_at'),
-    all('countdowns', 'sort_order'),
-  ]);
-  const body = {
-    app: 'nodetick',
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    projects,
-    projectGroups: groups,
-    tags,
-    filters,
-    tasks,
-    habits,
-    habitCheckins: checkins,
-    habitRecords,
-    focusRecords: focus,
-    countdowns,
-  };
+  const body = await exportBackup(c.env, userId);
   const stamp = new Date().toISOString().slice(0, 10);
   return new Response(JSON.stringify(body, null, 2), {
     headers: {
@@ -251,65 +217,19 @@ web.get('/export', async (c) => {
 web.post('/import', async (c) => {
   const userId = await getSessionUser(c);
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
-  let parsed: Record<string, unknown>;
+  let parsed: unknown;
   try {
-    const raw = await c.req.json<unknown>();
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('shape');
-    parsed = raw as Record<string, unknown>;
+    parsed = await c.req.json<unknown>();
   } catch (error) {
     if (error instanceof RequestBodyTooLargeError || isRequestBodyTooLarge(c.req)) throw error;
     return c.json({ error: 'expected a NodeTick backup JSON object' }, 400);
   }
-  if (parsed.app !== 'nodetick') return c.json({ error: 'not a NodeTick backup file' }, 400);
-
-  let imported = 0;
-  const upsert = async (table: string, rows: unknown, columns: string[]) => {
-    if (!Array.isArray(rows)) return;
-    if (rows.length > MAX_IMPORT_ITEMS) throw new Error(`too many ${table} rows`);
-    for (const raw of rows) {
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
-      const row = raw as Record<string, unknown>;
-      if (typeof row.id !== 'string' || !row.id || row.id.length > 128) continue;
-      const names = ['user_id', ...columns];
-      const values = [userId, ...columns.map((col) => row[col] ?? null)];
-      const placeholders = names.map(() => '?').join(', ');
-      await c.env.DB.prepare(
-        `INSERT OR REPLACE INTO ${table} (${names.join(', ')}) VALUES (${placeholders})`,
-      ).bind(...values).run();
-      imported++;
-    }
-  };
-
-  // Columns mirror schema.sql; unknown/extra fields in the backup are ignored.
   try {
-    await upsert('project_groups', parsed.projectGroups, ['id', 'name', 'view_mode', 'sort_order', 'created_at']);
-    await upsert('projects', parsed.projects, ['id', 'name', 'color', 'sort_order', 'view_mode', 'kind', 'group_id', 'closed', 'permission', 'etag', 'created_at']);
-    await upsert('tags', parsed.tags, ['id', 'name', 'label', 'color', 'sort_order', 'parent_id', 'created_at']);
-    await upsert('filters', parsed.filters, ['id', 'name', 'filter_json', 'sort_order', 'created_at', 'modified_at']);
-    await upsert(
-      'tasks',
-      parsed.tasks,
-      ['id', 'project_id', 'title', 'content', 'task_desc', 'kind', 'start_date', 'due_date', 'time_zone', 'is_all_day',
-        'priority', 'status', 'sort_order', 'repeat_flag', 'reminders', 'items', 'tags', 'parent_id', 'child_ids',
-        'column_id', 'completed_time', 'focus_summaries', 'etag', 'created_time', 'modified_time', 'deleted', 'deleted_time'],
-    );
-    await upsert(
-      'habits',
-      parsed.habits,
-      ['id', 'name', 'icon_res', 'color', 'sort_order', 'status', 'encouragement', 'type', 'goal', 'step', 'unit',
-        'repeat_rule', 'reminders', 'section_id', 'style', 'etag', 'created_at'],
-    );
-    await upsert('habit_checkins', parsed.habitCheckins, ['id', 'habit_id', 'stamp', 'value', 'goal', 'status', 'time', 'op_time', 'created_at']);
-    await upsert('habit_records', parsed.habitRecords, ['id', 'habit_id', 'stamp', 'content', 'emoji', 'op_time', 'created_at']);
-    await upsert('focus_records', parsed.focusRecords, ['id', 'type', 'task_id', 'note', 'start_time', 'end_time', 'duration', 'pause_duration', 'relation', 'status', 'etag', 'created_at']);
-    await upsert('countdowns', parsed.countdowns, ['id', 'name', 'date', 'kind', 'reminders', 'repeat_flag', 'calculation', 'display_mode', 'style', 'color', 'icon', 'sort_order', 'created_at']);
+    return c.json(await importBackup(c.env, userId, parsed));
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('too many')) {
-      return c.json({ error: error.message }, 413);
-    }
+    if (error instanceof BackupImportError) return c.json({ error: error.message }, error.status);
     throw error;
   }
-  return c.json({ ok: true, imported });
 });
 
 /** iCal feed of scheduled tasks for calendar clients. */
