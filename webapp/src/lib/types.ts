@@ -192,6 +192,14 @@ export interface Me {
   isAdmin: boolean;
 }
 
+export interface AdminUser {
+  id: string;
+  email: string;
+  isAdmin: boolean;
+  createdAt: number;
+  tasks: number;
+}
+
 export interface TaskComment {
   id: string;
   taskId: string;

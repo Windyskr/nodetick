@@ -1,4 +1,5 @@
 import type {
+  AdminUser,
   ApiToken,
   Countdown,
   Focus,
@@ -52,6 +53,16 @@ export const api = {
   register: (email: string, password: string, invite?: string) =>
     post<{ ok: true }>('/api/register', { email, password, ...(invite ? { invite } : {}) }),
   logout: () => post<{ ok: true }>('/api/logout'),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    post<{ ok: true }>('/api/password', { currentPassword, newPassword }),
+
+  // --- Admin user management (/api) ---
+  adminListUsers: () => get<AdminUser[]>('/api/admin/users'),
+  adminCreateUser: (email: string, password: string, admin: boolean) =>
+    post<{ id: string; email: string; isAdmin: boolean }>('/api/admin/users', { email, password, admin }),
+  adminResetPassword: (id: string, password: string) =>
+    post<{ ok: true }>(`/api/admin/users/${id}/password`, { password }),
+  adminDeleteUser: (id: string) => del<{ ok: true }>(`/api/admin/users/${id}`),
 
   // --- Tokens (/api) ---
   listTokens: () => get<ApiToken[]>('/api/tokens'),

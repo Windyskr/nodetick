@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { api } from '../../lib/api';
 import { useStore, type FeatureKey } from '../../stores/store';
 import { useT } from '../../i18n';
 
@@ -48,6 +49,87 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+function inputClass() {
+  return 'h-8 w-full rounded-md border border-line bg-white px-2 text-[13px] outline-none focus:border-tt';
+}
+
+/** 修改密码 form: verifies the current password server-side and re-signs in. */
+function PasswordSection() {
+  const t = useT();
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    if (next.length < 8) {
+      setError(t('passwordTooShort'));
+      return;
+    }
+    if (next !== confirm) {
+      setError(t('passwordMismatch'));
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.changePassword(current, next);
+      setCurrent('');
+      setNext('');
+      setConfirm('');
+      setDone(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-2 px-2">
+      <input
+        type="password"
+        className={inputClass()}
+        placeholder={t('currentPassword')}
+        autoComplete="current-password"
+        value={current}
+        onChange={(e) => setCurrent(e.target.value)}
+        required
+      />
+      <input
+        type="password"
+        className={inputClass()}
+        placeholder={t('newPassword')}
+        autoComplete="new-password"
+        value={next}
+        onChange={(e) => setNext(e.target.value)}
+        required
+      />
+      <input
+        type="password"
+        className={inputClass()}
+        placeholder={t('confirmPassword')}
+        autoComplete="new-password"
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        required
+      />
+      {error && <div className="text-[12px] text-[#d54848]">{error}</div>}
+      {done && <div className="text-[12px] text-[#47a04c]">{t('passwordChanged')}</div>}
+      <button
+        type="submit"
+        disabled={busy}
+        className="h-8 rounded-md bg-tt px-3 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        {t('savePassword')}
+      </button>
+    </form>
+  );
+}
+
 /**
  * 设置 dialog mirroring the reference app: 功能模块 toggles the optional
  * tool buttons on the rail, 智能清单 toggles sidebar smart-list entries.
@@ -93,6 +175,10 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
             desc={t('featureDescSummary')}
             onToggle={() => toggleFeature('summary')}
           />
+        </Section>
+
+        <Section title={t('accountSection')}>
+          <PasswordSection />
         </Section>
       </div>
     </div>

@@ -10,6 +10,7 @@ import HabitPage from './pages/app/HabitPage';
 import FocusPage from './pages/app/FocusPage';
 import CountdownPage from './pages/app/CountdownPage';
 import TokensPage from './pages/app/TokensPage';
+import AdminPage from './pages/app/AdminPage';
 import SearchPage from './pages/app/SearchPage';
 import SummaryPage from './pages/app/SummaryPage';
 
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="focus" element={<FocusPage />} />
         <Route path="countdown" element={<CountdownPage />} />
         <Route path="tokens" element={<TokensPage />} />
+        <Route path="admin" element={<AdminPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
