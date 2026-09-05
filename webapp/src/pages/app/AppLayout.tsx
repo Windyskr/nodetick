@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useStore } from '../../stores/store';
@@ -7,10 +7,44 @@ import Sidebar from './Sidebar';
 import TaskDetail from './TaskDetail';
 import Toast from '../../components/Toast';
 
+/** Persisted width (px) of the task detail panel; null → 36% like the original. */
+const DETAIL_WIDTH_KEY = 'ntk_detail_width';
+
+function readDetailWidth(): number | null {
+  try {
+    const value = Number(localStorage.getItem(DETAIL_WIDTH_KEY));
+    return Number.isFinite(value) && value >= 280 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+const clampDetailWidth = (px: number) =>
+  Math.min(Math.max(px, 280), Math.max(340, Math.floor(window.innerWidth * 0.6)));
+
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { booted, me, boot, selectedTaskId, selectedTask } = useStore();
+  const [detailWidth, setDetailWidth] = useState<number | null>(readDetailWidth);
+
+  // Drag handle on the detail panel's left edge resizes and persists it,
+  // like the reference app's detail-dragger.
+  const startDetailDrag = (event: React.PointerEvent) => {
+    event.preventDefault();
+    const move = (ev: PointerEvent) => setDetailWidth(clampDetailWidth(window.innerWidth - ev.clientX));
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      try {
+        localStorage.setItem(DETAIL_WIDTH_KEY, String(clampDetailWidth(window.innerWidth - ev.clientX)));
+      } catch {
+        // storage may be unavailable; the width lives only for this session
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   useEffect(() => {
     void boot().then((ok) => {
@@ -54,6 +88,9 @@ export default function AppLayout() {
         if (!location.pathname.startsWith('/app/tasks')) navigate('/app/tasks/inbox');
         focusSelector('[data-quick-add]');
       } else if (event.key === 'Escape') {
+        // Official behavior: Esc closes the open task detail first.
+        const { selectedTaskId: openTask } = useStore.getState();
+        if (openTask) useStore.getState().selectTask(null);
         useStore.getState().clearSelection();
         useStore.getState().dismissToast();
       }
@@ -89,14 +126,26 @@ export default function AppLayout() {
     <div className="flex h-full overflow-hidden">
       <IconRail />
       {showSidebar && <Sidebar />}
-      <div
-        className={`flex min-w-0 ${
-          taskWorkspace ? 'w-[511px] shrink-0' : 'flex-1'
-        }`}
-      >
+      {/* The reference layout keeps the content column flex-1 and a permanent
+          36% detail panel on the right (empty until a task is selected). */}
+      <div className="flex min-w-0 flex-1">
         <Outlet />
       </div>
-      {showDetail && !floatingDetail && selectedTask() && <TaskDetail key={selectedTask()!.id} task={selectedTask()!} />}
+      {taskWorkspace && (
+        <div
+          className="relative h-full shrink-0 border-l border-line bg-white"
+          style={{ width: detailWidth ?? '36%', minWidth: 280 }}
+        >
+          <div
+            onPointerDown={startDetailDrag}
+            className="absolute left-0 top-0 z-10 h-full w-[5px] cursor-ew-resize hover:bg-tt/20"
+            aria-hidden="true"
+          />
+          {showDetail && !floatingDetail && selectedTask() && (
+            <TaskDetail key={selectedTask()!.id} task={selectedTask()!} />
+          )}
+        </div>
+      )}
       {floatingDetail && selectedTask() && (
         <div
           className="fixed inset-0 z-40 flex items-start justify-center bg-black/5 pt-[162px]"
@@ -107,9 +156,6 @@ export default function AppLayout() {
         >
           <TaskDetail key={selectedTask()!.id} task={selectedTask()!} variant="modal" />
         </div>
-      )}
-      {taskWorkspace && !showDetail && (
-        <div className="min-w-0 flex-1 border-l border-line bg-white" aria-hidden="true" />
       )}
       <Toast />
     </div>
