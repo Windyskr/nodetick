@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Ban,
   ChevronDown,
   ChevronRight,
   FolderPlus,
@@ -13,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useStore, INBOX_ID } from '../../stores/store';
 import { MenuItem, Popover } from '../../components/Popover';
-import { useI18n, useT } from '../../i18n';
+import { useT } from '../../i18n';
 import { addDays, todayStr } from '../../lib/date';
 import {
   IconAll,
@@ -21,11 +20,14 @@ import {
   IconInbox,
   IconNext7,
   IconOverdue,
+  IconSummary,
   IconTag,
   IconToday,
+  IconTomorrow,
   IconTrash,
+  IconWontDo,
 } from '../../components/tickIcons';
-import { IconCalendarGlyph, IconDoc, IconFunnel } from '../../components/icons';
+import { IconFunnel } from '../../components/icons';
 import FilterEditor from '../../components/FilterEditor';
 import ProjectSettingsDialog from './ProjectSettingsDialog';
 import type { Project } from '../../lib/types';
@@ -67,7 +69,6 @@ export default function Sidebar() {
 
   const [addingList, setAddingList] = useState(false);
   const t = useT();
-  const { lang } = useI18n();
   const [newListName, setNewListName] = useState('');
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [collapsedLists, setCollapsedLists] = useState(false);
@@ -147,7 +148,7 @@ export default function Sidebar() {
           <span className="text-[12px] text-ink-3">{counts.today}</span>
         </Link>
         <Link to="/app/tasks/tomorrow" className={itemClass(scopeActive('tomorrow'))}>
-          <IconCalendarGlyph size={17} className="shrink-0 text-ink-3" glyph={lang === 'zh' ? '明' : 'T'} fontSize={lang === 'zh' ? 8 : 9.5} />
+          <IconTomorrow size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('smartTomorrow')}</span>
           <span className="text-[12px] text-ink-3">{counts.tomorrow > 0 ? counts.tomorrow : ''}</span>
         </Link>
@@ -167,7 +168,7 @@ export default function Sidebar() {
         </Link>
         {features.summary && (
           <Link to="/app/summary" className={itemClass(location.pathname === '/app/summary')}>
-            <IconDoc size={17} className="shrink-0 text-ink-3" />
+            <IconSummary size={17} className="shrink-0 text-ink-3" />
             <span className="flex-1 truncate">{t('summary')}</span>
           </Link>
         )}
@@ -415,7 +416,7 @@ export default function Sidebar() {
           <span className="flex-1 truncate">{t('navCompleted')}</span>
         </Link>
         <Link to="/app/tasks/abandoned" className={itemClass(scopeActive('abandoned'))}>
-          <Ban size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
+          <IconWontDo size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('smartAbandoned')}</span>
           <span className="text-[12px] text-ink-3">{abandoned.length > 0 ? abandoned.length : ''}</span>
         </Link>
