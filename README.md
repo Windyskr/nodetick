@@ -103,7 +103,6 @@ npx wrangler secret put VAPID_PRIVATE_KEY
 
 `worker/wrangler.toml` 中的可选变量：
 
-- `INVITE_CODE` —— 第一个用户之后，注册需要此邀请码。不设置则关闭注册。
 - `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` —— Web Push 公钥与发送者联系方式；私钥必须通过 `VAPID_PRIVATE_KEY` secret 配置。密钥对可用 `npm run generate:vapid -w worker` 生成。
 
 > **注意**：`*.workers.dev` 域名在部分网络（如中国大陆）不可达，必要时在 Cloudflare 控制台绑定自定义域名。

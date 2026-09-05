@@ -189,7 +189,8 @@ describe('auth', () => {
       SELF.fetch(`${HOST}/api/register`, json({ email: 'race-a@example.com', password: PASSWORD })),
       SELF.fetch(`${HOST}/api/register`, json({ email: 'race-b@example.com', password: PASSWORD })),
     ]);
-    expect(responses.map((response) => response.status).sort()).toEqual([200, 403]);
+    // Both registrations are now open; exactly one may claim the admin role.
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 200]);
     const admins = await env.DB.prepare('SELECT COUNT(*) AS count FROM users WHERE is_admin = 1').first<{ count: number }>();
     expect(admins?.count).toBe(1);
   });
@@ -315,21 +316,22 @@ describe('auth', () => {
     expect(res.status).toBe(200);
   });
 
-  it('locks registration to the first user without an invite code', async () => {
-    // First user registers freely.
+  it('registers the first user as admin and later ones as regular users', async () => {
+    // First user registers freely and becomes the admin.
     const first = await SELF.fetch(`${HOST}/api/register`, {
       ...json({ email: EMAIL, password: PASSWORD }),
       redirect: 'manual',
     });
     expect(first.status).toBe(200);
+    expect(((await first.json()) as { isAdmin: boolean }).isAdmin).toBe(true);
 
-    // Second user requires an invite code (none configured in tests).
+    // Later registrations are open but never grant admin.
     const second = await SELF.fetch(
       `${HOST}/api/register`,
       json({ email: 'second@example.com', password: 'longenough1' }),
     );
-    expect(second.status).toBe(403);
-    expect(await second.text()).toContain('invite code');
+    expect(second.status).toBe(200);
+    expect(((await second.json()) as { isAdmin: boolean }).isAdmin).toBe(false);
   });
 
   it('rate limits registration attempts by client IP', async () => {
@@ -343,16 +345,14 @@ describe('auth', () => {
         redirect: 'manual',
       });
       statuses.push(response.status);
-      if (i < 1) {
+      if (i < 5) {
         expect(response.status).toBe(200);
-      } else if (i < 5) {
-        expect(response.status).toBe(403);
       } else {
         expect(response.status).toBe(429);
         expect(response.headers.get('retry-after')).toBeTruthy();
       }
     }
-    expect(statuses).toEqual([200, 403, 403, 403, 403, 429]);
+    expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
   });
 
   it('auto-creates the inbox project and accepts writes into it', async () => {

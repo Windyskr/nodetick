@@ -576,7 +576,6 @@ const en = {
   register: 'Register',
   registerTitle: 'Create your account',
   passwordHint: 'Password (min 8 chars)',
-  inviteCode: 'Invite code',
   creating: 'Creating…',
   createAccount: 'Create account',
   alreadyHave: 'Already have an account?',
@@ -1153,7 +1152,6 @@ const zh: Record<Key, string> = {
   register: '注册',
   registerTitle: '创建你的账号',
   passwordHint: '密码（至少 8 位）',
-  inviteCode: '邀请码',
   creating: '创建中…',
   createAccount: '创建账号',
   alreadyHave: '已经有账号了？',
@@ -1245,7 +1243,6 @@ export function serverError(message: string): string {
   if (lang !== 'zh') return message;
   const table: [RegExp, string][] = [
     [/Invalid email or password/i, '邮箱或密码错误。'],
-    [/invite code/i, '注册需要有效的邀请码。'],
     [/already registered/i, '该邮箱已被注册。'],
     [/at least 8 characters/i, '请输入有效邮箱，密码至少 8 位。'],
   ];

@@ -14,8 +14,8 @@
  *   2. NODETICK_EMAIL + NODETICK_PASSWORD  — HTTP login, mint + revoke an
  *      ephemeral dashboard token (session cookie also enables the
  *      web-dashboard-backed countdown cross-check)
- *   3. NODETICK_INVITE_CODE          — optionally register a fresh throwaway
- *      user first (requires the server to have INVITE_CODE set)
+ *   3. NODETICK_THROWAWAY_USER=1     — register a fresh throwaway user
+ *      first instead of using the admin account (quarantines leftover data)
  */
 import {
   Harness,
@@ -48,12 +48,11 @@ if (process.env.NODETICK_TOKEN) {
 } else if (process.env.NODETICK_EMAIL && process.env.NODETICK_PASSWORD) {
   const email = process.env.NODETICK_EMAIL;
   const password = process.env.NODETICK_PASSWORD;
-  const invite = process.env.NODETICK_INVITE_CODE;
   let cookie;
-  if (invite) {
+  if (process.env.NODETICK_THROWAWAY_USER) {
     const email2 = `${h.pfx}@nodetick-e2e.local`;
-    console.log(`[setup] registering throwaway user ${email2} (invite code)`);
-    cookie = await httpRegister(SERVER, email2, password, invite);
+    console.log(`[setup] registering throwaway user ${email2}`);
+    cookie = await httpRegister(SERVER, email2, password);
   } else {
     console.log(`[setup] logging in as ${email}`);
     cookie = await httpLogin(SERVER, email, password);

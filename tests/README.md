@@ -78,7 +78,7 @@ Credential options (in priority order):
 2. `NODETICK_EMAIL` + `NODETICK_PASSWORD` — log in over `/api/login`, mint an
    ephemeral API token via `/api/tokens` and revoke it when the run finishes.
    Also enables the session-cookie countdown cross-check.
-3. `NODETICK_EMAIL` + `NODETICK_PASSWORD` + `NODETICK_INVITE_CODE` — register a
+3. `NODETICK_EMAIL` + `NODETICK_PASSWORD` + `NODETICK_THROWAWAY_USER=1` — register a
    throwaway user (`e2e-<runid>@nodetick-e2e.local`) instead of using the admin,
    quarantining leftover test data.
 

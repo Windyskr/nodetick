@@ -138,8 +138,8 @@ async function postJson(server, pathname, body, cookie) {
   return res;
 }
 
-export async function httpRegister(server, email, password, invite) {
-  const res = await postJson(server, '/api/register', { email, password, ...(invite ? { invite } : {}) });
+export async function httpRegister(server, email, password) {
+  const res = await postJson(server, '/api/register', { email, password });
   if (res.status !== 200) {
     throw new Error(`register ${email} failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
   }

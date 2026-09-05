@@ -24,9 +24,6 @@ database_name = "nodetick-db"
 database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 
 [vars]
-# Optional invite code required to register additional users after the first
-# (the very first user is always the admin and registers without a code).
-# INVITE_CODE = "change-me"
 # Public Web Push configuration. Keep VAPID_PRIVATE_KEY in a Wrangler secret.
 # VAPID_PUBLIC_KEY = "replace-with-your-public-vapid-key"
 # VAPID_SUBJECT = "mailto:admin@example.com"

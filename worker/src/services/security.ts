@@ -98,8 +98,8 @@ export async function clearLoginAttempts(db: D1Database, ip: string, email?: str
 
 /**
  * Consume one registration attempt for an IP. This is intentionally counted
- * before validation and password hashing so malformed requests and invite
- * probing cannot be used to consume unbounded Worker CPU.
+ * before validation and password hashing so malformed or abusive request
+ * floods cannot consume unbounded Worker CPU.
  */
 export async function consumeRegistrationAttempt(db: D1Database, ip: string): Promise<LoginAttemptCheck> {
   const now = Date.now();

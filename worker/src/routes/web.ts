@@ -51,7 +51,6 @@ web.use('*', async (c, next) => {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320;
 const MAX_PASSWORD_LENGTH = 1024;
-const MAX_INVITE_LENGTH = 256;
 
 const readJson = async (c: { req: { json: <T>() => Promise<T> } }) =>
   c.req.json<unknown>().then((value) => {
@@ -77,23 +76,13 @@ web.post('/register', async (c) => {
     );
   }
   const b = await readJson(c);
-  if (typeof b.email !== 'string' || typeof b.password !== 'string' ||
-      (b.invite != null && typeof b.invite !== 'string')) {
+  if (typeof b.email !== 'string' || typeof b.password !== 'string') {
     return c.json({ error: 'Enter a valid email and a password of at least 8 characters.' }, 400);
   }
   const email = b.email.trim().toLowerCase();
   const password = b.password;
-  const invite = b.invite ?? '';
   if (!EMAIL_RE.test(email) || email.length > MAX_EMAIL_LENGTH || password.length < 8 || password.length > MAX_PASSWORD_LENGTH) {
     return c.json({ error: 'Enter a valid email and a password of at least 8 characters.' }, 400);
-  }
-  if (invite.length > MAX_INVITE_LENGTH) {
-    return c.json({ error: 'Registration requires a valid invite code.' }, 403);
-  }
-  const hasUsers = await c.env.DB.prepare('SELECT 1 FROM users LIMIT 1').first();
-  const inviteValid = !!c.env.INVITE_CODE && await timingSafeEqualStr(invite, c.env.INVITE_CODE ?? '');
-  if (hasUsers && !inviteValid) {
-    return c.json({ error: 'Registration requires a valid invite code.' }, 403);
   }
   const exists = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
   if (exists) {
@@ -102,25 +91,21 @@ web.post('/register', async (c) => {
   const salt = randomHex(16);
   const id = genId();
   const passwordHash = await hashPassword(password, salt);
-  let inserted;
+  // The first registered account becomes the admin; later ones are regular
+  // users (admins can promote or create more admins in /app/admin). Keeping
+  // the first-user decision inside the INSERT closes the concurrent
+  // first-registration race where two requests both observe an empty table.
   try {
-    // Determine first-user/admin status inside the INSERT. The pre-check above
-    // is only for a fast error; this statement closes the concurrent
-    // first-registration race where two requests both observe an empty table.
-    inserted = await c.env.DB.prepare(
+    await c.env.DB.prepare(
       `INSERT INTO users (id, email, password_hash, salt, is_admin, created_at)
-       SELECT ?, ?, ?, ?, CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 1 ELSE 0 END, ?
-       WHERE NOT EXISTS (SELECT 1 FROM users) OR ? = 1`,
+       VALUES (?, ?, ?, ?, CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 1 ELSE 0 END, ?)`,
     )
-      .bind(id, email, passwordHash, salt, Date.now(), inviteValid ? 1 : 0)
+      .bind(id, email, passwordHash, salt, Date.now())
       .run();
   } catch (error) {
     const duplicate = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
     if (duplicate) return c.json({ error: 'That email is already registered.' }, 409);
     throw error;
-  }
-  if (!inserted.meta.changes) {
-    return c.json({ error: 'Registration requires a valid invite code.' }, 403);
   }
   const created = await c.env.DB.prepare('SELECT is_admin FROM users WHERE id = ?').bind(id).first<{ is_admin: number }>();
   const isAdmin = !!created?.is_admin;

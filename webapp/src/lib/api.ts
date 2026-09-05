@@ -50,8 +50,8 @@ const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 export const api = {
   me: () => get<Me>('/api/me'),
   login: (email: string, password: string) => post<{ ok: true }>('/api/login', { email, password }),
-  register: (email: string, password: string, invite?: string) =>
-    post<{ ok: true }>('/api/register', { email, password, ...(invite ? { invite } : {}) }),
+  register: (email: string, password: string) =>
+    post<{ ok: true }>('/api/register', { email, password }),
   logout: () => post<{ ok: true }>('/api/logout'),
   changePassword: (currentPassword: string, newPassword: string) =>
     post<{ ok: true }>('/api/password', { currentPassword, newPassword }),
