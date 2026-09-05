@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlignLeft, Bell, Calendar, CheckSquare, MoreHorizontal, Repeat, RotateCcw, Square, Trash2 } from 'lucide-react';
+import { AlignLeft, Ban, Bell, Calendar, CheckSquare, MoreHorizontal, Repeat, RotateCcw, Square, Trash2 } from 'lucide-react';
 import type { Task } from '../../lib/types';
 import { useStore } from '../../stores/store';
 import { dayOf, scheduleLabel, todayStr } from '../../components/taskSchedule';
@@ -52,7 +52,7 @@ export function TaskRow({
   /** Dragging is only offered in custom-sort views, like TickTick. */
   canDrag?: boolean;
 }) {
-  const { selectTask, selectedTaskId, toggleComplete, trashTask, restoreTask, purgeTask, saveTask, duplicateTask, moveTask, showToast, toggleSelect, selectedIds, reorderTasks } =
+  const { selectTask, selectedTaskId, toggleComplete, trashTask, restoreTask, purgeTask, saveTask, duplicateTask, moveTask, showToast, toggleSelect, selectedIds, reorderTasks, abandonTask, restoreAbandoned } =
     useStore();
   const t = useT();
   const [menuView, setMenuView] = useState<'main' | 'move'>('main');
@@ -60,6 +60,7 @@ export function TaskRow({
   const selected = selectedTaskId === task.id;
   const checked = selectedIds.includes(task.id);
   const done = task.status === 2;
+  const abandoned = task.status === -1;
   const badge = showProject ? projectBadge(task.projectId, t) : null;
   const subtasks = task.items.length;
 
@@ -119,7 +120,7 @@ export function TaskRow({
       </button>
       <RoundCheck checked={done} priority={task.priority} onClick={() => void toggleComplete(task)} />
       <div className="min-w-0 flex-1">
-        <span className={`block truncate text-[14px] ${done ? 'text-ink-3 line-through' : 'text-ink'}`}>
+        <span className={`block truncate text-[14px] ${done || abandoned ? 'text-ink-3 line-through' : 'text-ink'}`}>
           {task.title || <span className="text-ink-3">{t('untitled')}</span>}
         </span>
         {showDetails && (
@@ -181,6 +182,31 @@ export function TaskRow({
             onClick={(e) => {
               e.stopPropagation();
               void purgeTask(task.id);
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </span>
+      ) : abandoned ? (
+        <span className="flex w-10 shrink-0 gap-1">
+          <button
+            type="button"
+            title={t('restore')}
+            className="text-ink-3 opacity-0 transition-opacity hover:text-tt group-hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              void restoreAbandoned(task.id);
+            }}
+          >
+            <RotateCcw size={14} />
+          </button>
+          <button
+            type="button"
+            title={t('delete')}
+            className="text-ink-3 opacity-0 transition-opacity hover:text-p-high group-hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              void trashTask(task);
             }}
           >
             <Trash2 size={14} />
@@ -249,6 +275,16 @@ export function TaskRow({
                     label={t('moveTo')}
                     onClick={() => setMenuView('move')}
                   />
+                  {!done && (
+                    <MenuItem
+                      label={t('abandonTask')}
+                      icon={<Ban size={14} />}
+                      onClick={() => {
+                        close();
+                        void abandonTask(task);
+                      }}
+                    />
+                  )}
                   <MenuItem
                     label={done ? t('deleteForever') : t('delete')}
                     danger

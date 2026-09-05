@@ -60,9 +60,11 @@ type ViewMode = 'list' | 'kanban' | 'timeline';
 const TITLE_KEYS = {
   all: 'smartAll',
   today: 'smartToday',
+  tomorrow: 'smartTomorrow',
   next7: 'smartNext7',
   inbox: 'smartInbox',
   overdue: 'smartOverdue',
+  abandoned: 'smartAbandoned',
   completed: 'navCompleted',
   trash: 'navTrash',
 } as const;
@@ -72,6 +74,7 @@ export default function TasksPage() {
   const {
     tasks,
     completed,
+    abandoned,
     projects,
     tags,
     filters: savedFilters,
@@ -126,11 +129,13 @@ export default function TasksPage() {
 
   const isTrash = scope === 'trash';
   const isCompleted = scope === 'completed';
+  const isAbandoned = scope === 'abandoned';
   const smartBucketed = !savedFilter && (scope === 'all' || scope === 'today' || scope === 'next7');
 
   const scopedTasks = useMemo(() => {
     if (isTrash) return trash;
     if (isCompleted) return completed;
+    if (isAbandoned) return abandoned;
     if (savedFilter) return tasks;
     if (project) return tasks.filter((t) => t.projectId === project.id);
     if (tagName) return tasks.filter((t) => t.tags.includes(tagName));
@@ -140,6 +145,8 @@ export default function TasksPage() {
         const day = dayOf(t.dueDate);
         return day !== null && day < todayStr();
       });
+    if (scope === 'tomorrow')
+      return tasks.filter((t) => dayOf(t.dueDate) === addDays(todayStr(), 1));
     if (scope === 'today')
       return tasks.filter((t) => {
         const day = dayOf(t.dueDate);
@@ -151,7 +158,7 @@ export default function TasksPage() {
         return day !== null && day <= addDays(todayStr(), 7);
       });
     return tasks;
-  }, [isTrash, isCompleted, savedFilter, project, tagName, scope, tasks, completed, trash]);
+  }, [isTrash, isCompleted, isAbandoned, savedFilter, project, tagName, scope, tasks, completed, abandoned, trash]);
 
   const visible = useMemo(
     () => savedFilter ? filterSavedTasks(scopedTasks, savedFilter) : filterTasks(scopedTasks, filters),
@@ -159,11 +166,14 @@ export default function TasksPage() {
   );
 
   const completedInScope = useMemo(() => {
-    if (isTrash || isCompleted) return [];
+    if (isTrash || isCompleted || isAbandoned) return [];
     if (savedFilter) return filterSavedTasks(completed, savedFilter);
     if (project) return filterTasks(completed.filter((t) => t.projectId === project.id), filters);
     if (tagName) return filterTasks(completed.filter((t) => t.tags.includes(tagName)), filters);
     if (scope === 'inbox') return filterTasks(completed.filter((t) => t.projectId === INBOX_ID), filters);
+    if (scope === 'tomorrow') {
+      return filterTasks(completed.filter((t) => dayOf(t.dueDate) === addDays(todayStr(), 1)), filters);
+    }
     if (scope === 'today') {
       return filterTasks(completed.filter((t) => {
         const day = dayOf(t.dueDate);
@@ -177,7 +187,7 @@ export default function TasksPage() {
       }), filters);
     }
     return filterTasks(completed, filters);
-  }, [isTrash, isCompleted, savedFilter, project, tagName, scope, completed, filters]);
+  }, [isTrash, isCompleted, isAbandoned, savedFilter, project, tagName, scope, completed, filters]);
 
   // ---- render: kanban board ----
   if (project && project.viewMode === 'kanban') {
@@ -251,6 +261,17 @@ export default function TasksPage() {
         <Empty text={t('emptyTrash')} />
       ) : (
         <TaskGroup label={t('navTrash')} count={visible.length}>
+          {[...visible].sort(sorter).map((t2) => (
+            <TaskRow key={t2.id} task={t2} showProject showDetails={showDetails} />
+          ))}
+        </TaskGroup>
+      );
+  } else if (isAbandoned) {
+    body =
+      visible.length === 0 ? (
+        <Empty text={t('emptyCalm')} />
+      ) : (
+        <TaskGroup label={t('smartAbandoned')} count={visible.length}>
           {[...visible].sort(sorter).map((t2) => (
             <TaskRow key={t2.id} task={t2} showProject showDetails={showDetails} />
           ))}

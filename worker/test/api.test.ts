@@ -1468,3 +1468,55 @@ describe('backup export/import', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('abandoned tasks', () => {
+  it('supports status -1 and lists it separately from active/completed', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ title: 'Give up', projectId: 'inbox' }),
+      })
+    ).json()) as Record<string, unknown>;
+
+    const updated = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/${task.id}`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ status: -1 }),
+      })
+    ).json()) as Record<string, unknown>;
+    expect(updated.status).toBe(-1);
+    expect(updated.completedTime).toBeNull();
+
+    const active = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/filter`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ status: [0] }),
+      })
+    ).json()) as { id: string }[];
+    expect(active.map((t) => t.id)).not.toContain(task.id);
+
+    const abandoned = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/filter`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ status: [-1] }),
+      })
+    ).json()) as { id: string }[];
+    expect(abandoned.map((t) => t.id)).toContain(task.id);
+
+    // restore back to active
+    const restored = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/${task.id}`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ status: 0 }),
+      })
+    ).json()) as Record<string, unknown>;
+    expect(restored.status).toBe(0);
+  });
+});

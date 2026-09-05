@@ -530,7 +530,8 @@ tasks.post('/task/:taskId', async (c) => {
   }
   if (b.status != null) {
     const wanted = Number(b.status);
-    if (wanted !== 0 && wanted !== 2) return c.json({ error: 'status must be 0 or 2' }, 400);
+    // -1 = abandoned (won't do, TickTick's 已放弃), 0 = active, 2 = completed.
+    if (wanted !== 0 && wanted !== 2 && wanted !== -1) return c.json({ error: 'status must be -1, 0 or 2' }, 400);
   }
 
   // Project move (rare via update, but supported by the API).

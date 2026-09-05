@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Calendar, Flag, Inbox, MessageSquare, MoreHorizontal, Plus, Trash2, X } from 'lucide-react';
+import { Ban, Calendar, Flag, Inbox, MessageSquare, MoreHorizontal, Plus, Trash2, X } from 'lucide-react';
 import type { Task, TaskComment } from '../../lib/types';
 import { useStore, INBOX_ID } from '../../stores/store';
 import { api } from '../../lib/api';
@@ -16,7 +16,7 @@ import { projectDisplayName } from '../../lib/project';
  * subtasks, tags, comments, and a bottom bar with list + actions.
  */
 export default function TaskDetail({ task, variant = 'panel' }: { task: Task; variant?: 'panel' | 'modal' }) {
-  const { projects, saveTask, toggleComplete, trashTask, selectTask } = useStore();
+  const { projects, saveTask, toggleComplete, trashTask, abandonTask, selectTask } = useStore();
   const t = useT();
   const f = useTF();
   const [title, setTitle] = useState(task.title);
@@ -115,7 +115,7 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
   const project = projects.find((p) => p.id === task.projectId);
 
   return (
-    <aside className={`flex shrink-0 flex-col bg-white ${variant === 'modal' ? 'h-auto max-h-[calc(100vh-80px)] min-h-[300px] w-[400px] overflow-hidden rounded-xl border border-line shadow-[0_12px_36px_rgba(0,0,0,0.18)]' : 'h-full w-[423px] border-l border-line'}`}>
+    <aside className={`flex shrink-0 flex-col bg-white ${variant === 'modal' ? 'h-auto max-h-[calc(100vh-80px)] min-h-[300px] w-[400px] overflow-hidden rounded-xl border border-line shadow-[0_12px_36px_rgba(0,0,0,0.18)]' : 'h-full w-full'}`}>
       {/* top row */}
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-6">
         <RoundCheck checked={done} priority={priority} onClick={() => void toggleComplete(task)} />
@@ -351,16 +351,29 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
           )}
         >
           {(close) => (
-            <MenuItem
-              icon={<Trash2 size={15} />}
-              label={t('deleteToTrash')}
-              danger
-              onClick={() => {
-                close();
-                void trashTask(task);
-                selectTask(null);
-              }}
-            />
+            <>
+              {!done && (
+                <MenuItem
+                  icon={<Ban size={15} />}
+                  label={t('abandonTask')}
+                  onClick={() => {
+                    close();
+                    void abandonTask(task);
+                    selectTask(null);
+                  }}
+                />
+              )}
+              <MenuItem
+                icon={<Trash2 size={15} />}
+                label={t('deleteToTrash')}
+                danger
+                onClick={() => {
+                  close();
+                  void trashTask(task);
+                  selectTask(null);
+                }}
+              />
+            </>
           )}
         </Popover>
       </div>

@@ -4,6 +4,32 @@ import type { Me, Project, ProjectGroup, Tag, Task, TaskFilter } from '../lib/ty
 
 export { INBOX_ID } from '../lib/project';
 
+/** Optional navigation entries the user can hide via the avatar menu. */
+export type FeatureKey = 'summary' | 'matrix' | 'focus' | 'habit' | 'countdown';
+export type FeaturePrefs = Record<FeatureKey, boolean>;
+
+const FEATURE_PREFS_KEY = 'ntk_feature_prefs';
+const DEFAULT_FEATURES: FeaturePrefs = { summary: true, matrix: true, focus: true, habit: true, countdown: true };
+
+function readFeatures(): FeaturePrefs {
+  try {
+    const raw = localStorage.getItem(FEATURE_PREFS_KEY);
+    if (!raw) return DEFAULT_FEATURES;
+    const parsed = JSON.parse(raw) as Partial<FeaturePrefs>;
+    return { ...DEFAULT_FEATURES, ...parsed };
+  } catch {
+    return DEFAULT_FEATURES;
+  }
+}
+
+function saveFeatures(prefs: FeaturePrefs) {
+  try {
+    localStorage.setItem(FEATURE_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // storage may be unavailable; the pref lives only for this session
+  }
+}
+
 export interface ToastState {
   messageKey:
     | 'toastCompleted'
@@ -26,14 +52,17 @@ interface AppState {
   filters: TaskFilter[];
   tasks: Task[]; // active
   completed: Task[];
+  abandoned: Task[]; // won't do (status -1)
   trash: Task[];
   selectedTaskId: string | null;
   selectedIds: string[];
+  features: FeaturePrefs;
   error: string | null;
   toast: ToastState | null;
 
   showToast: (toast: ToastState) => void;
   dismissToast: () => void;
+  toggleFeature: (key: FeatureKey) => void;
 
   boot: () => Promise<boolean>;
   refresh: () => Promise<void>;
@@ -69,6 +98,8 @@ interface AppState {
     parentId?: string;
   }) => Promise<Task>;
   toggleComplete: (task: Task, opts?: { silent?: boolean }) => Promise<void>;
+  abandonTask: (task: Task) => Promise<void>;
+  restoreAbandoned: (id: string) => Promise<void>;
   saveTask: (id: string, patch: Record<string, unknown>) => Promise<Task>;
   trashTask: (task: Task, opts?: { silent?: boolean }) => Promise<void>;
   duplicateTask: (task: Task) => Promise<void>;
@@ -102,11 +133,19 @@ export const useStore = create<AppState>((set, getState) => ({
   filters: [],
   tasks: [],
   completed: [],
+  abandoned: [],
   trash: [],
   selectedTaskId: null,
   selectedIds: [],
+  features: readFeatures(),
   error: null,
   toast: null,
+
+  toggleFeature: (key) => {
+    const features = { ...getState().features, [key]: !getState().features[key] };
+    saveFeatures(features);
+    set({ features });
+  },
 
   showToast: (toast) => {
     set({ toast });
@@ -136,30 +175,32 @@ export const useStore = create<AppState>((set, getState) => ({
   },
 
   refresh: async () => {
-    const [projects, groups, tags, filters, tasks, completed, trash] = await Promise.all([
+    const [projects, groups, tags, filters, tasks, completed, abandoned, trash] = await Promise.all([
       api.listProjects(),
       api.listGroups(),
       api.listTags(),
       api.listFilters(),
       api.filterTasks({ status: [0] }),
       api.listCompleted({}),
+      api.filterTasks({ status: [-1] }),
       api.listTrash(),
     ]);
-    set({ projects, groups, tags, filters, tasks, completed, trash });
+    set({ projects, groups, tags, filters, tasks, completed, abandoned, trash });
   },
 
   logout: async () => {
     await api.logout().catch(() => undefined);
-    set({ me: null, tasks: [], completed: [], trash: [], projects: [], groups: [], tags: [], filters: [], selectedTaskId: null, selectedIds: [] });
+    set({ me: null, tasks: [], completed: [], abandoned: [], trash: [], projects: [], groups: [], tags: [], filters: [], selectedTaskId: null, selectedIds: [] });
   },
 
   selectTask: (id) => set({ selectedTaskId: id }),
   selectedTask: () => {
-    const { tasks, completed, trash, selectedTaskId } = getState();
+    const { tasks, completed, abandoned, trash, selectedTaskId } = getState();
     if (!selectedTaskId) return null;
     return (
       tasks.find((t) => t.id === selectedTaskId) ??
       completed.find((t) => t.id === selectedTaskId) ??
+      abandoned.find((t) => t.id === selectedTaskId) ??
       trash.find((t) => t.id === selectedTaskId) ??
       null
     );
@@ -255,9 +296,24 @@ export const useStore = create<AppState>((set, getState) => ({
         return next;
       };
       if (task.status === 2) {
-        return { tasks: s.tasks.filter((t) => t.id !== task.id), completed: replace(s.completed) };
+        return {
+          tasks: s.tasks.filter((t) => t.id !== task.id),
+          completed: replace(s.completed),
+          abandoned: s.abandoned.filter((t) => t.id !== task.id),
+        };
       }
-      return { tasks: replace(s.tasks), completed: s.completed.filter((t) => t.id !== task.id) };
+      if (task.status === -1) {
+        return {
+          tasks: s.tasks.filter((t) => t.id !== task.id),
+          completed: s.completed.filter((t) => t.id !== task.id),
+          abandoned: replace(s.abandoned),
+        };
+      }
+      return {
+        tasks: replace(s.tasks),
+        completed: s.completed.filter((t) => t.id !== task.id),
+        abandoned: s.abandoned.filter((t) => t.id !== task.id),
+      };
     }),
 
   createTask: async (input) => {
@@ -295,6 +351,7 @@ export const useStore = create<AppState>((set, getState) => ({
       const done: Task = { ...task, status: 2, completedTime: completedAt };
       set((s) => ({
         tasks: next ? [...s.tasks.filter((t) => t.id !== task.id && t.id !== next.id), next] : s.tasks.filter((t) => t.id !== task.id),
+        abandoned: s.abandoned.filter((t) => t.id !== task.id),
         completed: [done, ...s.completed],
       }));
       if (!opts?.silent) {
@@ -311,6 +368,7 @@ export const useStore = create<AppState>((set, getState) => ({
     const current =
       state.tasks.find((task) => task.id === id) ??
       state.completed.find((task) => task.id === id) ??
+      state.abandoned.find((task) => task.id === id) ??
       state.trash.find((task) => task.id === id) ??
       null;
     const projectId = (patch.projectId as string) ?? current?.projectId;
@@ -326,8 +384,9 @@ export const useStore = create<AppState>((set, getState) => ({
       const move = (list: Task[]) => list.filter((t) => t.id !== id);
       return {
         tags: additions.length ? [...s.tags, ...additions] : s.tags,
-        tasks: [...move(s.tasks), task].filter((t) => t.status !== 2),
+        tasks: task.status === 0 ? [...move(s.tasks), task] : move(s.tasks),
         completed: task.status === 2 ? [task, ...move(s.completed)] : move(s.completed),
+        abandoned: task.status === -1 ? [task, ...move(s.abandoned)] : move(s.abandoned),
       };
     });
     return task;
@@ -339,6 +398,7 @@ export const useStore = create<AppState>((set, getState) => ({
     set((s) => ({
       tasks: s.tasks.filter((t) => t.id !== task.id),
       completed: s.completed.filter((t) => t.id !== task.id),
+      abandoned: s.abandoned.filter((t) => t.id !== task.id),
       trash: [trashed, ...s.trash],
       selectedTaskId: s.selectedTaskId === task.id ? null : s.selectedTaskId,
     }));
@@ -348,6 +408,26 @@ export const useStore = create<AppState>((set, getState) => ({
         undo: () => void getState().restoreTask(task.id),
       });
     }
+  },
+
+  abandonTask: async (task) => {
+    const updated = await api.updateTask(task.id, { projectId: task.projectId, status: -1 });
+    set((s) => ({
+      tasks: s.tasks.filter((t) => t.id !== task.id),
+      completed: s.completed.filter((t) => t.id !== task.id),
+      abandoned: [updated, ...s.abandoned.filter((t) => t.id !== task.id)],
+      selectedTaskId: s.selectedTaskId === task.id ? null : s.selectedTaskId,
+    }));
+  },
+
+  restoreAbandoned: async (id) => {
+    const current = getState().abandoned.find((t) => t.id === id);
+    if (!current) return;
+    const updated = await api.updateTask(id, { projectId: current.projectId, status: 0 });
+    set((s) => ({
+      abandoned: s.abandoned.filter((t) => t.id !== id),
+      tasks: [...s.tasks, updated],
+    }));
   },
 
   duplicateTask: async (task) => {

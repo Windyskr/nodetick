@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Ban,
   ChevronDown,
   ChevronRight,
   FolderPlus,
@@ -12,10 +13,10 @@ import {
 } from 'lucide-react';
 import { useStore, INBOX_ID } from '../../stores/store';
 import { MenuItem, Popover } from '../../components/Popover';
-import { useT } from '../../i18n';
+import { useI18n, useT } from '../../i18n';
 import { addDays, todayStr } from '../../lib/date';
-import { IconAll, IconDoc, IconFunnel } from '../../components/icons';
 import {
+  IconAll,
   IconCompleted,
   IconInbox,
   IconNext7,
@@ -24,6 +25,7 @@ import {
   IconToday,
   IconTrash,
 } from '../../components/tickIcons';
+import { IconCalendarGlyph, IconDoc, IconFunnel } from '../../components/icons';
 import FilterEditor from '../../components/FilterEditor';
 import ProjectSettingsDialog from './ProjectSettingsDialog';
 import type { Project } from '../../lib/types';
@@ -56,6 +58,8 @@ export default function Sidebar() {
     updateTag,
     deleteTag,
     updateGroup,
+    features,
+    abandoned,
   } =
     useStore();
 
@@ -63,6 +67,7 @@ export default function Sidebar() {
 
   const [addingList, setAddingList] = useState(false);
   const t = useT();
+  const { lang } = useI18n();
   const [newListName, setNewListName] = useState('');
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [collapsedLists, setCollapsedLists] = useState(false);
@@ -74,9 +79,11 @@ export default function Sidebar() {
   const counts = useMemo(() => {
     const byProject: Record<string, number> = {};
     let dueToday = 0;
+    let dueTomorrow = 0;
     let overdue = 0;
     let all = 0;
     const today = todayStr();
+    const tomorrow = addDays(today, 1);
     const horizon = addDays(today, 7);
     for (const t of tasks) {
       if (t.parentId) continue;
@@ -85,12 +92,13 @@ export default function Sidebar() {
       const day = t.dueDate?.slice(0, 10);
       if (day && day < today) overdue++;
       if (day && day <= today) dueToday++;
+      if (day === tomorrow) dueTomorrow++;
     }
     const next7 = tasks.filter((t) => {
       const day = t.dueDate?.slice(0, 10);
       return day && day >= today && day <= horizon;
     }).length;
-    return { byProject, today: dueToday, next7, all, overdue };
+    return { byProject, today: dueToday, tomorrow: dueTomorrow, next7, all, overdue };
   }, [tasks]);
 
   const scopeActive = (prefix: string) => location.pathname.startsWith(`/app/tasks/${prefix}`);
@@ -138,6 +146,11 @@ export default function Sidebar() {
           <span className="flex-1 truncate">{t('smartToday')}</span>
           <span className="text-[12px] text-ink-3">{counts.today}</span>
         </Link>
+        <Link to="/app/tasks/tomorrow" className={itemClass(scopeActive('tomorrow'))}>
+          <IconCalendarGlyph size={17} className="shrink-0 text-ink-3" glyph={lang === 'zh' ? '明' : 'T'} fontSize={lang === 'zh' ? 8 : 9.5} />
+          <span className="flex-1 truncate">{t('smartTomorrow')}</span>
+          <span className="text-[12px] text-ink-3">{counts.tomorrow > 0 ? counts.tomorrow : ''}</span>
+        </Link>
         <Link to="/app/tasks/next7" className={itemClass(scopeActive('next7'))}>
           <IconNext7 size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('smartNext7')}</span>
@@ -152,10 +165,12 @@ export default function Sidebar() {
           <span className="flex-1 truncate">{t('smartInbox')}</span>
           <span className="text-[12px] text-ink-3">{counts.byProject['inbox'] ?? 0}</span>
         </Link>
-        <Link to="/app/summary" className={itemClass(location.pathname === '/app/summary')}>
-          <IconDoc size={17} className="shrink-0 text-ink-3" />
-          <span className="flex-1 truncate">{t('summary')}</span>
-        </Link>
+        {features.summary && (
+          <Link to="/app/summary" className={itemClass(location.pathname === '/app/summary')}>
+            <IconDoc size={17} className="shrink-0 text-ink-3" />
+            <span className="flex-1 truncate">{t('summary')}</span>
+          </Link>
+        )}
       </div>
 
       {/* Lists */}
@@ -398,6 +413,11 @@ export default function Sidebar() {
         <Link to="/app/tasks/completed" className={itemClass(scopeActive('completed'))}>
           <IconCompleted size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('navCompleted')}</span>
+        </Link>
+        <Link to="/app/tasks/abandoned" className={itemClass(scopeActive('abandoned'))}>
+          <Ban size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
+          <span className="flex-1 truncate">{t('smartAbandoned')}</span>
+          <span className="text-[12px] text-ink-3">{abandoned.length > 0 ? abandoned.length : ''}</span>
         </Link>
         <Link to="/app/tasks/trash" className={itemClass(scopeActive('trash'))}>
           <IconTrash size={17} className="shrink-0 text-ink-3" />

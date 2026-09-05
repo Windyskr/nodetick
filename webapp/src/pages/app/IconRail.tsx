@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { KeyRound, Languages, LogOut, Palette } from 'lucide-react';
+import { KeyRound, Languages, LogOut, Palette, Settings2 } from 'lucide-react';
 import { Popover } from '../../components/Popover';
 import { useI18n, useT } from '../../i18n';
 import { useStore } from '../../stores/store';
@@ -15,6 +15,7 @@ import {
   IconSearch,
 } from '../../components/tickIcons';
 import NotificationSettingsDialog, { unsubscribeCurrentBrowser } from './NotificationSettingsDialog';
+import SettingsDialog from './SettingsDialog';
 
 const RAIL = 'flex h-full w-[50px] shrink-0 flex-col items-center border-r border-line bg-[#fbfbfb] py-4';
 type Theme = 'blue' | 'violet' | 'green' | 'dark';
@@ -37,11 +38,12 @@ function initialTheme(): Theme {
 
 export default function IconRail() {
   const navigate = useNavigate();
-  const { me, logout } = useStore();
+  const { me, logout, features } = useStore();
   const t = useT();
   const { lang, setLang } = useI18n();
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -123,6 +125,16 @@ export default function IconRail() {
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-hover"
               onClick={() => {
                 close();
+                setSettingsOpen(true);
+              }}
+            >
+              <Settings2 size={14} /> {t('settings')}
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-hover"
+              onClick={() => {
+                close();
                 navigate('/app/tokens');
               }}
             >
@@ -147,10 +159,10 @@ export default function IconRail() {
       <div className="flex flex-col items-center gap-2.5">
         {item('/app/tasks/all', t('navTasks'), IconAll)}
         {item('/app/calendar', t('navCalendar'), IconCalendar)}
-        {item('/app/matrix', t('navMatrix'), IconMatrix)}
-        {item('/app/focus', t('navFocus'), IconFocus)}
-        {item('/app/habit', t('navHabits'), IconHabit)}
-        {item('/app/countdown', t('navCountdowns'), IconCountdown)}
+        {features.matrix && item('/app/matrix', t('navMatrix'), IconMatrix)}
+        {features.focus && item('/app/focus', t('navFocus'), IconFocus)}
+        {features.habit && item('/app/habit', t('navHabits'), IconHabit)}
+        {features.countdown && item('/app/countdown', t('navCountdowns'), IconCountdown)}
         {item('/app/search', t('navSearch'), IconSearch)}
       </div>
       <div className="mt-auto">
@@ -165,6 +177,7 @@ export default function IconRail() {
         </button>
       </div>
       {notificationsOpen && <NotificationSettingsDialog onClose={() => setNotificationsOpen(false)} />}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
