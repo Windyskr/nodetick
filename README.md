@@ -99,7 +99,7 @@ npx wrangler secret put VAPID_PRIVATE_KEY
 # 如果先部署后设置变量或 secret，需要再 deploy 一次
 ```
 
-打开 `https://nodetick.<你的子域名>.workers.dev` —— 你注册的第一个用户即管理员。D1 schema 会在首个请求时自动初始化，无需手动建表。
+打开 `https://nodetick.<你的子域名>.workers.dev` —— 你注册的第一个用户即管理员，之后注册自动关闭，由管理员在「用户管理」页添加账号。D1 schema 会在首个请求时自动初始化，无需手动建表。
 
 `worker/wrangler.toml` 中的可选变量：
 

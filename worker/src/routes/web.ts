@@ -64,6 +64,13 @@ const readJson = async (c: { req: { json: <T>() => Promise<T> } }) =>
     return {} as Record<string, unknown>;
   });
 
+/** Registration is only open while the deployment has no users at all: the
+ * first account bootstraps itself as admin, afterwards admins create users. */
+web.get('/register/status', async (c) => {
+  const hasUsers = await c.env.DB.prepare('SELECT 1 FROM users LIMIT 1').first();
+  return c.json({ open: !hasUsers });
+});
+
 web.post('/register', async (c) => {
   const registrationIp = clientIp(c.req.header('CF-Connecting-IP'), c.req.header('X-Forwarded-For'));
   const registrationAttempt = await consumeRegistrationAttempt(c.env.DB, registrationIp);
@@ -74,6 +81,10 @@ web.post('/register', async (c) => {
       { error: `Too many registration attempts. Try again in ${retryAfter} seconds.` },
       429,
     );
+  }
+  const hasUsers = await c.env.DB.prepare('SELECT 1 FROM users LIMIT 1').first();
+  if (hasUsers) {
+    return c.json({ error: 'Registration is disabled. Ask an admin to create your account.' }, 403);
   }
   const b = await readJson(c);
   if (typeof b.email !== 'string' || typeof b.password !== 'string') {
@@ -91,14 +102,13 @@ web.post('/register', async (c) => {
   const salt = randomHex(16);
   const id = genId();
   const passwordHash = await hashPassword(password, salt);
-  // The first registered account becomes the admin; later ones are regular
-  // users (admins can promote or create more admins in /app/admin). Keeping
-  // the first-user decision inside the INSERT closes the concurrent
-  // first-registration race where two requests both observe an empty table.
+  // First-user bootstrap only: the WHERE guard closes the race where two
+  // concurrent registrations both observe an empty users table.
+  let inserted;
   try {
-    await c.env.DB.prepare(
+    inserted = await c.env.DB.prepare(
       `INSERT INTO users (id, email, password_hash, salt, is_admin, created_at)
-       VALUES (?, ?, ?, ?, CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 1 ELSE 0 END, ?)`,
+       SELECT ?, ?, ?, ?, 1, ? WHERE NOT EXISTS (SELECT 1 FROM users)`,
     )
       .bind(id, email, passwordHash, salt, Date.now())
       .run();
@@ -107,15 +117,16 @@ web.post('/register', async (c) => {
     if (duplicate) return c.json({ error: 'That email is already registered.' }, 409);
     throw error;
   }
-  const created = await c.env.DB.prepare('SELECT is_admin FROM users WHERE id = ?').bind(id).first<{ is_admin: number }>();
-  const isAdmin = !!created?.is_admin;
+  if (!inserted.meta.changes) {
+    return c.json({ error: 'Registration is disabled. Ask an admin to create your account.' }, 403);
+  }
   await createSession(c, id);
   await writeAuditEvent(
     c.env.DB,
-    { userId: id, action: isAdmin ? 'user.register.first_admin' : 'user.register', metadata: { email } },
+    { userId: id, action: 'user.register.first_admin', metadata: { email } },
     clientIp(c.req.header('CF-Connecting-IP'), c.req.header('X-Forwarded-For')),
   );
-  return c.json({ ok: true, email, isAdmin });
+  return c.json({ ok: true, email, isAdmin: true });
 });
 
 web.post('/login', async (c) => {

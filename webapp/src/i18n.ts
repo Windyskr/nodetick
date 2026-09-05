@@ -576,6 +576,7 @@ const en = {
   register: 'Register',
   registerTitle: 'Create your account',
   passwordHint: 'Password (min 8 chars)',
+  registrationClosed: 'Registration is closed. Ask an admin to create your account.',
   creating: 'Creating…',
   createAccount: 'Create account',
   alreadyHave: 'Already have an account?',
@@ -1152,6 +1153,7 @@ const zh: Record<Key, string> = {
   register: '注册',
   registerTitle: '创建你的账号',
   passwordHint: '密码（至少 8 位）',
+  registrationClosed: '注册已关闭，请联系管理员开通账号。',
   creating: '创建中…',
   createAccount: '创建账号',
   alreadyHave: '已经有账号了？',
@@ -1243,6 +1245,7 @@ export function serverError(message: string): string {
   if (lang !== 'zh') return message;
   const table: [RegExp, string][] = [
     [/Invalid email or password/i, '邮箱或密码错误。'],
+    [/Registration is disabled/i, '注册已关闭，请联系管理员开通账号。'],
     [/already registered/i, '该邮箱已被注册。'],
     [/at least 8 characters/i, '请输入有效邮箱，密码至少 8 位。'],
   ];

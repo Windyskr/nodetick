@@ -53,6 +53,7 @@ export const api = {
   register: (email: string, password: string) =>
     post<{ ok: true }>('/api/register', { email, password }),
   logout: () => post<{ ok: true }>('/api/logout'),
+  registrationOpen: () => get<{ open: boolean }>('/api/register/status'),
   changePassword: (currentPassword: string, newPassword: string) =>
     post<{ ok: true }>('/api/password', { currentPassword, newPassword }),
 

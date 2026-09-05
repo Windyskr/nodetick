@@ -14,14 +14,11 @@
  *   2. NODETICK_EMAIL + NODETICK_PASSWORD  — HTTP login, mint + revoke an
  *      ephemeral dashboard token (session cookie also enables the
  *      web-dashboard-backed countdown cross-check)
- *   3. NODETICK_THROWAWAY_USER=1     — register a fresh throwaway user
- *      first instead of using the admin account (quarantines leftover data)
  */
 import {
   Harness,
   buildCli,
   httpLogin,
-  httpRegister,
   httpMintToken,
   httpRevokeToken,
 } from './lib.mjs';
@@ -48,15 +45,8 @@ if (process.env.NODETICK_TOKEN) {
 } else if (process.env.NODETICK_EMAIL && process.env.NODETICK_PASSWORD) {
   const email = process.env.NODETICK_EMAIL;
   const password = process.env.NODETICK_PASSWORD;
-  let cookie;
-  if (process.env.NODETICK_THROWAWAY_USER) {
-    const email2 = `${h.pfx}@nodetick-e2e.local`;
-    console.log(`[setup] registering throwaway user ${email2}`);
-    cookie = await httpRegister(SERVER, email2, password);
-  } else {
-    console.log(`[setup] logging in as ${email}`);
-    cookie = await httpLogin(SERVER, email, password);
-  }
+  console.log(`[setup] logging in as ${email}`);
+  const cookie = await httpLogin(SERVER, email, password);
   session = { cookie };
   const minted = await httpMintToken(SERVER, cookie, `${h.pfx}-cli`);
   token = minted.token;

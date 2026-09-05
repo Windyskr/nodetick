@@ -138,14 +138,6 @@ async function postJson(server, pathname, body, cookie) {
   return res;
 }
 
-export async function httpRegister(server, email, password) {
-  const res = await postJson(server, '/api/register', { email, password });
-  if (res.status !== 200) {
-    throw new Error(`register ${email} failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
-  }
-  return res.headers.get('set-cookie').split(';')[0];
-}
-
 export async function httpLogin(server, email, password) {
   const res = await postJson(server, '/api/login', { email, password });
   if (res.status !== 200) {
