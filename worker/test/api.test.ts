@@ -1520,3 +1520,55 @@ describe('abandoned tasks', () => {
     expect(restored.status).toBe(0);
   });
 });
+
+describe('kanban column delete', () => {
+  it('deletes a column and detaches its tasks to uncategorized', async () => {
+    const { token } = await bootstrap();
+    const project = (await (
+      await SELF.fetch(`${HOST}/open/v1/project`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ name: 'Board' }),
+      })
+    ).json()) as Record<string, unknown>;
+    const column = (await (
+      await SELF.fetch(`${HOST}/open/v1/project/${project.id}/column`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ name: 'Doing' }),
+      })
+    ).json()) as Record<string, unknown>;
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ title: 'Card', projectId: project.id, columnId: column.id }),
+      })
+    ).json()) as Record<string, unknown>;
+    expect(task.columnId).toBe(column.id);
+
+    const del = await SELF.fetch(`${HOST}/open/v1/project/${project.id}/column/${column.id}`, {
+      method: 'DELETE',
+      headers: auth(token),
+    });
+    expect(del.status).toBe(200);
+
+    const after = (await (
+      await SELF.fetch(`${HOST}/open/v1/project/${project.id}/task/${task.id}`, {
+        headers: auth(token),
+      })
+    ).json()) as { columnId: string | null };
+    expect(after.columnId).toBeNull();
+
+    const columns = (await (
+      await SELF.fetch(`${HOST}/open/v1/project/${project.id}/column`, { headers: auth(token) })
+    ).json()) as unknown[];
+    expect(columns).toHaveLength(0);
+
+    const again = await SELF.fetch(`${HOST}/open/v1/project/${project.id}/column/${column.id}`, {
+      method: 'DELETE',
+      headers: auth(token),
+    });
+    expect(again.status).toBe(404);
+  });
+});

@@ -306,5 +306,22 @@ projects.post('/project/:projectId/column/:columnId', async (c) => {
   return c.json(serializeColumn(row!));
 });
 
+/** Deleting a column detaches its tasks back to the project's uncategorized pool. */
+projects.delete('/project/:projectId/column/:columnId', async (c) => {
+  const userId = c.get('userId');
+  const res = await c.env.DB.prepare(
+    'DELETE FROM task_columns WHERE id = ? AND project_id = ? AND user_id = ?',
+  )
+    .bind(c.req.param('columnId'), c.req.param('projectId'), userId)
+    .run();
+  if (!res.meta.changes) return c.json({ error: 'column not found' }, 404);
+  await c.env.DB.prepare(
+    'UPDATE tasks SET column_id = NULL, modified_time = ?, etag = etag + 1 WHERE column_id = ? AND user_id = ?',
+  )
+    .bind(nowIso(), c.req.param('columnId'), userId)
+    .run();
+  return c.body(null, 200);
+});
+
 // re-export for potential reuse
 export { serializeTask, nowIso };

@@ -83,6 +83,10 @@ export const api = {
   projectData: (id: string) => get<ProjectData>(`/open/v1/project/${id}/data`),
   createColumn: (projectId: string, name: string) =>
     post<ProjectData['columns'][number]>(`/open/v1/project/${projectId}/column`, { name }),
+  updateColumn: (projectId: string, columnId: string, patch: { name?: string; sortOrder?: number }) =>
+    post<ProjectData['columns'][number]>(`/open/v1/project/${projectId}/column/${columnId}`, patch),
+  deleteColumn: (projectId: string, columnId: string) =>
+    del<void>(`/open/v1/project/${projectId}/column/${columnId}`),
 
   // --- Tasks (/open/v1) ---
   filterTasks: (query: Record<string, unknown> = {}) => post<Task[]>('/open/v1/task/filter', query),
