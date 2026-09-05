@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { KeyRound, Languages, LogOut, Palette, Settings2, Users } from 'lucide-react';
+import { KeyRound, Languages, Lock, LogOut, Palette, Settings2, Users } from 'lucide-react';
 import { Popover } from '../../components/Popover';
 import { useI18n, useT } from '../../i18n';
 import { useStore } from '../../stores/store';
@@ -16,6 +16,7 @@ import {
 } from '../../components/tickIcons';
 import NotificationSettingsDialog, { unsubscribeCurrentBrowser } from './NotificationSettingsDialog';
 import SettingsDialog from './SettingsDialog';
+import ChangePasswordDialog from './ChangePasswordDialog';
 
 const RAIL = 'flex h-full w-[50px] shrink-0 flex-col items-center border-r border-line bg-[#fbfbfb] py-4';
 type Theme = 'blue' | 'violet' | 'green' | 'dark';
@@ -44,6 +45,7 @@ export default function IconRail() {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -135,6 +137,16 @@ export default function IconRail() {
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-hover"
               onClick={() => {
                 close();
+                setPasswordOpen(true);
+              }}
+            >
+              <Lock size={14} /> {t('changePassword')}
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-hover"
+              onClick={() => {
+                close();
                 navigate('/app/tokens');
               }}
             >
@@ -190,6 +202,7 @@ export default function IconRail() {
       </div>
       {notificationsOpen && <NotificationSettingsDialog onClose={() => setNotificationsOpen(false)} />}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {passwordOpen && <ChangePasswordDialog onClose={() => setPasswordOpen(false)} />}
     </div>
   );
 }
