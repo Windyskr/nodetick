@@ -50,6 +50,36 @@ const WEEKDAYS = {
   zh: ['日', '一', '二', '三', '四', '五', '六'],
 };
 
+/** RRULE weekday codes in Monday-first display order. */
+const REPEAT_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const;
+/** JS getDay() index (Sun=0) → RRULE code. */
+const DAY_CODE = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const;
+
+/** Human label for any stored repeat rule the menu can produce. */
+function describeRepeat(
+  flag: string | null | undefined,
+  label: (key: 'repeatNone' | 'repeatDaily' | 'repeatWeekly' | 'repeatWeekdays' | 'repeatMonthly' | 'repeatYearly' | 'repeatSet') => string,
+): string {
+  if (!flag) return label('repeatNone');
+  const body = flag.replace(/^RRULE:/i, '').toUpperCase();
+  const parts = new Map(body.split(';').map((p) => p.split('=') as [string, string]));
+  const freq = parts.get('FREQ');
+  const byDay = parts.get('BYDAY')?.split(',').filter(Boolean) ?? [];
+  if (freq === 'DAILY') {
+    if (byDay.length === 5 && ['MO', 'TU', 'WE', 'TH', 'FR'].every((d) => byDay.includes(d))) return label('repeatWeekdays');
+    return label('repeatDaily');
+  }
+  if (freq === 'WEEKLY') return label('repeatWeekly');
+  if (freq === 'MONTHLY') return label('repeatMonthly');
+  if (freq === 'YEARLY') return label('repeatYearly');
+  return label('repeatSet');
+}
+
+function weeklyFlag(days: string[]): string {
+  const ordered = REPEAT_CODES.filter((code) => days.includes(code));
+  return `RRULE:FREQ=WEEKLY;BYDAY=${ordered.join(',')}`;
+}
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function monthGrid(year: number, month0: number): string[] {
@@ -95,6 +125,11 @@ export function ScheduleMenu({
   const [endClock, setEndClock] = useState(end.time);
   const [reminders, setReminders] = useState(initialReminders);
   const [repeatFlag, setRepeatFlag] = useState(initialRepeatFlag);
+  const [weeklyPicker, setWeeklyPicker] = useState(false);
+  const [weeklyDays, setWeeklyDays] = useState<string[]>(() => {
+    const match = /^RRULE:FREQ=WEEKLY;BYDAY=(.+)$/i.exec(initialRepeatFlag ?? '');
+    return match ? match[1].split(',').filter((code) => (REPEAT_CODES as readonly string[]).includes(code)) : [];
+  });
   const [expanded, setExpanded] = useState<ExpandedOption>(null);
   const [error, setError] = useState('');
 
@@ -172,13 +207,7 @@ export function ScheduleMenu({
         : reminders[0] === 'TRIGGER:-PT1H'
           ? t('reminder1h')
           : t('reminderSet');
-  const repeatLabel = repeatFlag === 'RRULE:FREQ=DAILY'
-    ? t('repeatDaily')
-    : repeatFlag === 'RRULE:FREQ=WEEKLY'
-      ? t('repeatWeekly')
-      : repeatFlag
-        ? t('repeatSet')
-        : t('repeatNone');
+  const repeatLabel = describeRepeat(repeatFlag, t);
 
   return (
     <div className="w-[360px] max-w-[calc(100vw-24px)] p-3" onClick={(event) => event.stopPropagation()}>
@@ -292,18 +321,84 @@ export function ScheduleMenu({
         )}
         <OptionRow icon={<Repeat size={19} />} label={t('repeat')} value={repeatLabel} onClick={() => setExpanded(expanded === 'repeat' ? null : 'repeat')} />
         {expanded === 'repeat' && (
-          <OptionPicker
-            options={[
+          <div className="mb-1 ml-8 rounded-md bg-hover p-1">
+            {([
               [t('repeatNone'), null],
               [t('repeatDaily'), 'RRULE:FREQ=DAILY'],
-              [t('repeatWeekly'), 'RRULE:FREQ=WEEKLY'],
-            ]}
-            selected={repeatFlag}
-            onPick={(value) => {
-              setRepeatFlag(value);
-              setExpanded(null);
-            }}
-          />
+              [t('repeatWeekdays'), 'RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR'],
+              [t('repeatWeekly'), 'weekly'],
+              [t('repeatMonthly'), 'RRULE:FREQ=MONTHLY'],
+              [t('repeatYearly'), 'RRULE:FREQ=YEARLY'],
+            ] as [string, string | null][]).map(([label, value]) => {
+              const isWeekly = value === 'weekly';
+              const active = isWeekly
+                ? !!repeatFlag?.toUpperCase().startsWith('RRULE:FREQ=WEEKLY')
+                : value === null
+                  ? repeatFlag == null
+                  : repeatFlag === value;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => {
+                    if (value === null) {
+                      setRepeatFlag(null);
+                      setWeeklyPicker(false);
+                      setExpanded(null);
+                    } else if (value === 'weekly') {
+                      // Default to the selected day's weekday when unset.
+                      if (weeklyDays.length === 0) {
+                        const day = new Date(`${selectedDay}T00:00:00`).getDay();
+                        setWeeklyDays([DAY_CODE[day]]);
+                        setRepeatFlag(weeklyFlag([DAY_CODE[day]]));
+                      } else {
+                        setRepeatFlag(weeklyFlag(weeklyDays));
+                      }
+                      setWeeklyPicker(true);
+                    } else {
+                      setRepeatFlag(value);
+                      setWeeklyPicker(false);
+                      setExpanded(null);
+                    }
+                  }}
+                  className="flex w-full items-center justify-between rounded px-2.5 py-1.5 text-left text-[12px] text-ink-2 hover:bg-white"
+                >
+                  {label}
+                  {active && <span className="text-tt">✓</span>}
+                </button>
+              );
+            })}
+            {weeklyPicker && (
+              <div className="flex gap-1 px-2.5 pb-1.5 pt-0.5">
+                {REPEAT_CODES.map((code, index) => {
+                  // REPEAT_CODES is Monday-first; the label array is Sunday-first.
+                  const dayIndex = (index + 1) % 7;
+                  const on = weeklyDays.includes(code);
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => {
+                        const next = on && weeklyDays.length > 1
+                          ? weeklyDays.filter((d) => d !== code)
+                          : on
+                            ? weeklyDays
+                            : [...weeklyDays, code];
+                        setWeeklyDays(next);
+                        setRepeatFlag(weeklyFlag(next));
+                      }}
+                      className={`h-7 flex-1 rounded-full text-[11px] transition-colors ${
+                        on ? 'bg-tt font-medium text-white' : 'bg-white text-ink-2 hover:text-tt'
+                      }`}
+                    >
+                      {WEEKDAYS[lang][dayIndex]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

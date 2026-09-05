@@ -1,27 +1,32 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  CalendarDays,
-  CalendarRange,
-  CheckSquare,
   ChevronDown,
   ChevronRight,
-  FileText,
-  Filter,
   FolderPlus,
-  Inbox,
-  ListTodo,
   MoreHorizontal,
   Plus,
   Pencil,
-  Tag,
+  Settings2,
   Trash2,
 } from 'lucide-react';
 import { useStore, INBOX_ID } from '../../stores/store';
 import { MenuItem, Popover } from '../../components/Popover';
 import { useT } from '../../i18n';
 import { addDays, todayStr } from '../../lib/date';
+import { IconAll, IconDoc, IconFunnel } from '../../components/icons';
+import {
+  IconCompleted,
+  IconInbox,
+  IconNext7,
+  IconOverdue,
+  IconTag,
+  IconToday,
+  IconTrash,
+} from '../../components/tickIcons';
 import FilterEditor from '../../components/FilterEditor';
+import ProjectSettingsDialog from './ProjectSettingsDialog';
+import type { Project } from '../../lib/types';
 
 const EMOJI_RE = /^\p{Extended_Pictographic}/u;
 
@@ -48,8 +53,13 @@ export default function Sidebar() {
     addFilter,
     updateFilter,
     deleteFilter,
+    updateTag,
+    deleteTag,
+    updateGroup,
   } =
     useStore();
+
+  const [settingsProject, setSettingsProject] = useState<Project | null>(null);
 
   const [addingList, setAddingList] = useState(false);
   const t = useT();
@@ -64,6 +74,7 @@ export default function Sidebar() {
   const counts = useMemo(() => {
     const byProject: Record<string, number> = {};
     let dueToday = 0;
+    let overdue = 0;
     let all = 0;
     const today = todayStr();
     const horizon = addDays(today, 7);
@@ -72,13 +83,14 @@ export default function Sidebar() {
       all++;
       byProject[t.projectId] = (byProject[t.projectId] ?? 0) + 1;
       const day = t.dueDate?.slice(0, 10);
+      if (day && day < today) overdue++;
       if (day && day <= today) dueToday++;
     }
     const next7 = tasks.filter((t) => {
       const day = t.dueDate?.slice(0, 10);
       return day && day >= today && day <= horizon;
     }).length;
-    return { byProject, today: dueToday, next7, all };
+    return { byProject, today: dueToday, next7, all, overdue };
   }, [tasks]);
 
   const scopeActive = (prefix: string) => location.pathname.startsWith(`/app/tasks/${prefix}`);
@@ -117,26 +129,31 @@ export default function Sidebar() {
       {/* Smart lists */}
       <div className="space-y-0.5 pt-[14px]">
         <Link to="/app/tasks/all" className={itemClass(scopeActive('all'))}>
-          <ListTodo size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
+          <IconAll size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('smartAll')}</span>
           <span className="text-[12px] text-ink-3">{counts.all}</span>
         </Link>
         <Link to="/app/tasks/today" className={itemClass(scopeActive('today'))}>
-          <CalendarDays size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
+          <IconToday size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('smartToday')}</span>
           <span className="text-[12px] text-ink-3">{counts.today}</span>
         </Link>
         <Link to="/app/tasks/next7" className={itemClass(scopeActive('next7'))}>
-          <CalendarRange size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
+          <IconNext7 size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('smartNext7')}</span>
         </Link>
+        <Link to="/app/tasks/overdue" className={itemClass(scopeActive('overdue'))}>
+          <IconOverdue size={17} className={`shrink-0 ${counts.overdue > 0 ? 'text-p-high' : 'text-ink-3'}`} />
+          <span className="flex-1 truncate">{t('smartOverdue')}</span>
+          <span className={`text-[12px] ${counts.overdue > 0 ? 'text-p-high' : 'text-ink-3'}`}>{counts.overdue > 0 ? counts.overdue : ''}</span>
+        </Link>
   <Link to="/app/tasks/inbox" className={itemClass(scopeActive('inbox'))}>
-          <Inbox size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
+          <IconInbox size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('smartInbox')}</span>
           <span className="text-[12px] text-ink-3">{counts.byProject['inbox'] ?? 0}</span>
         </Link>
         <Link to="/app/summary" className={itemClass(location.pathname === '/app/summary')}>
-          <FileText size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
+          <IconDoc size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('summary')}</span>
         </Link>
       </div>
@@ -217,14 +234,25 @@ export default function Sidebar() {
                       )}
                     >
                       {(close) => (
-                        <MenuItem
-                          label={t('deleteGroup')}
-                          danger
-                          onClick={() => {
-                            close();
-                            void deleteGroup(g.id);
-                          }}
-                        />
+                        <>
+                          <MenuItem
+                            label={t('rename')}
+                            icon={<Pencil size={13} />}
+                            onClick={() => {
+                              close();
+                              const name = window.prompt(t('groupName'), g.name);
+                              if (name?.trim() && name.trim() !== g.name) void updateGroup(g.id, { name: name.trim() });
+                            }}
+                          />
+                          <MenuItem
+                            label={t('deleteGroup')}
+                            danger
+                            onClick={() => {
+                              close();
+                              if (window.confirm(t('deleteGroupConfirm'))) void deleteGroup(g.id);
+                            }}
+                          />
+                        </>
                       )}
                     </Popover>
                   </div>
@@ -240,6 +268,7 @@ export default function Sidebar() {
                         onNavigate={() => navigate(`/app/tasks/project-${p.id}`)}
                         onRename={(name) => void renameProject(p.id, name)}
                         onDelete={() => void deleteProject(p.id)}
+                        onOpenSettings={() => setSettingsProject(p)}
                       />
                     ))}
                 </div>
@@ -256,6 +285,7 @@ export default function Sidebar() {
                 onNavigate={() => navigate(`/app/tasks/project-${p.id}`)}
                 onRename={(name) => void renameProject(p.id, name)}
                 onDelete={() => void deleteProject(p.id)}
+                onOpenSettings={() => setSettingsProject(p)}
               />
             ))}
           </div>
@@ -302,7 +332,7 @@ export default function Sidebar() {
                   location.pathname === `/app/tasks/filter-${filter.id}` ? 'bg-selected font-medium text-ink' : 'text-ink-2 hover:bg-hover'
                 }`}
               >
-                <Filter size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
+                <IconFunnel size={16} className="shrink-0 text-ink-3" />
                 <span className="flex-1 truncate">{filter.name}</span>
                 <button
                   type="button"
@@ -350,23 +380,27 @@ export default function Sidebar() {
               </div>
             )}
             {tags.map((t) => (
-              <Link key={t.name} to={`/app/tasks/tag-${t.name}`} className={itemClass(location.pathname === `/app/tasks/tag-${t.name}`)}>
-                <Tag size={17} className="shrink-0" strokeWidth={1.8} style={{ color: t.color ?? '#999' }} />
-                <span className="flex-1 truncate">{t.label}</span>
-              </Link>
-            ))}
-          </div>
+              <TagItem
+                key={t.name}
+                label={t.label}
+                color={t.color}
+                active={location.pathname === `/app/tasks/tag-${t.name}`}
+                onNavigate={() => navigate(`/app/tasks/tag-${t.name}`)}
+                onUpdate={(patch) => void updateTag(t.name, patch)}
+                onDelete={() => void deleteTag(t.name)}
+              />
+            ))}          </div>
         )}
       </div>
 
       {/* Bottom */}
       <div className="mt-auto pt-6">
         <Link to="/app/tasks/completed" className={itemClass(scopeActive('completed'))}>
-          <CheckSquare size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
+          <IconCompleted size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('navCompleted')}</span>
         </Link>
         <Link to="/app/tasks/trash" className={itemClass(scopeActive('trash'))}>
-          <Trash2 size={17} className="shrink-0 text-ink-3" strokeWidth={1.8} />
+          <IconTrash size={17} className="shrink-0 text-ink-3" />
           <span className="flex-1 truncate">{t('navTrash')}</span>
           <span className="text-[12px] text-ink-3">{trash.length}</span>
         </Link>
@@ -387,7 +421,131 @@ export default function Sidebar() {
           }}
         />
       )}
+      {settingsProject && (
+        <ProjectSettingsDialog
+          key={settingsProject.id}
+          project={settingsProject}
+          onClose={() => setSettingsProject(null)}
+        />
+      )}
     </>
+  );
+}
+
+/** TickTick tag palette used by the sidebar color picker. */
+const TAG_COLORS = ['#F18181', '#F3AE4E', '#F7CE50', '#A9D27F', '#6AD2CA', '#4772FA', '#8C57F1', '#F15BB5'];
+
+function TagItem({
+  label,
+  color,
+  active,
+  onNavigate,
+  onUpdate,
+  onDelete,
+}: {
+  label: string;
+  color: string | null;
+  active: boolean;
+  onNavigate: () => void;
+  onUpdate: (patch: { name?: string; label?: string; color?: string | null }) => void;
+  onDelete: () => void;
+}) {
+  const t = useT();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(label);
+
+  if (editing) {
+    return (
+      <div className="mx-2 mb-1">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            const trimmed = draft.trim();
+            if (trimmed && trimmed !== label) onUpdate({ label: trimmed, name: trimmed });
+            setEditing(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (e.key === 'Escape') {
+              setDraft(label);
+              setEditing(false);
+            }
+          }}
+          className="w-full rounded-md border border-tt px-2.5 py-[6px] text-[14px]"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onNavigate}
+      onKeyDown={(e) => e.key === 'Enter' && onNavigate()}
+      className={`group mx-2 flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[14px] transition-colors ${
+        active ? 'bg-selected font-medium text-ink' : 'text-ink-2 hover:bg-hover'
+      }`}
+    >
+      <IconTag size={17} className="shrink-0" style={{ color: color ?? '#999' }} />
+      <span className="flex-1 truncate">{label}</span>
+      <Popover
+        align="right"
+        panelClass="w-[200px]"
+        trigger={(_o, toggle) => (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggle();
+            }}
+            className="text-ink-3 opacity-0 transition-opacity hover:text-ink group-hover:opacity-100"
+          >
+            <MoreHorizontal size={15} />
+          </button>
+        )}
+      >
+        {(close) => (
+          <>
+            <MenuItem
+              label={t('rename')}
+              onClick={() => {
+                close();
+                setDraft(label);
+                setEditing(true);
+              }}
+            />
+            <div className="grid grid-cols-4 gap-1.5 px-3 py-2" onClick={(e) => e.stopPropagation()}>
+              {[null, ...TAG_COLORS].map((swatch) => (
+                <button
+                  key={swatch ?? 'none'}
+                  type="button"
+                  title={swatch ?? 'none'}
+                  aria-label={swatch ? `color ${swatch}` : 'no color'}
+                  onClick={() => {
+                    onUpdate({ color: swatch });
+                    close();
+                  }}
+                  className={`h-5 w-5 rounded-full border ${color === swatch ? 'border-ink' : 'border-transparent'} ${swatch ? '' : 'bg-line'}`}
+                  style={swatch ? { background: swatch } : undefined}
+                />
+              ))}
+            </div>
+            <MenuItem
+              label={t('deleteTag')}
+              danger
+              icon={<Trash2 size={14} />}
+              onClick={() => {
+                close();
+                if (window.confirm(t('deleteTagConfirm'))) onDelete();
+              }}
+            />
+          </>
+        )}
+      </Popover>
+    </div>
   );
 }
 
@@ -400,6 +558,7 @@ function ProjectItem({
   onNavigate,
   onRename,
   onDelete,
+  onOpenSettings,
 }: {
   id: string;
   name: string;
@@ -409,6 +568,7 @@ function ProjectItem({
   onNavigate: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
+  onOpenSettings: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -478,6 +638,14 @@ function ProjectItem({
       >
         {(close) => (
           <>
+            <MenuItem
+              label={t('listSettings')}
+              icon={<Settings2 size={14} />}
+              onClick={() => {
+                close();
+                onOpenSettings();
+              }}
+            />
             <MenuItem
               label={t('rename')}
               onClick={() => {

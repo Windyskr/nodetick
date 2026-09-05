@@ -26,6 +26,43 @@ export default function AppLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // TickTick-style global shortcuts: `n` jumps to the quick-add field,
+  // `/` jumps to search, Escape clears multi-selection. Typing contexts
+  // (inputs, textareas, editors) are ignored.
+  useEffect(() => {
+    const focusSelector = (selector: string) => {
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
+        el?.focus();
+      });
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === '/') {
+        event.preventDefault();
+        navigate('/app/search');
+        focusSelector('[data-search-input]');
+      } else if (event.key === 'n' || event.key === 'N') {
+        event.preventDefault();
+        if (!location.pathname.startsWith('/app/tasks')) navigate('/app/tasks/inbox');
+        focusSelector('[data-quick-add]');
+      } else if (event.key === 'Escape') {
+        useStore.getState().clearSelection();
+        useStore.getState().dismissToast();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
   if (!booted) {
     return (
       <div className="flex h-full items-center justify-center">

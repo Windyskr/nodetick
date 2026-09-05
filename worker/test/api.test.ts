@@ -69,7 +69,9 @@ describe('auth', () => {
     expect(res.status).toBe(401);
   });
 
-  it('locks out an IP after repeated failed logins and writes audit events', async () => {
+  // Each failed login sleeps 300 ms server-side, so the 10+ sequential
+  // attempts legitimately exceed vitest's default per-test timeout.
+  it('locks out an IP after repeated failed logins and writes audit events', { timeout: 30_000 }, async () => {
     await bootstrap();
     // Lockout state lives in login_attempts_ip keyed by IP; vitest-pool-workers
     // gives each test a distinct loopback caller, so use a marker header-free
@@ -140,7 +142,7 @@ describe('auth', () => {
     await res.text();
   });
 
-  it('locks an account even when failed logins rotate the source IP', async () => {
+  it('locks an account even when failed logins rotate the source IP', { timeout: 30_000 }, async () => {
     await bootstrap();
     for (let i = 0; i < 10; i++) {
       const res = await SELF.fetch(`${HOST}/api/login`, {
@@ -1243,5 +1245,226 @@ describe('oauth', () => {
       SELF.fetch(`${HOST}/oauth/token`, { ...form(concurrentParams), redirect: 'manual' }),
     ]);
     expect(concurrent.map((response) => response.status).sort()).toEqual([200, 400]);
+  });
+});
+
+describe('recurring tasks', () => {
+  it('spawns the next occurrence when completing via the complete endpoint', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({
+          title: 'Water the plants',
+          projectId: 'inbox',
+          dueDate: '2030-01-01T09:00:00+0000',
+          repeatFlag: 'RRULE:FREQ=DAILY',
+          items: [{ title: 'check soil' }],
+        }),
+      })
+    ).json()) as Record<string, unknown>;
+
+    const completeRes = await SELF.fetch(
+      `${HOST}/open/v1/project/inbox/task/${task.id}/complete`,
+      { method: 'POST', headers: auth(token) },
+    );
+    expect(completeRes.status).toBe(200);
+    const next = (await completeRes.json()) as Record<string, unknown> | null;
+    expect(next).not.toBeNull();
+    expect(next!.id).not.toBe(task.id);
+    expect(next!.dueDate).toBe('2030-01-02T09:00:00+0000');
+    expect(next!.repeatFlag).toBe('RRULE:FREQ=DAILY');
+    expect(next!.status).toBe(0);
+    // Subtasks restart unchecked on the fresh occurrence.
+    expect((next!.items as { status: number }[])[0].status).toBe(0);
+
+    // The original is completed; the clone is active.
+    const active = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/filter`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ status: [0] }),
+      })
+    ).json()) as { id: string }[];
+    expect(active.map((t) => t.id)).toContain(next!.id);
+    expect(active.map((t) => t.id)).not.toContain(task.id);
+  });
+
+  it('spawns weekly occurrences when completing via a status update', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({
+          title: 'Weekly review',
+          projectId: 'inbox',
+          dueDate: '2030-01-07T00:00:00+0000',
+          repeatFlag: 'RRULE:FREQ=WEEKLY',
+        }),
+      })
+    ).json()) as Record<string, unknown>;
+
+    const updated = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/${task.id}`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ status: 2 }),
+      })
+    ).json()) as Record<string, unknown>;
+    expect(updated.status).toBe(2);
+
+    const active = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/filter`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ status: [0] }),
+      })
+    ).json()) as { id: string; dueDate: string }[];
+    const clone = active.find((t) => t.id !== task.id);
+    expect(clone).toBeDefined();
+    expect(clone!.dueDate).toBe('2030-01-14T00:00:00+0000');
+  });
+
+  it('returns a null body when completing a non-recurring task', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ title: 'One-off', projectId: 'inbox' }),
+      })
+    ).json()) as Record<string, unknown>;
+    const res = await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${task.id}/complete`, {
+      method: 'POST',
+      headers: auth(token),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toBeNull();
+  });
+});
+
+describe('tag management', () => {
+  it('renames a tag everywhere, recolors it, and deletes it', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ title: 'Tagged', projectId: 'inbox', tags: ['urgent'] }),
+      })
+    ).json()) as Record<string, unknown>;
+
+    // rename + recolor
+    const renamed = (await (
+      await SELF.fetch(`${HOST}/open/v1/tag/urgent`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ name: 'asap', label: 'ASAP', color: '#4772FA' }),
+      })
+    ).json()) as Record<string, unknown>;
+    expect(renamed.name).toBe('asap');
+    expect(renamed.color).toBe('#4772FA');
+
+    const after = (await (
+      await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${task.id}`, {
+        headers: auth(token),
+      })
+    ).json()) as { tags: string[] };
+    expect(after.tags).toEqual(['asap']);
+
+    // rename onto an existing name is rejected
+    await SELF.fetch(`${HOST}/open/v1/task`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ title: 'Other', projectId: 'inbox', tags: ['clash'] }),
+    });
+    const clash = await SELF.fetch(`${HOST}/open/v1/tag/clash`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ name: 'asap' }),
+    });
+    expect(clash.status).toBe(409);
+
+    // delete strips the tag from tasks
+    const del = await SELF.fetch(`${HOST}/open/v1/tag/asap`, {
+      method: 'DELETE',
+      headers: auth(token),
+    });
+    expect(del.status).toBe(200);
+    const stripped = (await (
+      await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${task.id}`, {
+        headers: auth(token),
+      })
+    ).json()) as { tags: string[] };
+    expect(stripped.tags).toEqual([]);
+
+    const gone = await SELF.fetch(`${HOST}/open/v1/tag/asap`, {
+      method: 'DELETE',
+      headers: auth(token),
+    });
+    expect(gone.status).toBe(404);
+  });
+});
+
+describe('backup export/import', () => {
+  it('exports full JSON, imports it back, and serves an iCal feed', async () => {
+    const { token, cookie } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ title: 'Exported', projectId: 'inbox', dueDate: '2030-05-04T00:00:00+0000' }),
+      })
+    ).json()) as Record<string, unknown>;
+
+    const exportRes = await SELF.fetch(`${HOST}/api/export`, { headers: { Cookie: cookie } });
+    expect(exportRes.status).toBe(200);
+    const backup = (await exportRes.json()) as Record<string, unknown>;
+    expect(backup.app).toBe('nodetick');
+    const backupTasks = backup.tasks as { id: string; title: string }[];
+    expect(backupTasks.map((t) => t.id)).toContain(task.id);
+
+    // Modify the task server-side, then restore its older state via import.
+    await SELF.fetch(`${HOST}/open/v1/task/${task.id}`, {
+      method: 'POST',
+      headers: auth(token),
+      body: JSON.stringify({ title: 'Changed on server' }),
+    });
+    const importRes = await SELF.fetch(`${HOST}/api/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify(backup),
+    });
+    expect(importRes.status).toBe(200);
+    expect(((await importRes.json()) as { imported: number }).imported).toBeGreaterThan(0);
+    const restored = (await (
+      await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${task.id}`, { headers: auth(token) })
+    ).json()) as { title: string };
+    expect(restored.title).toBe('Exported');
+
+    // iCal feed lists the scheduled task.
+    const icsRes = await SELF.fetch(`${HOST}/api/export/calendar.ics`, { headers: { Cookie: cookie } });
+    expect(icsRes.status).toBe(200);
+    const ics = await icsRes.text();
+    expect(ics).toContain('BEGIN:VCALENDAR');
+    expect(ics).toContain('SUMMARY:Exported');
+    expect(ics).toContain(`UID:${task.id}@nodetick`);
+  });
+
+  it('rejects import of foreign files', async () => {
+    const { cookie } = await bootstrap();
+    const res = await SELF.fetch(`${HOST}/api/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({ app: 'other' }),
+    });
+    expect(res.status).toBe(400);
   });
 });

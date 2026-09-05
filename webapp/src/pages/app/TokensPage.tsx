@@ -1,11 +1,12 @@
-import { FormEvent, useEffect, useState } from 'react';
-import { Check, Copy, Plus, X } from 'lucide-react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { Check, Copy, Download, FileUp, Plus, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { ApiToken } from '../../lib/types';
-import { useT } from '../../i18n';
+import { useT, useTF } from '../../i18n';
 
 export default function TokensPage() {
   const t = useT();
+  const f = useTF();
   const [tokens, setTokens] = useState<ApiToken[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -13,6 +14,9 @@ export default function TokensPage() {
   const [minted, setMinted] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     setTokens(await api.listTokens());
@@ -133,6 +137,65 @@ export default function TokensPage() {
               </div>
             ))
           )}
+        </div>
+
+        <h2 className="mb-2 mt-8 text-[15px] font-semibold">{t('backupTitle')}</h2>
+        <div className="rounded-xl border border-line p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/api/export"
+              download
+              className="flex items-center gap-1.5 rounded-md border border-line px-3 py-2 text-[13px] text-ink-2 hover:border-tt hover:text-tt"
+            >
+              <Download size={14} /> {t('exportJson')}
+            </a>
+            <a
+              href="/api/export/calendar.ics"
+              download
+              className="flex items-center gap-1.5 rounded-md border border-line px-3 py-2 text-[13px] text-ink-2 hover:border-tt hover:text-tt"
+            >
+              <Download size={14} /> {t('exportIcal')}
+            </a>
+            <button
+              type="button"
+              disabled={importing}
+              onClick={() => fileRef.current?.click()}
+              className="flex items-center gap-1.5 rounded-md border border-line px-3 py-2 text-[13px] text-ink-2 hover:border-tt hover:text-tt disabled:opacity-60"
+            >
+              <FileUp size={14} /> {importing ? t('loading') : t('importJson')}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                setImporting(true);
+                setError(null);
+                setImportResult(null);
+                try {
+                  const res = await fetch('/api/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: await file.text(),
+                  });
+                  const data = (await res.json().catch(() => null)) as { imported?: number; error?: string } | null;
+                  if (!res.ok) throw new Error(data?.error ?? `Import failed (${res.status})`);
+                  setImportResult(f('importedItems', data?.imported ?? 0));
+                } catch (err) {
+                  setError((err as Error).message);
+                } finally {
+                  setImporting(false);
+                }
+              }}
+            />
+          </div>
+          {importResult && <div className="mt-2 text-[12px] text-tt">{importResult}</div>}
+          {error && <div className="mt-2 text-[12px] text-p-high">{error}</div>}
+          <p className="mt-2 text-[12px] leading-snug text-ink-3">{t('backupHint')}</p>
         </div>
 
         <h2 className="mb-2 mt-8 text-[15px] font-semibold">{t('connectCli')}</h2>

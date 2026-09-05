@@ -100,6 +100,7 @@ export default function SearchPage() {
         <button type="button" title={t('close')} onClick={() => navigate('/app/tasks/all')} className="mr-2 text-ink-2 hover:text-ink"><X size={20} /></button>
         <input
           ref={inputRef}
+          data-search-input
           autoFocus
           value={query}
           placeholder={t('searchTitle')}

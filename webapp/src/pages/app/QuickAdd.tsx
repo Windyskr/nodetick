@@ -240,6 +240,7 @@ export function QuickAdd({ projectId, placeholder }: { projectId: string; placeh
         )}
         <input
           ref={inputRef}
+          data-quick-add
           defaultValue=""
           placeholder=""
           onCompositionStart={() => {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlignLeft, Bell, Calendar, MoreHorizontal, Repeat, RotateCcw, Trash2 } from 'lucide-react';
+import { AlignLeft, Bell, Calendar, CheckSquare, MoreHorizontal, Repeat, RotateCcw, Square, Trash2 } from 'lucide-react';
 import type { Task } from '../../lib/types';
 import { useStore } from '../../stores/store';
 import { dayOf, scheduleLabel, todayStr } from '../../components/taskSchedule';
@@ -41,16 +41,24 @@ export function TaskRow({
   task,
   showProject = true,
   showDetails = false,
+  siblings,
+  canDrag = false,
 }: {
   task: Task;
   showProject?: boolean;
   showDetails?: boolean;
+  /** Rendered sibling order used for drag-reorder persistence. */
+  siblings?: string[];
+  /** Dragging is only offered in custom-sort views, like TickTick. */
+  canDrag?: boolean;
 }) {
-  const { selectTask, selectedTaskId, toggleComplete, trashTask, restoreTask, purgeTask, saveTask, duplicateTask, moveTask, showToast } =
+  const { selectTask, selectedTaskId, toggleComplete, trashTask, restoreTask, purgeTask, saveTask, duplicateTask, moveTask, showToast, toggleSelect, selectedIds, reorderTasks } =
     useStore();
   const t = useT();
   const [menuView, setMenuView] = useState<'main' | 'move'>('main');
+  const [dropPos, setDropPos] = useState<'before' | 'after' | null>(null);
   const selected = selectedTaskId === task.id;
+  const checked = selectedIds.includes(task.id);
   const done = task.status === 2;
   const badge = showProject ? projectBadge(task.projectId, t) : null;
   const subtasks = task.items.length;
@@ -59,12 +67,56 @@ export function TaskRow({
     <div
       role="button"
       tabIndex={0}
-      onClick={() => selectTask(task.id)}
+      draggable={canDrag}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', task.id);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragOver={(e) => {
+        if (!canDrag) return;
+        e.preventDefault();
+        const rect = e.currentTarget.getBoundingClientRect();
+        setDropPos(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
+      }}
+      onDragLeave={() => setDropPos(null)}
+      onDrop={(e) => {
+        e.preventDefault();
+        const pos = dropPos;
+        setDropPos(null);
+        const draggedId = e.dataTransfer.getData('text/plain');
+        if (!draggedId || draggedId === task.id) return;
+        void reorderTasks(draggedId, task.id, siblings, pos === 'after' ? 'after' : 'before');
+      }}
+      onDragEnd={() => setDropPos(null)}
+      onClick={(e) => {
+        // Ctrl/Cmd-click multi-selects, plain click opens the detail panel.
+        if (e.ctrlKey || e.metaKey) {
+          toggleSelect(task.id);
+          return;
+        }
+        selectTask(task.id);
+      }}
       onKeyDown={(e) => e.key === 'Enter' && selectTask(task.id)}
-      className={`group flex cursor-pointer items-center gap-3 border-b border-line/70 px-5 py-[9px] transition-colors ${
-        selected ? 'bg-selected' : 'hover:bg-hover'
-      }`}
+      className={`group relative flex cursor-pointer items-center gap-3 border-b border-line/70 px-5 py-[9px] transition-colors ${
+        selected || checked ? 'bg-selected' : 'hover:bg-hover'
+      } ${dropPos ? 'ring-1 ring-tt/50' : ''}`}
     >
+      {dropPos === 'before' && <span className="absolute -top-px left-4 right-4 h-0.5 rounded bg-tt" />}
+      {dropPos === 'after' && <span className="absolute -bottom-px left-4 right-4 h-0.5 rounded bg-tt" />}
+      <button
+        type="button"
+        aria-pressed={checked}
+        aria-label={t('batchComplete')}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleSelect(task.id);
+        }}
+        className={`shrink-0 text-ink-3 transition-opacity hover:text-tt ${
+          checked ? 'text-tt opacity-100' : 'opacity-0 group-hover:opacity-100'
+        }`}
+      >
+        {checked ? <CheckSquare size={15} className="text-tt" /> : <Square size={15} />}
+      </button>
       <RoundCheck checked={done} priority={task.priority} onClick={() => void toggleComplete(task)} />
       <div className="min-w-0 flex-1">
         <span className={`block truncate text-[14px] ${done ? 'text-ink-3 line-through' : 'text-ink'}`}>

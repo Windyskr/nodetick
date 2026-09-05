@@ -28,6 +28,7 @@ interface AppState {
   completed: Task[];
   trash: Task[];
   selectedTaskId: string | null;
+  selectedIds: string[];
   error: string | null;
   toast: ToastState | null;
 
@@ -40,6 +41,15 @@ interface AppState {
 
   selectTask: (id: string | null) => void;
   selectedTask: () => Task | null;
+
+  toggleSelect: (id: string) => void;
+  clearSelection: () => void;
+  batchComplete: () => Promise<void>;
+  batchTrash: () => Promise<void>;
+  batchMove: (projectId: string) => Promise<void>;
+  batchSetDate: (dueDate: string | null, isAllDay: boolean) => Promise<void>;
+  batchPriority: (priority: number) => Promise<void>;
+  reorderTasks: (draggedId: string, targetId: string, siblings: string[] | undefined, position: 'before' | 'after') => Promise<void>;
 
   upsertTask: (task: Task) => void;
   createTask: (input: {
@@ -65,17 +75,22 @@ interface AppState {
   moveTask: (task: Task, projectId: string) => Promise<void>;
   restoreTask: (id: string) => Promise<void>;
   purgeTask: (id: string) => Promise<void>;
+  emptyTrash: () => Promise<void>;
   postponeAll: (bucketDay: string) => Promise<void>;
 
   addProject: (name: string, viewMode?: string) => Promise<Project>;
   renameProject: (id: string, name: string) => Promise<void>;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'viewMode' | 'groupId' | 'color' | 'sortOrder' | 'closed'>>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   setProjectView: (id: string, viewMode: string) => Promise<void>;
   addGroup: (name: string) => Promise<void>;
+  updateGroup: (id: string, patch: { name?: string; sortOrder?: number }) => Promise<void>;
   deleteGroup: (id: string) => Promise<void>;
   addFilter: (input: Omit<TaskFilter, 'id' | 'sortOrder' | 'createdTime' | 'modifiedTime'> & { sortOrder?: number }) => Promise<TaskFilter>;
   updateFilter: (id: string, patch: Partial<TaskFilter>) => Promise<void>;
   deleteFilter: (id: string) => Promise<void>;
+  updateTag: (name: string, patch: { name?: string; label?: string; color?: string | null }) => Promise<void>;
+  deleteTag: (name: string) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, getState) => ({
@@ -89,6 +104,7 @@ export const useStore = create<AppState>((set, getState) => ({
   completed: [],
   trash: [],
   selectedTaskId: null,
+  selectedIds: [],
   error: null,
   toast: null,
 
@@ -134,7 +150,7 @@ export const useStore = create<AppState>((set, getState) => ({
 
   logout: async () => {
     await api.logout().catch(() => undefined);
-    set({ me: null, tasks: [], completed: [], trash: [], projects: [], groups: [], tags: [], filters: [], selectedTaskId: null });
+    set({ me: null, tasks: [], completed: [], trash: [], projects: [], groups: [], tags: [], filters: [], selectedTaskId: null, selectedIds: [] });
   },
 
   selectTask: (id) => set({ selectedTaskId: id }),
@@ -147,6 +163,86 @@ export const useStore = create<AppState>((set, getState) => ({
       trash.find((t) => t.id === selectedTaskId) ??
       null
     );
+  },
+
+  toggleSelect: (id) =>
+    set((s) => ({
+      selectedIds: s.selectedIds.includes(id) ? s.selectedIds.filter((x) => x !== id) : [...s.selectedIds, id],
+    })),
+  clearSelection: () => set({ selectedIds: [] }),
+
+  batchComplete: async () => {
+    const { selectedIds, tasks } = getState();
+    const targets = tasks.filter((t) => selectedIds.includes(t.id) && t.status !== 2);
+    await Promise.all(targets.map((t) => api.completeTask(t.projectId, t.id)));
+    await getState().refresh();
+    getState().clearSelection();
+  },
+
+  batchTrash: async () => {
+    const { selectedIds, tasks } = getState();
+    const targets = tasks.filter((t) => selectedIds.includes(t.id));
+    await Promise.all(targets.map((t) => api.deleteTask(t.projectId, t.id)));
+    await getState().refresh();
+    getState().clearSelection();
+  },
+
+  batchMove: async (projectId) => {
+    const { selectedIds, tasks } = getState();
+    const targets = tasks.filter((t) => selectedIds.includes(t.id) && t.projectId !== projectId);
+    await Promise.all(targets.map((t) => api.updateTask(t.id, { projectId })));
+    await getState().refresh();
+    getState().clearSelection();
+  },
+
+  batchSetDate: async (dueDate, isAllDay) => {
+    const { selectedIds, tasks } = getState();
+    const targets = tasks.filter((t) => selectedIds.includes(t.id));
+    await Promise.all(
+      targets.map((t) => api.updateTask(t.id, { projectId: t.projectId, dueDate, isAllDay })),
+    );
+    await getState().refresh();
+    getState().clearSelection();
+  },
+
+  batchPriority: async (priority) => {
+    const { selectedIds, tasks } = getState();
+    const targets = tasks.filter((t) => selectedIds.includes(t.id));
+    await Promise.all(targets.map((t) => api.updateTask(t.id, { projectId: t.projectId, priority })));
+    await getState().refresh();
+    getState().clearSelection();
+  },
+
+  /**
+   * Drag-and-drop reorder inside a rendered group: rewrites sortOrder for the
+   * affected sibling list (index * 100) and patches only changed tasks.
+   */
+  reorderTasks: async (draggedId, targetId, siblings, position) => {
+    const state = getState();
+    const base = siblings?.length
+      ? siblings
+      : state.tasks.filter((t) => !t.parentId).map((t) => t.id);
+    const ids = base.filter((id) => id !== draggedId);
+    let index = ids.indexOf(targetId);
+    if (index === -1) return;
+    if (position === 'after') index += 1;
+    ids.splice(index, 0, draggedId);
+
+    const byId = new Map(state.tasks.map((t) => [t.id, t]));
+    const updates: { id: string; projectId: string; sortOrder: number }[] = [];
+    ids.forEach((id, i) => {
+      const task = byId.get(id);
+      if (task && task.sortOrder !== i * 100) {
+        updates.push({ id, projectId: task.projectId, sortOrder: i * 100 });
+      }
+    });
+    set((s) => ({
+      tasks: s.tasks.map((t) => {
+        const u = updates.find((x) => x.id === t.id);
+        return u ? { ...t, sortOrder: u.sortOrder } : t;
+      }),
+    }));
+    await Promise.all(updates.map((u) => api.updateTask(u.id, { projectId: u.projectId, sortOrder: u.sortOrder })));
   },
 
   upsertTask: (task) =>
@@ -194,10 +290,13 @@ export const useStore = create<AppState>((set, getState) => ({
         tasks: [...s.tasks, updated],
       }));
     } else {
-      await api.completeTask(task.projectId, task.id);
+      const next = await api.completeTask(task.projectId, task.id);
       const completedAt = new Date().toISOString();
       const done: Task = { ...task, status: 2, completedTime: completedAt };
-      set((s) => ({ tasks: s.tasks.filter((t) => t.id !== task.id), completed: [done, ...s.completed] }));
+      set((s) => ({
+        tasks: next ? [...s.tasks.filter((t) => t.id !== task.id && t.id !== next.id), next] : s.tasks.filter((t) => t.id !== task.id),
+        completed: [done, ...s.completed],
+      }));
       if (!opts?.silent) {
         getState().showToast({
           messageKey: 'toastCompleted',
@@ -217,10 +316,19 @@ export const useStore = create<AppState>((set, getState) => ({
     const projectId = (patch.projectId as string) ?? current?.projectId;
     if (!projectId) throw new Error('Task project not found');
     const task = await api.updateTask(id, { ...patch, projectId });
-    // projectId may have changed → refresh lists conservatively but cheaply:
+    // New tags added in the detail panel should surface in the sidebar at once.
     set((s) => {
+      const known = new Set(s.tags.map((tag) => tag.name));
+      const additions = task.tags
+        .filter((name) => !known.has(name))
+        .map((name, i) => ({ name, label: name, color: null, sortOrder: s.tags.length + i, parentId: null }));
+      // projectId may have changed → refresh lists conservatively but cheaply:
       const move = (list: Task[]) => list.filter((t) => t.id !== id);
-      return { tasks: [...move(s.tasks), task].filter((t) => t.status !== 2), completed: task.status === 2 ? [task, ...move(s.completed)] : move(s.completed) };
+      return {
+        tags: additions.length ? [...s.tags, ...additions] : s.tags,
+        tasks: [...move(s.tasks), task].filter((t) => t.status !== 2),
+        completed: task.status === 2 ? [task, ...move(s.completed)] : move(s.completed),
+      };
     });
     return task;
   },
@@ -286,6 +394,12 @@ export const useStore = create<AppState>((set, getState) => ({
     set((s) => ({ trash: s.trash.filter((t) => t.id !== id) }));
   },
 
+  emptyTrash: async () => {
+    const ids = getState().trash.map((t) => t.id);
+    await Promise.all(ids.map((id) => api.purgeTask(id)));
+    set({ trash: [] });
+  },
+
   postponeAll: async (today) => {
     const overdue = getState().tasks.filter((t) => {
       const d = t.dueDate?.slice(0, 10);
@@ -306,6 +420,11 @@ export const useStore = create<AppState>((set, getState) => ({
     set((s) => ({ projects: s.projects.map((p) => (p.id === id ? project : p)) }));
   },
 
+  updateProject: async (id, patch) => {
+    const project = await api.updateProject(id, patch);
+    set((s) => ({ projects: s.projects.map((p) => (p.id === id ? project : p)) }));
+  },
+
   deleteProject: async (id) => {
     await api.deleteProject(id);
     set((s) => ({
@@ -323,6 +442,11 @@ export const useStore = create<AppState>((set, getState) => ({
   addGroup: async (name) => {
     const group = await api.createGroup(name);
     set((s) => ({ groups: [...s.groups, group] }));
+  },
+
+  updateGroup: async (id, patch) => {
+    const group = await api.updateGroup(id, patch);
+    set((s) => ({ groups: s.groups.map((g) => (g.id === id ? group : g)) }));
   },
 
   deleteGroup: async (id) => {
@@ -347,5 +471,32 @@ export const useStore = create<AppState>((set, getState) => ({
   deleteFilter: async (id) => {
     await api.deleteFilter(id);
     set((s) => ({ filters: s.filters.filter((item) => item.id !== id) }));
+  },
+
+  updateTag: async (name, patch) => {
+    const tag = await api.updateTag(name, patch);
+    const oldName = name.toLowerCase();
+    // A rename must reach every stored task tag so tag pages stay coherent.
+    const rewrite = (list: Task[]) =>
+      list.map((t) => (t.tags.includes(oldName) ? { ...t, tags: t.tags.map((x) => (x === oldName ? tag.name : x)) } : t));
+    set((s) => ({
+      tags: s.tags.map((item) => (item.name === oldName ? tag : item)),
+      tasks: rewrite(s.tasks),
+      completed: rewrite(s.completed),
+      trash: rewrite(s.trash),
+    }));
+  },
+
+  deleteTag: async (name) => {
+    await api.deleteTag(name);
+    const oldName = name.toLowerCase();
+    const strip = (list: Task[]) =>
+      list.map((t) => (t.tags.includes(oldName) ? { ...t, tags: t.tags.filter((x) => x !== oldName) } : t));
+    set((s) => ({
+      tags: s.tags.filter((item) => item.name !== oldName),
+      tasks: strip(s.tasks),
+      completed: strip(s.completed),
+      trash: strip(s.trash),
+    }));
   },
 }));

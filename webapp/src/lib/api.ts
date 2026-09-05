@@ -72,11 +72,13 @@ export const api = {
   listProjects: () => get<Project[]>('/open/v1/project'),
   createProject: (name: string, viewMode = 'list') =>
     post<Project>('/open/v1/project', { name, viewMode }),
-  updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'viewMode' | 'groupId'>>) =>
+  updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'viewMode' | 'groupId' | 'color' | 'sortOrder' | 'closed'>>) =>
     post<Project>(`/open/v1/project/${id}`, patch),
   deleteProject: (id: string) => del<void>(`/open/v1/project/${id}`),
   listGroups: () => get<ProjectGroup[]>('/open/v1/project/group'),
   createGroup: (name: string) => post<ProjectGroup>('/open/v1/project/group', { name }),
+  updateGroup: (id: string, patch: { name?: string; sortOrder?: number }) =>
+    post<ProjectGroup>(`/open/v1/project/group/${id}`, patch),
   deleteGroup: (id: string) => del<void>(`/open/v1/project/group/${id}`),
   projectData: (id: string) => get<ProjectData>(`/open/v1/project/${id}/data`),
   createColumn: (projectId: string, name: string) =>
@@ -91,7 +93,7 @@ export const api = {
   createTask: (input: Record<string, unknown>) => post<Task>('/open/v1/task', input),
   updateTask: (id: string, patch: Record<string, unknown>) => post<Task>(`/open/v1/task/${id}`, patch),
   completeTask: (projectId: string, taskId: string) =>
-    post<void>(`/open/v1/project/${projectId}/task/${taskId}/complete`),
+    post<Task | null>(`/open/v1/project/${projectId}/task/${taskId}/complete`),
   deleteTask: (projectId: string, taskId: string) =>
     del<void>(`/open/v1/project/${projectId}/task/${taskId}`),
   restoreTask: (taskId: string) => post<Task>(`/open/v1/task/trash/${taskId}/restore`),
@@ -106,6 +108,9 @@ export const api = {
   // --- Tags ---
   listTags: () => get<Tag[]>('/open/v1/tag'),
   upsertTag: (name: string, label: string) => post<Tag>('/open/v1/tag', { name, label }),
+  updateTag: (oldName: string, patch: { name?: string; label?: string; color?: string | null }) =>
+    post<Tag>(`/open/v1/tag/${encodeURIComponent(oldName)}`, patch),
+  deleteTag: (name: string) => del<void>(`/open/v1/tag/${encodeURIComponent(name)}`),
 
   // --- Saved filters / smart lists ---
   listFilters: () => get<TaskFilter[]>('/open/v1/filter'),

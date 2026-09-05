@@ -9,7 +9,7 @@ import {
   serializeHabitRecord,
   serializeTag,
 } from '../serialize.js';
-import { genId, nowIso, readJsonObject } from '../util.js';
+import { genId, nowIso, parseJsonArray, readJsonObject } from '../util.js';
 
 type State = { Bindings: Env; Variables: Vars };
 
@@ -346,6 +346,86 @@ misc.post('/tag', async (c) => {
     .bind(userId, name)
     .first();
   return c.json(serializeTag(row!));
+});
+
+/**
+ * Rename/relabel/recolor an existing tag. Renaming also rewrites the tag
+ * inside every task's tags array so filters and tag pages stay consistent.
+ */
+misc.post('/tag/:tagName', async (c) => {
+  const userId = c.get('userId');
+  const oldName = c.req.param('tagName').trim().toLowerCase();
+  const existing = await c.env.DB.prepare('SELECT * FROM tags WHERE user_id = ? AND name = ?')
+    .bind(userId, oldName)
+    .first<Record<string, unknown>>();
+  if (!existing) return c.json({ error: 'tag not found' }, 404);
+
+  const b = await readJsonObject(c.req);
+  const rawName = b.name != null ? String(b.name).trim().toLowerCase() : oldName;
+  if (!rawName || rawName.length > 64) return c.json({ error: 'name must be 1-64 chars' }, 400);
+  if (rawName !== oldName) {
+    const clash = await c.env.DB.prepare('SELECT id FROM tags WHERE user_id = ? AND name = ?')
+      .bind(userId, rawName)
+      .first<{ id: string }>();
+    if (clash) return c.json({ error: 'a tag with that name already exists' }, 409);
+  }
+  const label = String(b.label ?? rawName).trim() || rawName;
+  if (label.length > 64) return c.json({ error: 'label must be at most 64 chars' }, 400);
+  const color = b.color == null || b.color === '' ? null : String(b.color);
+  if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) return c.json({ error: 'color must be a hex color' }, 400);
+  const sortOrder = finiteNumber(b.sortOrder);
+
+  await c.env.DB.prepare(
+    'UPDATE tags SET name = ?, label = ?, color = COALESCE(?, color), sort_order = COALESCE(?, sort_order) WHERE id = ? AND user_id = ?',
+  )
+    .bind(rawName, label, color, sortOrder, existing.id, userId)
+    .run();
+
+  if (rawName !== oldName) {
+    // Rewrite the tag in every task that references it.
+    const rows = await c.env.DB.prepare(
+      'SELECT id, tags FROM tasks WHERE user_id = ? AND tags IS NOT NULL',
+    )
+      .bind(userId)
+      .all<{ id: string; tags: string }>();
+    for (const r of rows.results) {
+      const tags = parseJsonArray<string>(r.tags).map(String);
+      if (!tags.includes(oldName)) continue;
+      const next = tags.map((tag) => (tag === oldName ? rawName : tag));
+      await c.env.DB.prepare('UPDATE tasks SET tags = ?, modified_time = ?, etag = etag + 1 WHERE id = ? AND user_id = ?')
+        .bind(JSON.stringify(next), nowIso(), r.id, userId)
+        .run();
+    }
+  }
+
+  const row = await c.env.DB.prepare('SELECT * FROM tags WHERE user_id = ? AND name = ?')
+    .bind(userId, rawName)
+    .first();
+  return c.json(serializeTag(row!));
+});
+
+/** Delete a tag and strip it from every task's tags array. */
+misc.delete('/tag/:tagName', async (c) => {
+  const userId = c.get('userId');
+  const name = c.req.param('tagName').trim().toLowerCase();
+  const res = await c.env.DB.prepare('DELETE FROM tags WHERE user_id = ? AND name = ?')
+    .bind(userId, name)
+    .run();
+  if (!res.meta.changes) return c.json({ error: 'tag not found' }, 404);
+  const rows = await c.env.DB.prepare(
+    'SELECT id, tags FROM tasks WHERE user_id = ? AND tags IS NOT NULL',
+  )
+    .bind(userId)
+    .all<{ id: string; tags: string }>();
+  for (const r of rows.results) {
+    const tags = parseJsonArray<string>(r.tags).map(String);
+    if (!tags.includes(name)) continue;
+    const next = tags.filter((tag) => tag !== name);
+    await c.env.DB.prepare('UPDATE tasks SET tags = ?, modified_time = ?, etag = etag + 1 WHERE id = ? AND user_id = ?')
+      .bind(next.length ? JSON.stringify(next) : null, nowIso(), r.id, userId)
+      .run();
+  }
+  return c.body(null, 200);
 });
 
 // --- Habits ---

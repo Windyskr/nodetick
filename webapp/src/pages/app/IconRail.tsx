@@ -1,9 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Bell, CalendarDays, CheckSquare, Clock3, Hourglass, KeyRound, Languages, LayoutGrid, LogOut, Palette, Search, Target } from 'lucide-react';
+import { KeyRound, Languages, LogOut, Palette } from 'lucide-react';
 import { Popover } from '../../components/Popover';
 import { useI18n, useT } from '../../i18n';
 import { useStore } from '../../stores/store';
+import {
+  IconAll,
+  IconBell,
+  IconCalendar,
+  IconCountdown,
+  IconFocus,
+  IconHabit,
+  IconMatrix,
+  IconSearch,
+} from '../../components/tickIcons';
 import NotificationSettingsDialog, { unsubscribeCurrentBrowser } from './NotificationSettingsDialog';
 
 const RAIL = 'flex h-full w-[50px] shrink-0 flex-col items-center border-r border-line bg-[#fbfbfb] py-4';
@@ -42,7 +52,7 @@ export default function IconRail() {
     }
   }, [theme]);
 
-  const item = (to: string, label: string, Icon: typeof CheckSquare) => (
+  const item = (to: string, label: string, Icon: (props: { size?: number }) => ReactNode) => (
     <NavLink
       key={to}
       to={to}
@@ -53,7 +63,7 @@ export default function IconRail() {
         }`
       }
     >
-      <Icon size={20} strokeWidth={1.8} />
+      <Icon size={20} />
     </NavLink>
   );
 
@@ -135,13 +145,13 @@ export default function IconRail() {
       </Popover>
 
       <div className="flex flex-col items-center gap-2.5">
-        {item('/app/tasks/all', t('navTasks'), CheckSquare)}
-        {item('/app/calendar', t('navCalendar'), CalendarDays)}
-        {item('/app/matrix', t('navMatrix'), LayoutGrid)}
-        {item('/app/focus', t('navFocus'), Target)}
-        {item('/app/habit', t('navHabits'), Clock3)}
-        {item('/app/countdown', t('navCountdowns'), Hourglass)}
-        {item('/app/search', t('navSearch'), Search)}
+        {item('/app/tasks/all', t('navTasks'), IconAll)}
+        {item('/app/calendar', t('navCalendar'), IconCalendar)}
+        {item('/app/matrix', t('navMatrix'), IconMatrix)}
+        {item('/app/focus', t('navFocus'), IconFocus)}
+        {item('/app/habit', t('navHabits'), IconHabit)}
+        {item('/app/countdown', t('navCountdowns'), IconCountdown)}
+        {item('/app/search', t('navSearch'), IconSearch)}
       </div>
       <div className="mt-auto">
         <button
@@ -151,7 +161,7 @@ export default function IconRail() {
           onClick={() => setNotificationsOpen(true)}
           className="flex h-10 w-10 items-center justify-center rounded-lg text-[#8c8c8c] transition-colors hover:bg-hover hover:text-ink-2"
         >
-          <Bell size={20} strokeWidth={1.8} />
+          <IconBell size={20} />
         </button>
       </div>
       {notificationsOpen && <NotificationSettingsDialog onClose={() => setNotificationsOpen(false)} />}

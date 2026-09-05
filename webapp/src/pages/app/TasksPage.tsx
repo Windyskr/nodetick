@@ -17,6 +17,7 @@ import {
   Printer,
   Settings2,
   Share2,
+  Trash2,
 } from 'lucide-react';
 import { useStore, INBOX_ID } from '../../stores/store';
 import { useT, useTF, type Key } from '../../i18n';
@@ -31,7 +32,7 @@ import {
   todayStr,
   weekdayShort,
 } from '../../lib/date';
-import type { Habit, HabitYear, Tag, Task } from '../../lib/types';
+import type { Habit, HabitYear, Project, Tag, Task } from '../../lib/types';
 import { projectDisplayName } from '../../lib/project';
 import { api, yearRange } from '../../lib/api';
 import { TaskRow } from './TaskRow';
@@ -49,6 +50,8 @@ import {
 } from '../../components/TaskFilterMenu';
 import KanbanBoard from './KanbanBoard';
 import TimelineBoard from './TimelineBoard';
+import ProjectSettingsDialog from './ProjectSettingsDialog';
+import BatchBar from './BatchBar';
 
 type SortKey = 'custom' | 'time' | 'created' | 'modified' | 'title' | 'tags' | 'priority';
 type GroupKey = 'custom' | 'time' | 'created' | 'tags' | 'priority' | 'none';
@@ -59,6 +62,7 @@ const TITLE_KEYS = {
   today: 'smartToday',
   next7: 'smartNext7',
   inbox: 'smartInbox',
+  overdue: 'smartOverdue',
   completed: 'navCompleted',
   trash: 'navTrash',
 } as const;
@@ -74,6 +78,8 @@ export default function TasksPage() {
     trash,
     postponeAll,
     setProjectView,
+    clearSelection,
+    emptyTrash,
   } = useStore();
   const t = useT();
   const f = useTF();
@@ -89,6 +95,7 @@ export default function TasksPage() {
     setShowDetails(false);
     setSortKey('custom');
     setGroupKey('custom');
+    clearSelection();
   }, [scope]);
 
   const project = useMemo(
@@ -128,6 +135,11 @@ export default function TasksPage() {
     if (project) return tasks.filter((t) => t.projectId === project.id);
     if (tagName) return tasks.filter((t) => t.tags.includes(tagName));
     if (scope === 'inbox') return tasks.filter((t) => t.projectId === INBOX_ID);
+    if (scope === 'overdue')
+      return tasks.filter((t) => {
+        const day = dayOf(t.dueDate);
+        return day !== null && day < todayStr();
+      });
     if (scope === 'today')
       return tasks.filter((t) => {
         const day = dayOf(t.dueDate);
@@ -181,6 +193,7 @@ export default function TasksPage() {
           onShowDetails={() => setShowDetails((v) => !v)}
         />
         <KanbanBoard projectId={project.id} sorter={sorter} />
+        <BatchBarOverlay />
       </div>
     );
   }
@@ -201,6 +214,7 @@ export default function TasksPage() {
           onShowDetails={() => setShowDetails((v) => !v)}
         />
         <TimelineBoard tasks={visible} sorter={sorter} />
+        <BatchBarOverlay />
       </div>
     );
   }
@@ -216,6 +230,19 @@ export default function TasksPage() {
     }
   }
   const today = todayStr();
+  // Drag reorder only in custom-sort views of a concrete list (or inbox),
+  // mirroring TickTick where smart lists sort by their own rules.
+  const canDragTasks = sortKey === 'custom' && (groupKey === 'custom' || groupKey === 'none') && (!!project || scope === 'inbox');
+  const renderRow = (t2: Task, list: Task[], showProj: boolean) => (
+    <TaskRow
+      key={t2.id}
+      task={t2}
+      showProject={showProj}
+      showDetails={showDetails}
+      siblings={list.map((x) => x.id)}
+      canDrag={canDragTasks}
+    />
+  );
 
   let body: ReactNode;
   if (isTrash) {
@@ -248,6 +275,7 @@ export default function TasksPage() {
           const list = buckets.get(b);
           if (!list || list.length === 0) return null;
           const red = b === 'overdue';
+          const sorted = [...list].sort(sorter);
           return (
             <TaskGroup
               key={b}
@@ -266,9 +294,7 @@ export default function TasksPage() {
                 ) : undefined
               }
             >
-              {[...list].sort(sorter).map((t2) => (
-                <TaskRow key={t2.id} task={t2} showProject={scope === 'all'} showDetails={showDetails} />
-              ))}
+              {sorted.map((t2) => renderRow(t2, sorted, scope === 'all'))}
             </TaskGroup>
           );
         })}
@@ -284,13 +310,14 @@ export default function TasksPage() {
             }
             return [...byDay.entries()]
               .sort(([a], [b]) => a.localeCompare(b))
-              .map(([day, list]) => (
-                <TaskGroup key={day} label={weekdayShort(day)} count={list.length}>
-                  {[...list].sort(sorter).map((t2) => (
-                    <TaskRow key={t2.id} task={t2} showProject showDetails={showDetails} />
-                  ))}
-                </TaskGroup>
-              ));
+              .map(([day, list]) => {
+                const sorted = [...list].sort(sorter);
+                return (
+                  <TaskGroup key={day} label={weekdayShort(day)} count={list.length}>
+                    {sorted.map((t2) => renderRow(t2, sorted, true))}
+                  </TaskGroup>
+                );
+              });
           })()}
         {(scope === 'today' || scope === 'next7') && habitSmartListsEnabled() && <SmartHabitGroup />}
         {completedInScope.length > 0 && !hideCompleted && (
@@ -303,15 +330,17 @@ export default function TasksPage() {
     const groupsForList = groupTasks(visible, groupKey, t);
     body = (
       <>
-        {groupsForList ? groupsForList.map((group) => (
-          <TaskGroup key={group.key} label={group.label} count={group.tasks.length}>
-            {[...group.tasks].sort(sorter).map((t2) => (
-              <TaskRow key={t2.id} task={t2} showProject={!!savedFilter} showDetails={showDetails} />
-            ))}
-          </TaskGroup>
-        )) : [...visible].sort(sorter).map((t2) => (
-          <TaskRow key={t2.id} task={t2} showProject={!!savedFilter} showDetails={showDetails} />
-        ))}
+        {groupsForList ? groupsForList.map((group) => {
+          const sorted = [...group.tasks].sort(sorter);
+          return (
+            <TaskGroup key={group.key} label={group.label} count={group.tasks.length}>
+              {sorted.map((t2) => renderRow(t2, sorted, !!savedFilter))}
+            </TaskGroup>
+          );
+        }) : (() => {
+          const sorted = [...visible].sort(sorter);
+          return sorted.map((t2) => renderRow(t2, sorted, !!savedFilter));
+        })()}
         {visible.length === 0 && (
           <Empty text={scope === 'inbox' ? t('emptyInbox') : t('emptyNoTasks')} />
         )}
@@ -339,6 +368,13 @@ export default function TasksPage() {
         showDetails={showDetails}
         onHideCompleted={() => setHideCompleted((v) => !v)}
         onShowDetails={() => setShowDetails((v) => !v)}
+        onEmptyTrash={
+          isTrash && trash.length > 0
+            ? () => {
+                if (window.confirm(t('emptyTrashConfirm'))) void emptyTrash();
+              }
+            : undefined
+        }
       />
       {quickAddProjectId && (
         <QuickAdd
@@ -346,7 +382,19 @@ export default function TasksPage() {
           placeholder={f('addTaskTo', scope === 'all' ? t('smartInbox') : title)}
         />
       )}
+      <BatchBarOverlay />
       <div className="min-h-0 flex-1 overflow-y-auto pb-16">{body}</div>
+    </div>
+  );
+}
+
+/** Floating batch toolbar shown whenever tasks are multi-selected. */
+function BatchBarOverlay() {
+  const selectedIds = useStore((s) => s.selectedIds);
+  if (selectedIds.length === 0) return null;
+  return (
+    <div className="relative z-10 px-4 pt-1">
+      <BatchBar />
     </div>
   );
 }
@@ -445,9 +493,10 @@ function ListHeader({
   showDetails = false,
   onHideCompleted,
   onShowDetails,
+  onEmptyTrash,
 }: {
   title: string;
-  project?: { id: string; viewMode: string; name: string };
+  project?: Project;
   sortKey?: SortKey;
   onSort?: (k: SortKey) => void;
   groupKey?: GroupKey;
@@ -460,6 +509,7 @@ function ListHeader({
   showDetails?: boolean;
   onHideCompleted?: () => void;
   onShowDetails?: () => void;
+  onEmptyTrash?: () => void;
 }) {
   const { renameProject, deleteProject, addGroup, showToast } = useStore();
   const t = useT();
@@ -467,6 +517,7 @@ function ListHeader({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(project?.name ?? title);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
 
   useEffect(() => {
     setTitleDraft(project?.name ?? title);
@@ -655,7 +706,8 @@ function ListHeader({
                     label={t('listSettings')}
                     onClick={() => {
                       close();
-                      setSettingsOpen(true);
+                      if (project) setProjectSettingsOpen(true);
+                      else setSettingsOpen(true);
                     }}
                   />
                   {project && (
@@ -678,6 +730,17 @@ function ListHeader({
                         }}
                       />
                     </>
+                  )}
+                  {onEmptyTrash && (
+                    <MenuItem
+                      icon={<Trash2 size={15} />}
+                      label={t('emptyTrashAction')}
+                      danger
+                      onClick={() => {
+                        close();
+                        onEmptyTrash();
+                      }}
+                    />
                   )}
                   <MenuItem
                     icon={<Printer size={15} />}
@@ -722,6 +785,13 @@ function ListHeader({
           onHideCompleted={onHideCompleted}
           onShowDetails={onShowDetails}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {projectSettingsOpen && project && (
+        <ProjectSettingsDialog
+          key={project.id}
+          project={project}
+          onClose={() => setProjectSettingsOpen(false)}
         />
       )}
     </>

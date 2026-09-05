@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { Env, Vars } from '../env.js';
 import { serializeComment, serializeTask } from '../serialize.js';
+import { addDays, dayOf, nextOccurrence } from '../recurrence.js';
 import {
   genId,
   isRequestBodyTooLarge,
@@ -665,6 +666,10 @@ tasks.post('/task/:taskId', async (c) => {
   if (tags) await upsertTags(c.env.DB, userId, tags);
 
   const row = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?').bind(taskId, userId).first();
+  // Completing via the generic update also spawns the next occurrence.
+  if (row && Number(row.status) === 2 && Number(existing.status ?? 0) !== 2) {
+    await spawnNextOccurrence(c.env.DB, userId, row);
+  }
   return c.json(serializeTask(row!));
 });
 
@@ -677,7 +682,12 @@ tasks.post('/project/:projectId/task/:taskId/complete', async (c) => {
     .bind(nowIso(), nowIso(), c.req.param('taskId'), c.req.param('projectId'), userId)
     .run();
   if (!res.meta.changes) return c.json({ error: 'task not found' }, 404);
-  return c.body(null, 200);
+  const row = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?')
+    .bind(c.req.param('taskId'), userId)
+    .first();
+  // Completing a recurring task returns the freshly spawned next occurrence.
+  const next = row ? await spawnNextOccurrence(c.env.DB, userId, row) : null;
+  return c.json(next);
 });
 
 tasks.delete('/project/:projectId/task/:taskId', async (c) => {
@@ -758,6 +768,102 @@ tasks.delete('/project/:projectId/task/:taskId/comment/:commentId', async (c) =>
 });
 
 // --- Shared helpers (exported for other route modules) ---
+
+/**
+ * TickTick behavior: completing a task that carries a repeat rule spawns its
+ * next occurrence as a fresh active clone — dates advanced by the rule (never
+ * in the past), subtasks reset to unchecked, completion state cleared.
+ * Returns the serialized clone, or null when there is no usable rule/anchor.
+ */
+export async function spawnNextOccurrence(
+  db: D1Database,
+  userId: string,
+  row: Record<string, unknown>,
+): Promise<ReturnType<typeof serializeTask> | null> {
+  const repeatFlag = row.repeat_flag ? String(row.repeat_flag) : null;
+  const due = row.due_date ? String(row.due_date) : null;
+  const start = row.start_date ? String(row.start_date) : null;
+  const anchor = due ?? start;
+  if (!repeatFlag || !anchor) return null;
+  const nextAnchor = nextOccurrence(repeatFlag, anchor, dayOf(nowIso()) ?? undefined);
+  if (!nextAnchor) return null;
+
+  let nextStart: string | null;
+  let nextDue: string | null;
+  if (start && due) {
+    // Multi-day range: shift the whole window by the rule's day advance.
+    const startDay = dayOf(start);
+    const dueDay = dayOf(due);
+    const deltaDays = startDay && dueDay
+      ? Math.round((Date.parse(`${dueDay}T00:00:00Z`) - Date.parse(`${startDay}T00:00:00Z`)) / 86400000)
+      : 0;
+    const nextDueDay = dayOf(nextAnchor)!;
+    nextDue = nextAnchor;
+    const startSuffix = /^(\d{4}-\d{2}-\d{2})(.*)$/.exec(start)?.[2] ?? '';
+    nextStart = `${addDays(nextDueDay, -deltaDays)}${startSuffix}`;
+  } else if (start) {
+    nextStart = nextAnchor;
+    nextDue = null;
+  } else {
+    nextStart = null;
+    nextDue = nextAnchor;
+  }
+
+  const items = parseJsonArray<ChecklistItem>(row.items as string).map((it) => ({
+    ...it,
+    status: 0,
+    completedTime: null,
+  }));
+
+  // The clone re-attaches to its parent only when that parent is still active.
+  const parentId = row.parent_id ? String(row.parent_id) : null;
+  let cloneParent: string | null = null;
+  if (parentId) {
+    const parent = await db
+      .prepare('SELECT id FROM tasks WHERE id = ? AND user_id = ? AND deleted = 0 AND status = 0')
+      .bind(parentId, userId)
+      .first();
+    cloneParent = parent ? parentId : null;
+  }
+
+  const id = genId();
+  const now = nowIso();
+  await db
+    .prepare(
+      `INSERT INTO tasks
+        (id, user_id, project_id, title, content, task_desc, kind, start_date, due_date, time_zone,
+         is_all_day, priority, status, sort_order, repeat_flag, reminders, items, tags, parent_id,
+         column_id, focus_summaries, created_time, modified_time)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      id,
+      userId,
+      String(row.project_id),
+      String(row.title ?? ''),
+      row.content != null ? String(row.content) : null,
+      row.task_desc != null ? String(row.task_desc) : null,
+      String(row.kind ?? 'TASK'),
+      nextStart,
+      nextDue,
+      row.time_zone != null ? String(row.time_zone) : null,
+      Number(row.is_all_day ?? 0),
+      Number(row.priority ?? 0),
+      Number(row.sort_order ?? 0),
+      repeatFlag,
+      row.reminders != null ? String(row.reminders) : null,
+      items.length ? JSON.stringify(items) : null,
+      row.tags != null ? String(row.tags) : null,
+      cloneParent,
+      row.column_id != null ? String(row.column_id) : null,
+      row.focus_summaries != null ? String(row.focus_summaries) : null,
+      now,
+      now,
+    )
+    .run();
+  const clone = await db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?').bind(id, userId).first();
+  return clone ? serializeTask(clone) : null;
+}
 
 export async function upsertTags(db: D1Database, userId: string, tags: string[]) {
   for (const name of tags.slice(0, MAX_TAGS)) {
