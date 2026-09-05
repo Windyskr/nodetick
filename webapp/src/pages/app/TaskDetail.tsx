@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Ban, Calendar, Flag, Inbox, MessageSquare, MoreHorizontal, Plus, Trash2, X } from 'lucide-react';
+import { Ban, Calendar, Flag, Inbox, MessageSquare, MoreHorizontal, Pin, PinOff, Plus, Trash2, X } from 'lucide-react';
 import type { Task, TaskComment } from '../../lib/types';
 import { useStore, INBOX_ID } from '../../stores/store';
 import { api } from '../../lib/api';
@@ -352,6 +352,14 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
         >
           {(close) => (
             <>
+              <MenuItem
+                icon={task.pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                label={task.pinned ? t('unpinTask') : t('pinTask')}
+                onClick={() => {
+                  close();
+                  void saveTask(task.id, { projectId: task.projectId, pinned: !task.pinned });
+                }}
+              />
               {!done && (
                 <MenuItem
                   icon={<Ban size={15} />}

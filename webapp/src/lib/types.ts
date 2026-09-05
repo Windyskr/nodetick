@@ -30,6 +30,7 @@ export interface Task {
   timeZone: string | null;
   isAllDay: boolean;
   priority: number;
+  pinned: boolean;
   status: number;
   sortOrder: number;
   repeatFlag: string | null;

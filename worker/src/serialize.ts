@@ -19,6 +19,7 @@ export function serializeTask(r: Row) {
     timeZone: str(r.time_zone),
     isAllDay: !!r.is_all_day,
     priority: Number(r.priority ?? 0),
+    pinned: !!r.pinned,
     status: Number(r.status ?? 0),
     sortOrder: Number(r.sort_order ?? 0),
     repeatFlag: str(r.repeat_flag),

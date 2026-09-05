@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   time_zone TEXT,
   is_all_day INTEGER NOT NULL DEFAULT 0,
   priority INTEGER NOT NULL DEFAULT 0,
+  pinned INTEGER NOT NULL DEFAULT 0,
   status INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
   repeat_flag TEXT,

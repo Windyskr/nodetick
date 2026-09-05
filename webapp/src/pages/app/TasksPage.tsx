@@ -118,6 +118,8 @@ export default function TasksPage() {
     project?.id ?? (scope === 'inbox' || scope === 'all' ? INBOX_ID : null);
 
   const sorter = (a: Task, b: Task): number => {
+    // TickTick pins tasks to the top of the list under every sort key.
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
     if (sortKey === 'priority') return b.priority - a.priority || a.title.localeCompare(b.title);
     if (sortKey === 'title') return a.title.localeCompare(b.title);
     if (sortKey === 'tags') return a.tags.join(',').localeCompare(b.tags.join(',')) || a.title.localeCompare(b.title);

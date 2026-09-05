@@ -108,7 +108,7 @@ export async function importBackup(
     'tasks',
     doc.tasks,
     ['id', 'project_id', 'title', 'content', 'task_desc', 'kind', 'start_date', 'due_date', 'time_zone', 'is_all_day',
-      'priority', 'status', 'sort_order', 'repeat_flag', 'reminders', 'items', 'tags', 'parent_id', 'child_ids',
+      'priority', 'pinned', 'status', 'sort_order', 'repeat_flag', 'reminders', 'items', 'tags', 'parent_id', 'child_ids',
       'column_id', 'completed_time', 'focus_summaries', 'etag', 'created_time', 'modified_time', 'deleted', 'deleted_time'],
   );
   await upsert(

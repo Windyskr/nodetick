@@ -458,9 +458,9 @@ tasks.post('/task', async (c) => {
   await c.env.DB.prepare(
     `INSERT INTO tasks
       (id, user_id, project_id, title, content, task_desc, kind, start_date, due_date, time_zone,
-       is_all_day, priority, status, sort_order, repeat_flag, reminders, items, tags, parent_id,
+       is_all_day, priority, pinned, status, sort_order, repeat_flag, reminders, items, tags, parent_id,
        column_id, created_time, modified_time)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -475,6 +475,7 @@ tasks.post('/task', async (c) => {
       b.timeZone != null ? String(b.timeZone) : null,
       b.isAllDay ? 1 : 0,
       Number(b.priority ?? 0),
+      b.pinned ? 1 : 0,
       b.sortOrder != null ? Number(b.sortOrder) : 0,
       b.repeatFlag != null ? String(b.repeatFlag) : null,
       Array.isArray(b.reminders) ? JSON.stringify(b.reminders.map(String)) : null,
@@ -632,7 +633,7 @@ tasks.post('/task/:taskId', async (c) => {
   await c.env.DB.prepare(
     `UPDATE tasks SET
       project_id = ?, title = ?, content = ?, task_desc = ?, kind = ?, start_date = ?, due_date = ?,
-      time_zone = ?, is_all_day = ?, priority = ?, sort_order = ?, repeat_flag = ?, reminders = ?,
+      time_zone = ?, is_all_day = ?, priority = ?, pinned = ?, sort_order = ?, repeat_flag = ?, reminders = ?,
       items = ?, tags = ?, parent_id = ?, column_id = ?, focus_summaries = ?,
       status = ?, completed_time = ?, modified_time = ?, etag = etag + 1
      WHERE id = ? AND user_id = ?`,
@@ -648,6 +649,7 @@ tasks.post('/task/:taskId', async (c) => {
       'timeZone' in b ? (b.timeZone != null ? String(b.timeZone) : null) : existing.time_zone,
       'isAllDay' in b ? (b.isAllDay ? 1 : 0) : Number(existing.is_all_day ?? 0),
       b.priority != null ? Number(b.priority) : Number(existing.priority ?? 0),
+      'pinned' in b ? (b.pinned ? 1 : 0) : Number(existing.pinned ?? 0),
       b.sortOrder != null ? Number(b.sortOrder) : Number(existing.sort_order ?? 0),
       'repeatFlag' in b ? (b.repeatFlag != null ? String(b.repeatFlag) : null) : existing.repeat_flag,
       Array.isArray(b.reminders) ? JSON.stringify(b.reminders.map(String)) : existing.reminders,
@@ -833,9 +835,9 @@ export async function spawnNextOccurrence(
     .prepare(
       `INSERT INTO tasks
         (id, user_id, project_id, title, content, task_desc, kind, start_date, due_date, time_zone,
-         is_all_day, priority, status, sort_order, repeat_flag, reminders, items, tags, parent_id,
+         is_all_day, priority, pinned, status, sort_order, repeat_flag, reminders, items, tags, parent_id,
          column_id, focus_summaries, created_time, modified_time)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -850,6 +852,7 @@ export async function spawnNextOccurrence(
       row.time_zone != null ? String(row.time_zone) : null,
       Number(row.is_all_day ?? 0),
       Number(row.priority ?? 0),
+      Number(row.pinned ?? 0),
       Number(row.sort_order ?? 0),
       repeatFlag,
       row.reminders != null ? String(row.reminders) : null,

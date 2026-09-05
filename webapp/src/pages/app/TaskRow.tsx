@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlignLeft, Ban, Bell, Calendar, CheckSquare, MoreHorizontal, Repeat, RotateCcw, Square, Trash2 } from 'lucide-react';
+import { AlignLeft, Ban, Bell, Calendar, CheckSquare, MoreHorizontal, Pin, PinOff, Repeat, RotateCcw, Square, Trash2 } from 'lucide-react';
 import type { Task } from '../../lib/types';
 import { useStore } from '../../stores/store';
 import { dayOf, scheduleLabel, todayStr } from '../../components/taskSchedule';
@@ -140,6 +140,9 @@ export function TaskRow({
       </div>
       {/* inline indicators */}
       <span className="hidden shrink-0 items-center gap-1.5 text-ink-3 group-hover:hidden sm:flex">
+        {task.pinned && (
+          <span title={t('pinned')}><Pin size={12} /></span>
+        )}
         {task.reminders.length > 0 && (
           <span title={t('reminder')}><Bell size={12} /></span>
         )}
@@ -272,6 +275,14 @@ export function TaskRow({
             {(close) =>
               menuView === 'main' ? (
                 <>
+                  <MenuItem
+                    icon={task.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+                    label={task.pinned ? t('unpinTask') : t('pinTask')}
+                    onClick={() => {
+                      close();
+                      void saveTask(task.id, { projectId: task.projectId, pinned: !task.pinned });
+                    }}
+                  />
                   <MenuItem
                     label={t('duplicateTask')}
                     onClick={() => {

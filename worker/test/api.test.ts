@@ -901,6 +901,54 @@ describe('tasks / projects / tags', () => {
     const parentRow = await env.DB.prepare('SELECT child_ids FROM tasks WHERE id = ?').bind(parent.id).first<{ child_ids: string | null }>();
     expect(parentRow?.child_ids ?? '').not.toContain(String(child.id));
   });
+
+  it('pins and unpins tasks through the task update endpoint', async () => {
+    const { token } = await bootstrap();
+    const project = (await (
+      await SELF.fetch(`${HOST}/open/v1/project`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ name: 'Pin' }),
+      })
+    ).json()) as Record<string, unknown>;
+
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ title: 'pinnable', projectId: project.id, pinned: true }),
+      })
+    ).json()) as Record<string, unknown>;
+    expect(task.pinned).toBe(true);
+
+    const unpinned = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/${task.id}`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ id: task.id, projectId: project.id, pinned: false }),
+      })
+    ).json()) as Record<string, unknown>;
+    expect(unpinned.pinned).toBe(false);
+
+    const repinned = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/${task.id}`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ id: task.id, projectId: project.id, pinned: true }),
+      })
+    ).json()) as Record<string, unknown>;
+    expect(repinned.pinned).toBe(true);
+
+    // An update that omits `pinned` keeps the current pin state.
+    const untouched = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/${task.id}`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ id: task.id, projectId: project.id, title: 'still pinned' }),
+      })
+    ).json()) as Record<string, unknown>;
+    expect(untouched.pinned).toBe(true);
+  });
 });
 
 describe('habits / focus / countdown', () => {
