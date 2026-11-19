@@ -23,6 +23,14 @@ export async function run({ h }) {
     h.runFails(['task', 'create', '--title', 'x'], "required option", 'task create validation');
   });
 
+  h.test('task create: non-numeric --priority fails instead of being dropped', () => {
+    h.runFails(
+      ['task', 'create', '--title', 'x', '--project', work.id, '--priority', 'high'],
+      '--priority must be an integer',
+      'task create bad priority',
+    );
+  });
+
   h.test('task create: unknown project fails', () => {
     h.runFails(
       ['task', 'create', '--title', 'x', '--project', '0'.repeat(24)],
@@ -154,6 +162,9 @@ export async function run({ h }) {
     const got = h.j(['task', 'get', work.id, t.id], 'get after complete');
     eq(got.status, 2, 'status completed');
     ok(got.completedTime, 'completedTime set');
+    // Completing again is a no-op: same completion time, no failure.
+    h.runOk(['task', 'complete', work.id, t.id], 'task complete again');
+    eq(h.j(['task', 'get', work.id, t.id], 'get after re-complete').completedTime, got.completedTime, 'completedTime kept');
     ids.push(t.id);
   });
 

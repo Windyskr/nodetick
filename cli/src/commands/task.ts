@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { getApi } from '../lib/api.js';
 import { formatCommentRow, formatJson, formatTaskRow, formatTaskView } from '../lib/output.js';
+import { numberListOption, numberOption } from '../lib/options.js';
 
 function parseItems(raw: string): unknown {
   try {
@@ -8,10 +9,6 @@ function parseItems(raw: string): unknown {
   } catch {
     return raw.split(',').map((title) => ({ title: title.trim(), status: 0 }));
   }
-}
-
-function parseNumberList(raw: string): number[] {
-  return raw.split(',').map((s) => parseInt(s.trim(), 10));
 }
 
 function parseStringList(raw: string): string[] {
@@ -68,8 +65,8 @@ async function createTask(options: Record<string, string | boolean | undefined>)
     timeZone: options.timeZone,
     reminders: options.reminders ? parseStringList(options.reminders as string) : undefined,
     repeatFlag: options.repeat,
-    priority: options.priority ? parseInt(options.priority as string, 10) : undefined,
-    sortOrder: options.sortOrder ? parseInt(options.sortOrder as string, 10) : undefined,
+    priority: numberOption('--priority', options.priority, { integer: true }),
+    sortOrder: numberOption('--sort-order', options.sortOrder, { integer: true }),
     items: options.items ? parseItems(options.items as string) : undefined,
     tags: options.tags ? parseStringList(options.tags as string) : undefined,
   });
@@ -111,8 +108,8 @@ async function updateTask(
     timeZone: options.timeZone,
     reminders: options.reminders ? parseStringList(options.reminders as string) : undefined,
     repeatFlag: options.repeat,
-    priority: options.priority ? parseInt(options.priority as string, 10) : undefined,
-    sortOrder: options.sortOrder ? parseInt(options.sortOrder as string, 10) : undefined,
+    priority: numberOption('--priority', options.priority, { integer: true }),
+    sortOrder: numberOption('--sort-order', options.sortOrder, { integer: true }),
     items: options.items ? parseItems(options.items as string) : undefined,
     tags: options.tags ? parseStringList(options.tags as string) : undefined,
   });
@@ -229,9 +226,9 @@ async function filterTasksCmd(options: Record<string, string | boolean | undefin
     projectIds: options.projects ? parseStringList(options.projects as string) : undefined,
     startDate: options.startDate,
     endDate: options.endDate,
-    priority: options.priority ? parseNumberList(options.priority as string) : undefined,
+    priority: numberListOption('--priority', options.priority, { integer: true }),
     tag: options.tag ? parseStringList(options.tag as string) : undefined,
-    status: options.status ? parseNumberList(options.status as string) : undefined,
+    status: numberListOption('--status', options.status, { integer: true }),
   });
   if (options.json) {
     console.log(formatJson(tasks));
@@ -255,7 +252,7 @@ async function searchTasksCmd(
     keywords,
     projectIds: options.projects ? parseStringList(options.projects as string) : undefined,
     tags: options.tags ? parseStringList(options.tags as string) : undefined,
-    status: options.status ? parseNumberList(options.status as string) : undefined,
+    status: numberListOption('--status', options.status, { integer: true }),
     dueFrom: options.dueFrom,
     dueTo: options.dueTo,
   });

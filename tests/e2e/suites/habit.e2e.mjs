@@ -43,6 +43,10 @@ export async function run({ h }) {
     has(text.stdout, 'Goal:      8', 'text shows goal');
   });
 
+  h.test('habit update: non-numeric --goal fails instead of being dropped', () => {
+    h.runFails(['habit', 'update', habitId, '--goal', 'lots'], '--goal must be a number', 'habit update bad goal');
+  });
+
   h.test('habit update: name/goal/unit', () => {
     const x = h.j(['habit', 'update', habitId, '--name', `${pfx}-water2`, '--goal', '10', '--unit', 'ml'], 'habit update');
     eq(x.name, `${pfx}-water2`, 'updated name');

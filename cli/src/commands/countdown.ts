@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { getApi } from '../lib/api.js';
+import { numberOption } from '../lib/options.js';
 import { formatCountdownRow, formatJson } from '../lib/output.js';
 
 type Options = Record<string, string | boolean | undefined>;
@@ -26,7 +27,7 @@ async function createCountdown(options: Options & { json?: boolean }) {
   const countdown = await api.createCountdown({
     name: options.name,
     date: options.date,
-    sortOrder: options.sortOrder ? parseInt(options.sortOrder as string, 10) : undefined,
+    sortOrder: numberOption('--sort-order', options.sortOrder, { integer: true }),
   });
   if (options.json) {
     console.log(formatJson(countdown));
@@ -41,7 +42,7 @@ async function updateCountdown(countdownId: string, options: Options & { json?: 
   const countdown = await api.updateCountdown(countdownId, {
     name: options.name,
     date: options.date,
-    sortOrder: options.sortOrder ? parseInt(options.sortOrder as string, 10) : undefined,
+    sortOrder: numberOption('--sort-order', options.sortOrder, { integer: true }),
   });
   if (options.json) {
     console.log(formatJson(countdown));

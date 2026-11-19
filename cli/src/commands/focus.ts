@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { getApi } from '../lib/api.js';
+import { numberListOption, numberOption } from '../lib/options.js';
 import { formatFocusRow, formatFocusView, formatJson } from '../lib/output.js';
 
 type Options = Record<string, string | boolean | undefined>;
@@ -51,13 +52,9 @@ async function createFocusCmd(options: Options & { json?: boolean }) {
     note: options.note,
     startTime: options.startTime,
     endTime: options.endTime,
-    pauseDuration: options.pauseDuration
-      ? parseInt(options.pauseDuration as string, 10)
-      : undefined,
-    duration: options.duration ? parseInt(options.duration as string, 10) : undefined,
-    relationType: options.relationType
-      ? (options.relationType as string).split(',').map((s) => parseInt(s.trim(), 10))
-      : undefined,
+    pauseDuration: numberOption('--pause-duration', options.pauseDuration, { integer: true }),
+    duration: numberOption('--duration', options.duration, { integer: true }),
+    relationType: numberListOption('--relation-type', options.relationType, { integer: true }),
   });
   if (options.json) {
     console.log(formatJson(focus));

@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { getApi } from '../lib/api.js';
+import { numberOption } from '../lib/options.js';
 import {
   formatColumnRow,
   formatJson,
@@ -58,7 +59,7 @@ function projectFields(options: Options) {
   return {
     name: options.name,
     color: options.color,
-    sortOrder: options.sortOrder ? parseInt(options.sortOrder as string, 10) : undefined,
+    sortOrder: numberOption('--sort-order', options.sortOrder, { integer: true }),
     viewMode: options.viewMode,
     kind: options.kind,
   };

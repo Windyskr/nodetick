@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { getApi } from '../lib/api.js';
+import { numberOption } from '../lib/options.js';
 import { formatHabitRow, formatHabitView, formatJson } from '../lib/output.js';
 
 type Options = Record<string, string | boolean | undefined>;
@@ -14,17 +15,17 @@ function habitFields(options: Options) {
     name: options.name,
     iconRes: options.iconRes,
     color: options.color,
-    sortOrder: options.sortOrder ? parseInt(options.sortOrder as string, 10) : undefined,
-    status: options.status ? parseInt(options.status as string, 10) : undefined,
+    sortOrder: numberOption('--sort-order', options.sortOrder, { integer: true }),
+    status: numberOption('--status', options.status, { integer: true }),
     encouragement: options.encouragement,
     type: options.type,
-    goal: options.goal != null ? Number(options.goal) : undefined,
-    step: options.step != null ? Number(options.step) : undefined,
+    goal: numberOption('--goal', options.goal),
+    step: numberOption('--step', options.step),
     unit: options.unit,
     repeatRule: options.repeat,
     reminders: options.reminders ? parseStringList(options.reminders as string) : undefined,
     sectionId: options.sectionId,
-    style: options.style ? parseInt(options.style as string, 10) : undefined,
+    style: numberOption('--style', options.style, { integer: true }),
   };
 }
 
@@ -85,9 +86,9 @@ async function checkinCmd(habitId: string, options: Options & { json?: boolean }
     stamp,
     time: options.time,
     opTime: options.opTime,
-    value: options.value != null ? Number(options.value) : undefined,
-    goal: options.goal != null ? Number(options.goal) : undefined,
-    status: options.status ? parseInt(options.status as string, 10) : undefined,
+    value: numberOption('--value', options.value),
+    goal: numberOption('--goal', options.goal),
+    status: numberOption('--status', options.status, { integer: true }),
   });
   if (options.json) {
     console.log(formatJson(agg));
