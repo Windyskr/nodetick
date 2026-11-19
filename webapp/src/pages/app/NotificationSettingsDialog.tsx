@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BellRing, Loader2, Send, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { NotificationConfig, NotificationSettings } from '../../lib/types';
+import { useT, useTF, type Key } from '../../i18n';
 
 interface Props {
   onClose: () => void;
@@ -46,8 +47,13 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
   const [permission, setPermission] = useState<NotificationPermission>(
     typeof Notification === 'undefined' ? 'denied' : Notification.permission,
   );
+  const t = useT();
+  const f = useTF();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
+  // Status line: a translated success message, or a raw error text.
+  const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const done = (key: Key) => setMessage({ text: t(key), ok: true });
+  const fail = (error: unknown) => setMessage({ text: (error as Error).message, ok: false });
   const supported = typeof Notification !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window;
 
   useEffect(() => {
@@ -57,7 +63,7 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || next.settings.timezone;
       setConfig(next);
       setSettings({ ...next.settings, timezone });
-    }).catch((error: Error) => active && setMessage(error.message));
+    }).catch((error: Error) => active && fail(error));
     return () => { active = false; };
   }, []);
 
@@ -69,11 +75,11 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
   const enable = async () => {
     if (!supported || !config?.configured) return;
     setBusy(true);
-    setMessage('');
+    setMessage(null);
     try {
       const granted = await Notification.requestPermission();
       setPermission(granted);
-      if (granted !== 'granted') throw new Error('浏览器未授予通知权限。');
+      if (granted !== 'granted') throw new Error(t('notifyPermissionDenied'));
       const registration = await workerRegistration();
       let subscription = await registration.pushManager.getSubscription();
       if (!subscription) {
@@ -83,14 +89,14 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
         });
       }
       const json = subscription.toJSON();
-      if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error('浏览器返回了无效的推送订阅。');
+      if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error(t('notifyInvalidSubscription'));
       await api.subscribeNotifications({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } });
       const next = { ...settings, enabled: true };
       await persist(next);
       setConfig({ ...config, subscribedDevices: Math.max(1, config.subscribedDevices), settings: next });
-      setMessage('通知已开启。');
+      done('notifyEnabled');
     } catch (error) {
-      setMessage((error as Error).message);
+      fail(error);
     } finally {
       setBusy(false);
     }
@@ -98,15 +104,15 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
 
   const disable = async () => {
     setBusy(true);
-    setMessage('');
+    setMessage(null);
     try {
       if (supported) await unsubscribeCurrentBrowser();
       const next = { ...settings, enabled: false };
       await persist(next);
       if (config) setConfig({ ...config, subscribedDevices: Math.max(0, config.subscribedDevices - 1), settings: next });
-      setMessage('通知已关闭。');
+      done('notifyDisabled');
     } catch (error) {
-      setMessage((error as Error).message);
+      fail(error);
     } finally {
       setBusy(false);
     }
@@ -114,22 +120,23 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
 
   const change = async <K extends keyof NotificationSettings>(key: K, value: NotificationSettings[K]) => {
     const next = { ...settings, [key]: value };
-    setMessage('');
+    setMessage(null);
     try {
       await persist(next);
     } catch (error) {
-      setMessage((error as Error).message);
+      fail(error);
     }
   };
 
   const test = async () => {
     setBusy(true);
-    setMessage('');
+    setMessage(null);
     try {
       const result = await api.testNotification();
-      setMessage(result.sent > 0 ? '测试通知已发送。' : '没有可用的通知设备。');
+      if (result.sent > 0) done('notifyTestSent');
+      else setMessage({ text: t('notifyNoDevice'), ok: false });
     } catch (error) {
-      setMessage((error as Error).message);
+      fail(error);
     } finally {
       setBusy(false);
     }
@@ -148,11 +155,11 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
           <div className="flex items-center gap-2.5">
             <BellRing size={20} className="text-tt" />
             <div>
-              <h2 id="notification-title" className="text-[16px] font-semibold">通知与提醒</h2>
-              <p className="mt-0.5 text-[11px] text-ink-3">关闭页面后也能收到任务、习惯和纪念日提醒</p>
+              <h2 id="notification-title" className="text-[16px] font-semibold">{t('notifyTitle')}</h2>
+              <p className="mt-0.5 text-[11px] text-ink-3">{t('notifySubtitle')}</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-ink-3 hover:bg-hover hover:text-ink" aria-label="关闭">
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-ink-3 hover:bg-hover hover:text-ink" aria-label={t('close')}>
             <X size={18} />
           </button>
         </header>
@@ -161,15 +168,15 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
           <div className="flex h-48 items-center justify-center"><Loader2 size={20} className="animate-spin text-tt" /></div>
         ) : (
           <div className="p-5">
-            {!supported && <Notice text="当前浏览器不支持 Web Push 通知。" />}
-            {supported && !config.configured && <Notice text="服务端尚未配置 VAPID 密钥。请按 README 配置后再开启通知。" />}
-            {permission === 'denied' && <Notice text="通知权限已被浏览器阻止，请在网站权限设置中重新允许。" />}
+            {!supported && <Notice text={t('notifyUnsupported')} />}
+            {supported && !config.configured && <Notice text={t('notifyNotConfigured')} />}
+            {permission === 'denied' && <Notice text={t('notifyBlocked')} />}
 
-            <div className="mb-4 flex items-center justify-between rounded-xl bg-[#f7f8fa] px-4 py-3">
+            <div className="mb-4 flex items-center justify-between rounded-xl bg-hover px-4 py-3">
               <div>
-                <div className="text-[14px] font-medium">浏览器通知</div>
+                <div className="text-[14px] font-medium">{t('notifyBrowser')}</div>
                 <div className="mt-0.5 text-[11px] text-ink-3">
-                  {settings.enabled ? `已开启 · ${config.subscribedDevices} 台设备` : '未开启'}
+                  {settings.enabled ? f('notifyOnDevices', config.subscribedDevices) : t('notifyOff')}
                 </div>
               </div>
               <button
@@ -185,12 +192,12 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
             </div>
 
             <div className={settings.enabled ? '' : 'pointer-events-none opacity-45'}>
-              <SettingRow label="任务提醒" checked={settings.taskEnabled} onChange={(value) => void change('taskEnabled', value)} />
-              <SettingRow label="习惯打卡提醒" checked={settings.habitEnabled} onChange={(value) => void change('habitEnabled', value)} />
-              <SettingRow label="纪念日提醒" checked={settings.countdownEnabled} onChange={(value) => void change('countdownEnabled', value)} />
-              <SettingRow label="通知提示音" checked={settings.soundEnabled} onChange={(value) => void change('soundEnabled', value)} />
+              <SettingRow label={t('notifyTasks')} checked={settings.taskEnabled} onChange={(value) => void change('taskEnabled', value)} />
+              <SettingRow label={t('notifyHabits')} checked={settings.habitEnabled} onChange={(value) => void change('habitEnabled', value)} />
+              <SettingRow label={t('notifyCountdowns')} checked={settings.countdownEnabled} onChange={(value) => void change('countdownEnabled', value)} />
+              <SettingRow label={t('notifySound')} checked={settings.soundEnabled} onChange={(value) => void change('soundEnabled', value)} />
               <label className="flex items-center justify-between border-t border-line px-1 py-3 text-[13px]">
-                <span>全天事项提醒时间</span>
+                <span>{t('notifyAllDayTime')}</span>
                 <input
                   type="time"
                   value={settings.allDayTime}
@@ -201,14 +208,14 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
             </div>
 
             <div className="mt-4 flex min-h-9 items-center justify-between border-t border-line pt-4">
-              <span className={`text-[11px] ${message.includes('已') ? 'text-[#3a8f68]' : 'text-[#b45b5b]'}`}>{message}</span>
+              <span className={`text-[11px] ${message?.ok ? 'text-[#3a8f68]' : 'text-[#b45b5b]'}`}>{message?.text}</span>
               <button
                 type="button"
                 disabled={busy || !settings.enabled}
                 onClick={() => void test()}
                 className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12px] hover:bg-hover disabled:opacity-40"
               >
-                {busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} 发送测试通知
+                {busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} {t('notifySendTest')}
               </button>
             </div>
           </div>

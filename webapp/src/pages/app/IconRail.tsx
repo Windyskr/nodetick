@@ -194,8 +194,8 @@ export default function IconRail() {
       <div className="mt-auto">
         <button
           type="button"
-          title="通知与提醒"
-          aria-label="通知与提醒"
+          title={t('notifyTitle')}
+          aria-label={t('notifyTitle')}
           onClick={() => setNotificationsOpen(true)}
           className="flex h-10 w-10 items-center justify-center rounded-lg text-[#8c8c8c] transition-colors hover:bg-hover hover:text-ink-2"
         >
