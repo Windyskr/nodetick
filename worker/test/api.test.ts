@@ -234,6 +234,27 @@ describe('auth', () => {
     expect(res.status).toBe(413);
   });
 
+  it('applies no part of a move batch that it rejects', async () => {
+    const { token } = await bootstrap();
+    const post = async (path: string, body: unknown) =>
+      SELF.fetch(`${HOST}/open/v1${path}`, { method: 'POST', headers: auth(token), body: JSON.stringify(body) });
+    const from = (await (await post('/project', { name: 'From' })).json()) as { id: string };
+    const to = (await (await post('/project', { name: 'To' })).json()) as { id: string };
+    const task = (await (await post('/task', { title: 'Stay put', projectId: from.id })).json()) as { id: string };
+    const valid = { fromProjectId: from.id, toProjectId: to.id, taskId: task.id };
+
+    const unknownDestination = await post('/task/move', [valid, { ...valid, taskId: 'other', toProjectId: '0'.repeat(24) }]);
+    expect(unknownDestination.status).toBe(404);
+    const duplicate = await post('/task/move', [valid, valid]);
+    expect(duplicate.status).toBe(400);
+    const stillThere = await SELF.fetch(`${HOST}/open/v1/project/${from.id}/task/${task.id}`, { headers: auth(token) });
+    expect(stillThere.status).toBe(200);
+
+    const ok = await post('/task/move', [valid]);
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { projectId: string }[])[0].projectId).toBe(to.id);
+  });
+
   it('creates, lists, updates and deletes saved filters', async () => {
     const { token } = await bootstrap();
     const createdRes = await SELF.fetch(`${HOST}/open/v1/filter`, {

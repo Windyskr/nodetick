@@ -192,7 +192,9 @@ tasks.post('/task/move', async (c) => {
   const moves = await readJsonValue(c);
   if (!Array.isArray(moves)) return c.json({ error: 'expected an array of moves' }, 400);
   if (moves.length > MAX_BATCH) return c.json({ error: `too many moves (max ${MAX_BATCH})` }, 413);
-  const out: ReturnType<typeof serializeTask>[] = [];
+  // Validate the whole batch before moving anything: an error response must
+  // never leave the earlier entries of the same request applied.
+  const planned: { fromProjectId: string; toProjectId: string; taskId: string }[] = [];
   const seenTaskIds = new Set<string>();
   for (const raw of moves) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -215,14 +217,27 @@ tasks.post('/task/move', async (c) => {
       .first();
     if (!destination) return c.json({ error: 'destination project not found' }, 404);
     const current = await c.env.DB.prepare(
-      'SELECT project_id, parent_id, column_id FROM tasks WHERE id = ? AND user_id = ? AND deleted = 0',
+      'SELECT project_id FROM tasks WHERE id = ? AND user_id = ? AND deleted = 0',
     )
       .bind(taskId, userId)
-      .first<{ project_id: string; parent_id: string | null; column_id: string | null }>();
+      .first<{ project_id: string }>();
     if (!current) return c.json({ error: 'task not found' }, 404);
     if (String(current.project_id) !== fromProjectId) {
       return c.json({ error: 'task is not in fromProjectId' }, 409);
     }
+    planned.push({ fromProjectId, toProjectId, taskId });
+  }
+
+  const out: ReturnType<typeof serializeTask>[] = [];
+  for (const { fromProjectId, toProjectId, taskId } of planned) {
+    // Re-read: an earlier move in this batch may have detached this task
+    // from a parent that changed project.
+    const current = await c.env.DB.prepare(
+      'SELECT parent_id, column_id FROM tasks WHERE id = ? AND user_id = ? AND deleted = 0 AND project_id = ?',
+    )
+      .bind(taskId, userId, fromProjectId)
+      .first<{ parent_id: string | null; column_id: string | null }>();
+    if (!current) return c.json({ error: 'task changed before it could be moved' }, 409);
     const crossesProject = fromProjectId !== toProjectId;
     if (crossesProject) {
       if (current.parent_id) await removeChildId(c.env.DB, userId, String(current.parent_id), taskId);
