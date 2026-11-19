@@ -5,7 +5,7 @@ import {
 } from '@block65/webcrypto-web-push';
 import type { Env } from '../env.js';
 import { ensureSchema } from '../db.js';
-import { genId, parseJsonArray } from '../util.js';
+import { daysInMonth, genId, parseJsonArray } from '../util.js';
 
 export interface NotificationPayload {
   title: string;
@@ -117,6 +117,25 @@ function addDays(day: string, amount: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** A repeat's occurrence in a month, clamped to its last day (31st → Feb 28/29, Feb 29 → Feb 28). */
+function occurrenceIn(year: number, month: number, day: number): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${year}-${pad(month)}-${pad(Math.min(day, daysInMonth(year, month)))}`;
+}
+
+/**
+ * Whether a countdown dated `date` (YYYY-MM-DD) falls on `day`. Yearly and
+ * monthly repeats recur from the original date onwards; days that a short
+ * month lacks fall on that month's last day instead of being skipped.
+ */
+export function countdownFallsOn(date: string, repeat: unknown, day: string): boolean {
+  if (day < date) return false;
+  if (repeat !== 'yearly' && repeat !== 'monthly') return day === date;
+  const year = Number(day.slice(0, 4));
+  const month = repeat === 'yearly' ? Number(date.slice(5, 7)) : Number(day.slice(5, 7));
+  return day === occurrenceIn(year, month, Number(date.slice(8, 10)));
+}
+
 async function settings(db: D1Database): Promise<SettingRow[]> {
   const rows = await db.prepare(
     `SELECT u.id AS user_id,
@@ -208,13 +227,13 @@ async function countdownCandidates(db: D1Database, setting: SettingRow, now: num
   ).bind(setting.user_id).all<Record<string, unknown>>();
   const out: Candidate[] = [];
   for (const row of rows.results) {
-    let eventDay = String(row.date ?? '');
+    const eventDay = String(row.date ?? '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDay)) continue;
-    if (row.repeat_flag === 'yearly') eventDay = `${today.slice(0, 4)}-${eventDay.slice(5)}`;
-    if (row.repeat_flag === 'monthly') eventDay = `${today.slice(0, 7)}-${eventDay.slice(8)}`;
     for (const reminder of parseJsonArray<string>(String(row.reminders ?? '[]'))) {
       const lead = reminder === 'same-day' ? 0 : reminder === '3-days' ? 3 : null;
-      if (lead == null || addDays(today, lead) !== eventDay) continue;
+      // Match the day the reminder points at (today + lead), so a Jan 2 event
+      // is announced on Dec 30 and a monthly 31st still fires in short months.
+      if (lead == null || !countdownFallsOn(eventDay, row.repeat_flag, addDays(today, lead))) continue;
       const scheduledAt = zonedTimestamp(today, setting.all_day_time, setting.timezone);
       if (scheduledAt == null || !dueNow(scheduledAt, now)) continue;
       const id = String(row.id);

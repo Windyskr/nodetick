@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env, reset, SELF } from 'cloudflare:test';
 import { issueApiToken } from '../src/auth.js';
-import { dispatchDueNotifications, pushConfigured, sendToUser } from '../src/services/notifications.js';
+import {
+  countdownFallsOn,
+  dispatchDueNotifications,
+  pushConfigured,
+  sendToUser,
+} from '../src/services/notifications.js';
 import { parseApiDate } from '../src/util.js';
 
 // The Vitest 4 Cloudflare integration no longer exposes the old implicit
@@ -1435,6 +1440,23 @@ describe('notification dispatch', () => {
     const claims = await env.DB.prepare('SELECT COUNT(*) AS n FROM notification_deliveries').first<{ n: number }>();
     expect(claims?.n).toBe(0);
   });
+
+  it('announces a yearly countdown across the new year and moves monthly days to short month ends', async () => {
+    const { post } = await pushUser();
+    expect((await post('/countdown', { name: 'Birthday', date: '2020-01-02', repeatFlag: 'yearly', reminders: ['3-days'] })).status).toBe(200);
+    expect((await post('/countdown', { name: 'Rent', date: '2026-01-31', repeatFlag: 'monthly', reminders: ['same-day'] })).status).toBe(200);
+    const testEnv = await pushEnv();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(null, { status: 201 }));
+    try {
+      // 09:00 Asia/Shanghai is 01:00Z. Dec 30 is "3 days" before Jan 2 of the next year.
+      expect((await dispatchDueNotifications(testEnv, Date.parse('2026-12-30T01:00:00Z'))).candidates).toBe(1);
+      // February 2027 has no 31st: the monthly countdown falls on the 28th, not never.
+      expect((await dispatchDueNotifications(testEnv, Date.parse('2027-02-27T01:00:00Z'))).candidates).toBe(0);
+      expect((await dispatchDueNotifications(testEnv, Date.parse('2027-02-28T01:00:00Z'))).candidates).toBe(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });
 
 describe('oauth', () => {
@@ -2267,5 +2289,25 @@ describe('strict input validation', () => {
     const focus = (startTime: string, endTime: string) => post('/focus', { type: 0, startTime, endTime });
     expect((await focus('2026-02-30T10:00:00+0800', '2026-02-30T10:25:00+0800')).status).toBe(400);
     expect((await focus('2026-02-28T10:00:00+0800', '2026-02-28T10:25:00+0800')).status).toBe(200);
+  });
+});
+
+describe('countdown repeat matching', () => {
+  it('moves monthly and leap-day repeats to the month end and never fires before the start date', () => {
+    expect(countdownFallsOn('2026-01-31', 'monthly', '2026-02-28')).toBe(true);
+    expect(countdownFallsOn('2026-01-31', 'monthly', '2026-02-27')).toBe(false);
+    expect(countdownFallsOn('2026-01-31', 'monthly', '2026-04-30')).toBe(true);
+    expect(countdownFallsOn('2026-01-31', 'monthly', '2026-03-31')).toBe(true);
+    expect(countdownFallsOn('2026-01-31', 'monthly', '2028-02-29')).toBe(true);
+    expect(countdownFallsOn('2026-01-31', 'monthly', '2028-02-28')).toBe(false);
+    expect(countdownFallsOn('2024-02-29', 'yearly', '2027-02-28')).toBe(true);
+    expect(countdownFallsOn('2024-02-29', 'yearly', '2027-03-01')).toBe(false);
+    expect(countdownFallsOn('2024-02-29', 'yearly', '2028-02-29')).toBe(true);
+    expect(countdownFallsOn('2024-02-29', 'yearly', '2028-02-28')).toBe(false);
+    expect(countdownFallsOn('2020-01-02', 'yearly', '2027-01-02')).toBe(true);
+    expect(countdownFallsOn('2027-05-01', 'yearly', '2026-05-01')).toBe(false);
+    expect(countdownFallsOn('2026-06-15', 'monthly', '2026-05-15')).toBe(false);
+    expect(countdownFallsOn('2026-12-31', null, '2026-12-31')).toBe(true);
+    expect(countdownFallsOn('2026-12-31', null, '2027-12-31')).toBe(false);
   });
 });
