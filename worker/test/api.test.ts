@@ -4,6 +4,8 @@ import { issueApiToken } from '../src/auth.js';
 import {
   countdownFallsOn,
   dispatchDueNotifications,
+  localizedPayload,
+  NOTIFICATION_TEXT,
   pushConfigured,
   sendToUser,
 } from '../src/services/notifications.js';
@@ -2309,5 +2311,31 @@ describe('countdown repeat matching', () => {
     expect(countdownFallsOn('2026-06-15', 'monthly', '2026-05-15')).toBe(false);
     expect(countdownFallsOn('2026-12-31', null, '2026-12-31')).toBe(true);
     expect(countdownFallsOn('2026-12-31', null, '2027-12-31')).toBe(false);
+  });
+});
+
+describe('push notification language', () => {
+  it('localizes app copy per device and keeps user content as typed', () => {
+    const payload = { title: '买牛奶', body: NOTIFICATION_TEXT.taskDue, tag: 't', url: '/', sourceType: 'task' as const, sourceId: '1' };
+    expect(localizedPayload(payload, 'en')).toMatchObject({ title: '买牛奶', body: 'Task is due now' });
+    expect(localizedPayload(payload, 'zh')).toMatchObject({ title: '买牛奶', body: '任务到时间了' });
+  });
+
+  it.runIf(pushConfigured(env))("stores each subscription's language, from the app or else the browser", async () => {
+    const { token } = await bootstrap();
+    const keys = { p256dh: 'abc', auth: 'abc' };
+    const subscribe = (endpoint: string, extra: Record<string, unknown>, headers: Record<string, string> = {}) =>
+      SELF.fetch(`${HOST}/open/v1/notification/subscribe`, json({ endpoint, keys, ...extra }, { ...auth(token), ...headers }));
+    const langOf = async (endpoint: string) =>
+      (await env.DB.prepare('SELECT lang FROM push_subscriptions WHERE endpoint = ?').bind(endpoint).first<{ lang: string }>())?.lang;
+    expect((await subscribe('https://push.example/a', { lang: 'en' })).status).toBe(200);
+    expect((await subscribe('https://push.example/b', {}, { 'Accept-Language': 'en-US,en;q=0.9' })).status).toBe(200);
+    expect((await subscribe('https://push.example/c', {}, { 'Accept-Language': 'zh-CN,zh;q=0.9' })).status).toBe(200);
+    expect(await langOf('https://push.example/a')).toBe('en');
+    expect(await langOf('https://push.example/b')).toBe('en');
+    expect(await langOf('https://push.example/c')).toBe('zh');
+    // Switching the UI language re-subscribes the same endpoint with the new language.
+    expect((await subscribe('https://push.example/a', { lang: 'zh' })).status).toBe(200);
+    expect(await langOf('https://push.example/a')).toBe('zh');
   });
 });

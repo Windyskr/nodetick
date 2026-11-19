@@ -7,9 +7,35 @@ import type { Env } from '../env.js';
 import { ensureSchema } from '../db.js';
 import { daysInMonth, genId, parseJsonArray } from '../util.js';
 
+/** Languages a push subscription can receive (the device's UI language). */
+export type PushLang = 'zh' | 'en';
+/** User content (task names) stays a plain string; app copy carries both languages. */
+export type Localized = string | Readonly<Record<PushLang, string>>;
+
+/** App-provided notification copy, picked per device by the subscription's language. */
+export const NOTIFICATION_TEXT = {
+  taskDue: { zh: '任务到时间了', en: 'Task is due now' },
+  taskSoon: { zh: '任务即将开始', en: 'Task starts soon' },
+  habitPending: { zh: '今天还没有打卡', en: "You haven't checked in today" },
+  countdownToday: { zh: '今天', en: 'Today' },
+  countdownSoon: { zh: '还有 3 天', en: '3 days to go' },
+  testTitle: { zh: 'NodeTick 通知测试', en: 'NodeTick test notification' },
+  testBody: { zh: '通知功能已经连接成功。', en: 'Notifications are working.' },
+} as const;
+
+export function pushLang(value: unknown): PushLang {
+  return value === 'en' ? 'en' : 'zh';
+}
+
+/** The payload a given device receives: title/body resolved to its language. */
+export function localizedPayload(payload: NotificationPayload, lang: PushLang) {
+  const pick = (value: Localized) => (typeof value === 'string' ? value : value[lang]);
+  return { ...payload, title: pick(payload.title), body: pick(payload.body) };
+}
+
 export interface NotificationPayload {
-  title: string;
-  body: string;
+  title: Localized;
+  body: Localized;
   tag: string;
   url: string;
   sourceType: 'task' | 'habit' | 'countdown' | 'test';
@@ -178,7 +204,7 @@ async function taskCandidates(db: D1Database, setting: SettingRow, now: number):
         userId: setting.user_id, scheduledAt,
         dedupeKey: `task:${id}:${reminder}:${scheduledAt}`,
         sourceType: 'task', sourceId: id, tag: `task-${id}`,
-        title: String(row.title), body: offset === 0 ? '任务到时间了' : '任务即将开始',
+        title: String(row.title), body: offset === 0 ? NOTIFICATION_TEXT.taskDue : NOTIFICATION_TEXT.taskSoon,
         url: `/app/tasks/all?task=${encodeURIComponent(id)}`,
         sound: setting.sound_enabled ? 'on' : 'off',
       });
@@ -211,7 +237,7 @@ async function habitCandidates(db: D1Database, setting: SettingRow, now: number)
         userId: setting.user_id, scheduledAt,
         dedupeKey: `habit:${id}:${today}:${reminder}`,
         sourceType: 'habit', sourceId: id, tag: `habit-${id}-${today}`,
-        title: String(row.name), body: '今天还没有打卡', url: '/app/habit',
+        title: String(row.name), body: NOTIFICATION_TEXT.habitPending, url: '/app/habit',
         sound: setting.sound_enabled ? 'on' : 'off',
       });
     }
@@ -241,7 +267,7 @@ async function countdownCandidates(db: D1Database, setting: SettingRow, now: num
         userId: setting.user_id, scheduledAt,
         dedupeKey: `countdown:${id}:${today}:${reminder}`,
         sourceType: 'countdown', sourceId: id, tag: `countdown-${id}-${today}`,
-        title: String(row.name), body: lead === 0 ? '今天' : '还有 3 天', url: '/app/countdown',
+        title: String(row.name), body: lead === 0 ? NOTIFICATION_TEXT.countdownToday : NOTIFICATION_TEXT.countdownSoon, url: '/app/countdown',
         sound: setting.sound_enabled ? 'on' : 'off',
       });
     }
@@ -252,8 +278,8 @@ async function countdownCandidates(db: D1Database, setting: SettingRow, now: num
 export async function sendToUser(env: Env, userId: string, payload: NotificationPayload): Promise<{ sent: number; failed: number }> {
   if (!pushConfigured(env)) return { sent: 0, failed: 0 };
   const rows = await env.DB.prepare(
-    'SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?',
-  ).bind(userId).all<{ id: string; endpoint: string; p256dh: string; auth: string }>();
+    'SELECT id, endpoint, p256dh, auth, lang FROM push_subscriptions WHERE user_id = ?',
+  ).bind(userId).all<{ id: string; endpoint: string; p256dh: string; auth: string; lang: string | null }>();
   const vapid: VapidKeys = {
     subject: env.VAPID_SUBJECT!.trim(),
     publicKey: env.VAPID_PUBLIC_KEY!.trim(),
@@ -264,7 +290,9 @@ export async function sendToUser(env: Env, userId: string, payload: Notification
   await Promise.all(rows.results.map(async (row) => {
     const subscription: PushSubscription = { endpoint: row.endpoint, expirationTime: null, keys: { p256dh: row.p256dh, auth: row.auth } };
     try {
-      const request = await buildPushPayload({ data: { ...payload }, options: { ttl: 300, urgency: 'high', topic: payload.tag.slice(0, 32) } }, subscription, vapid);
+      // Each device gets the copy in its own UI language (stored at subscribe time).
+      const data = localizedPayload(payload, pushLang(row.lang));
+      const request = await buildPushPayload({ data, options: { ttl: 300, urgency: 'high', topic: payload.tag.slice(0, 32) } }, subscription, vapid);
       // Workers does not implement redirect:"error". Keep redirects manual so
       // a subscription endpoint cannot turn this into an arbitrary follow-up request.
       const response = await fetch(row.endpoint, { ...request, redirect: 'manual' });

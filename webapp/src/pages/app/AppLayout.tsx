@@ -8,6 +8,7 @@ import TaskDetail from './TaskDetail';
 import Toast from '../../components/Toast';
 import { useT } from '../../i18n';
 import { PageSpinner } from '../../components/PageSpinner';
+import { watchPushLanguage } from '../../lib/push';
 
 /** Persisted width (px) of the task detail panel; null → 36% like the original. */
 const DETAIL_WIDTH_KEY = 'ntk_detail_width';
@@ -45,6 +46,9 @@ export default function AppLayout() {
   const [detailWidth, setDetailWidth] = useState<number | null>(readDetailWidth);
   const narrow = useNarrowScreen();
   const t = useT();
+
+  // Reminders follow the UI language: re-tag this device's push subscription on switch.
+  useEffect(() => watchPushLanguage(), []);
 
   // The list drawer closes once the user picks a destination.
   useEffect(() => {

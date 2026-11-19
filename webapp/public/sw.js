@@ -3,7 +3,8 @@ self.addEventListener('push', (event) => {
   try {
     payload = event.data ? event.data.json() : {};
   } catch {
-    payload = { title: 'NodeTick', body: event.data ? event.data.text() : '你有一条新提醒' };
+    const zh = /^zh/i.test((self.navigator && self.navigator.language) || '');
+    payload = { title: 'NodeTick', body: event.data ? event.data.text() : (zh ? '你有一条新提醒' : 'You have a new reminder') };
   }
   event.waitUntil(self.registration.showNotification(payload.title || 'NodeTick', {
     body: payload.body || '',

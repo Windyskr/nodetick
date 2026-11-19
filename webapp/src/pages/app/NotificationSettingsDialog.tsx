@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { BellRing, Loader2, Send, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { NotificationConfig, NotificationSettings } from '../../lib/types';
-import { useT, useTF, type Key } from '../../i18n';
+import { useI18n, useT, useTF, type Key } from '../../i18n';
+import { currentPushSubscription, pushSupported, registerPushSubscription } from '../../lib/push';
 import { useEscape } from '../../lib/useEscape';
 
 interface Props {
@@ -56,22 +57,44 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const done = (key: Key) => setMessage({ text: t(key), ok: true });
   const fail = (error: unknown) => setMessage({ text: (error as Error).message, ok: false });
-  const supported = typeof Notification !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window;
+  const lang = useI18n((s) => s.lang);
+  // Whether THIS browser receives pushes. Turning it off only detaches this
+  // device; other devices keep their subscriptions.
+  const [deviceOn, setDeviceOn] = useState(false);
+  const supported = pushSupported();
+  const anyDevice = deviceOn || (config?.subscribedDevices ?? 0) > 0;
 
   useEffect(() => {
     let active = true;
-    void api.notificationConfig().then((next) => {
+    void (async () => {
+      // Refresh this device's server record (and language) first, so the
+      // device count below includes it.
+      const subscription = await currentPushSubscription().catch(() => null);
+      const here = !!subscription && Notification.permission === 'granted';
+      if (here && subscription) await registerPushSubscription(subscription, useI18n.getState().lang).catch(() => undefined);
+      const next = await api.notificationConfig();
       if (!active) return;
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || next.settings.timezone;
+      setDeviceOn(here);
       setConfig(next);
-      setSettings({ ...next.settings, timezone });
-    }).catch((error: Error) => active && fail(error));
+      setSettings({ ...next.settings, timezone, enabled: next.settings.enabled || here });
+      // Older builds switched notifications off for the whole account from one
+      // device; a subscribed device means the account should be on.
+      if (here && !next.settings.enabled) {
+        void api.updateNotificationSettings({ ...next.settings, timezone, enabled: true }).catch(() => undefined);
+      }
+    })().catch((error: Error) => active && fail(error));
     return () => { active = false; };
   }, []);
 
   const persist = async (next: NotificationSettings) => {
     setSettings(next);
     await api.updateNotificationSettings(next);
+  };
+
+  const refreshDevices = async () => {
+    const next = await api.notificationConfig();
+    setConfig((current) => (current ? { ...current, subscribedDevices: next.subscribedDevices } : next));
   };
 
   const enable = async () => {
@@ -90,12 +113,10 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
           applicationServerKey: applicationKey(config.publicKey),
         });
       }
-      const json = subscription.toJSON();
-      if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error(t('notifyInvalidSubscription'));
-      await api.subscribeNotifications({ endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } });
-      const next = { ...settings, enabled: true };
-      await persist(next);
-      setConfig({ ...config, subscribedDevices: Math.max(1, config.subscribedDevices), settings: next });
+      await registerPushSubscription(subscription, lang);
+      if (!settings.enabled) await persist({ ...settings, enabled: true });
+      setDeviceOn(true);
+      await refreshDevices();
       done('notifyEnabled');
     } catch (error) {
       fail(error);
@@ -108,10 +129,11 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
     setBusy(true);
     setMessage(null);
     try {
+      // Detach only this browser. The account-wide switch stays on so the
+      // user's other devices keep receiving reminders.
       if (supported) await unsubscribeCurrentBrowser();
-      const next = { ...settings, enabled: false };
-      await persist(next);
-      if (config) setConfig({ ...config, subscribedDevices: Math.max(0, config.subscribedDevices - 1), settings: next });
+      setDeviceOn(false);
+      await refreshDevices();
       done('notifyDisabled');
     } catch (error) {
       fail(error);
@@ -176,24 +198,26 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
 
             <div className="mb-4 flex items-center justify-between rounded-xl bg-hover px-4 py-3">
               <div>
-                <div className="text-[14px] font-medium">{t('notifyBrowser')}</div>
+                <div className="text-[14px] font-medium">{t('notifyThisDevice')}</div>
                 <div className="mt-0.5 text-[11px] text-ink-3">
-                  {settings.enabled ? f('notifyOnDevices', config.subscribedDevices) : t('notifyOff')}
+                  {deviceOn
+                    ? f('notifyOnDevices', config.subscribedDevices)
+                    : config.subscribedDevices > 0 ? f('notifyOtherDevices', config.subscribedDevices) : t('notifyOff')}
                 </div>
               </div>
               <button
                 type="button"
                 disabled={busy || !supported || !config.configured || permission === 'denied'}
-                onClick={() => void (settings.enabled ? disable() : enable())}
-                className={`flex h-7 w-12 items-center rounded-full p-0.5 transition-colors disabled:opacity-40 ${settings.enabled ? 'justify-end bg-tt' : 'justify-start bg-[#d8dadd]'}`}
+                onClick={() => void (deviceOn ? disable() : enable())}
+                className={`flex h-7 w-12 items-center rounded-full p-0.5 transition-colors disabled:opacity-40 ${deviceOn ? 'justify-end bg-tt' : 'justify-start bg-[#d8dadd]'}`}
                 role="switch"
-                aria-checked={settings.enabled}
+                aria-checked={deviceOn}
               >
                 <span className="h-6 w-6 rounded-full bg-white shadow-sm" />
               </button>
             </div>
 
-            <div className={settings.enabled ? '' : 'pointer-events-none opacity-45'}>
+            <div className={anyDevice ? '' : 'pointer-events-none opacity-45'}>
               <SettingRow label={t('notifyTasks')} checked={settings.taskEnabled} onChange={(value) => void change('taskEnabled', value)} />
               <SettingRow label={t('notifyHabits')} checked={settings.habitEnabled} onChange={(value) => void change('habitEnabled', value)} />
               <SettingRow label={t('notifyCountdowns')} checked={settings.countdownEnabled} onChange={(value) => void change('countdownEnabled', value)} />
@@ -213,7 +237,7 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
               <span className={`text-[11px] ${message?.ok ? 'text-[#3a8f68]' : 'text-[#b45b5b]'}`}>{message?.text}</span>
               <button
                 type="button"
-                disabled={busy || !settings.enabled}
+                disabled={busy || !anyDevice}
                 onClick={() => void test()}
                 className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12px] hover:bg-hover disabled:opacity-40"
               >

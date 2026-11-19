@@ -239,6 +239,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   p256dh TEXT NOT NULL,
   auth TEXT NOT NULL,
   user_agent TEXT,
+  lang TEXT NOT NULL DEFAULT 'zh',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

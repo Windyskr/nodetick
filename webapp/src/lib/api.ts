@@ -88,7 +88,7 @@ export const api = {
   notificationConfig: () => get<NotificationConfig>('/open/v1/notification/config'),
   updateNotificationSettings: (settings: NotificationSettings) =>
     request<{ ok: true }>('/open/v1/notification/settings', { method: 'PUT', body: JSON.stringify(settings) }),
-  subscribeNotifications: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+  subscribeNotifications: (subscription: { endpoint: string; keys: { p256dh: string; auth: string }; lang?: 'zh' | 'en' }) =>
     post<{ ok: true }>('/open/v1/notification/subscribe', subscription),
   unsubscribeNotifications: (endpoint: string) =>
     request<{ ok: true }>('/open/v1/notification/subscribe', { method: 'DELETE', body: JSON.stringify({ endpoint }) }),

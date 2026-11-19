@@ -1,7 +1,13 @@
 import { Hono } from 'hono';
 import type { Env, Vars } from '../env.js';
 import { genId, readJsonObject } from '../util.js';
-import { pushConfigured, sendToUser } from '../services/notifications.js';
+import { NOTIFICATION_TEXT, pushConfigured, sendToUser, type PushLang } from '../services/notifications.js';
+
+/** The device's UI language: explicit from the app, else guessed from the browser (older clients). */
+function subscriptionLang(value: unknown, acceptLanguage: string | undefined): PushLang {
+  if (value === 'zh' || value === 'en') return value;
+  return /^\s*zh\b/i.test(acceptLanguage ?? 'zh') ? 'zh' : 'en';
+}
 
 export const notifications = new Hono<{ Bindings: Env; Variables: Vars }>();
 
@@ -73,11 +79,14 @@ notifications.post('/notification/subscribe', async (c) => {
   }
   const now = Date.now();
   await c.env.DB.prepare(
-    `INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, user_agent, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, user_agent, lang, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, p256dh=excluded.p256dh,
-       auth=excluded.auth, user_agent=excluded.user_agent, updated_at=excluded.updated_at`,
-  ).bind(genId(), userId, endpoint.toString(), keys.p256dh, keys.auth, (c.req.header('User-Agent') ?? '').slice(0, 512), now, now).run();
+       auth=excluded.auth, user_agent=excluded.user_agent, lang=excluded.lang, updated_at=excluded.updated_at`,
+  ).bind(
+    genId(), userId, endpoint.toString(), keys.p256dh, keys.auth, (c.req.header('User-Agent') ?? '').slice(0, 512),
+    subscriptionLang(b.lang, c.req.header('Accept-Language')), now, now,
+  ).run();
   return c.json({ ok: true });
 });
 
@@ -93,7 +102,7 @@ notifications.post('/notification/test', async (c) => {
   const userId = c.get('userId');
   if (!pushConfigured(c.env)) return c.json({ error: 'Web Push is not configured' }, 503);
   const result = await sendToUser(c.env, userId, {
-    title: 'NodeTick 通知测试', body: '通知功能已经连接成功。', tag: `test-${Date.now()}`,
+    title: NOTIFICATION_TEXT.testTitle, body: NOTIFICATION_TEXT.testBody, tag: `test-${Date.now()}`,
     url: '/app/tasks/today', sourceType: 'test', sourceId: 'test',
   });
   if (!result.sent) return c.json({ error: 'No notification could be delivered', ...result }, 502);
