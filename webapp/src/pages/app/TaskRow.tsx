@@ -305,7 +305,9 @@ export function TaskRow({
                     />
                   )}
                   <MenuItem
-                    label={done ? t('deleteForever') : t('delete')}
+                    // Completed tasks go to the trash too (undo + restore), so
+                    // "delete forever" would misdescribe this action.
+                    label={t('delete')}
                     danger
                     icon={<Trash2 size={14} />}
                     onClick={() => {
@@ -318,9 +320,18 @@ export function TaskRow({
                 <MoveList
                   onPick={(projectId) => {
                     close();
+                    const from = task.projectId;
                     void moveTask(task, projectId).then(() => {
                       const name = projectDisplayName(useStore.getState().projects.find((p) => p.id === projectId), t);
-                      showToast({ messageKey: 'movedToast', messageArg: name });
+                      showToast({
+                        messageKey: 'movedToast',
+                        messageArg: name,
+                        undo: () => {
+                          const { tasks, completed } = useStore.getState();
+                          const moved = tasks.find((x) => x.id === task.id) ?? completed.find((x) => x.id === task.id);
+                          if (moved) void moveTask(moved, from);
+                        },
+                      });
                     });
                   }}
                 />
