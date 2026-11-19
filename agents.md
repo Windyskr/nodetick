@@ -156,4 +156,6 @@
 - E2E 的 `buildCli()` 改为通过 shell 运行 `pnpm --filter cli build`：pnpm 12 是原生二进制，`npm_execpath` 不再是能交给 node 执行的 JS 文件。
 - Node 要求改为 22+：wrangler 4.127 要求 `>=22.0.0`，原来写的 20+ 已不准确。
 - 验证：`pnpm type-check`、`pnpm build` 通过；`pnpm test` 中 worker 80/80、webapp 110/110；`wrangler deploy --dry-run` 通过；E2E（本地 `pnpm dev`，临时存储）78/78。
+- 部署：推送提交 `0bace8a` 后执行 `pnpm run deploy`，发布版本 `df1dfff6-43e0-434a-98ff-23912c07d2f1`，`env.DB (inherited)`，Cron 照常挂载。上一个线上版本是 `f1c6aa24-a86c-4e5c-a0bf-fb9a7a84a6f2`（2026-11-19 16:14 UTC，前面的记录里没有），回滚用 `pnpm --filter worker exec wrangler rollback f1c6aa24-a86c-4e5c-a0bf-fb9a7a84a6f2`。这次只有专注页修复、命令文案和一条报错文案的变化，没有表结构或数据改动，所以没有备份 D1；专注页修复至此一定已在线上。
+- 部署后：`/` 200，`/api/register/status` 为 `{"open":false}`，无令牌访问 `/open/v1/project` 和 `/api/tokens` 返回 401；线上入口 chunk 就是本次上传的，首页和令牌页显示 pnpm 命令。
 - 遗留：`pnpm peers check` 提示 wrangler 需要 `@cloudflare/workers-types@^5`，worker 装的是 v4（npm 下同样如此，只是不提示）；worker 测试输出里的 `deleteAllDurableObjects` 未捕获异常日志在 npm 基线上也有，不影响结果。
