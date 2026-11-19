@@ -1345,6 +1345,35 @@ describe('recurring tasks', () => {
     expect(active.map((t) => t.id)).not.toContain(task.id);
   });
 
+  it('treats completing an already-completed task as a no-op', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        body: JSON.stringify({ title: 'Daily', projectId: 'inbox', dueDate: '2030-01-01T09:00:00+0000', repeatFlag: 'RRULE:FREQ=DAILY' }),
+      })
+    ).json()) as { id: string };
+    const complete = () => SELF.fetch(`${HOST}/open/v1/project/inbox/task/${task.id}/complete`, { method: 'POST', headers: auth(token) });
+    const read = async () => (await (await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${task.id}`, { headers: auth(token) })).json()) as { completedTime: string };
+
+    expect((await (await complete()).json())).not.toBeNull();
+    const completedTime = (await read()).completedTime;
+    const again = await complete();
+    expect(again.status).toBe(200);
+    expect(await again.json()).toBeNull();
+    expect((await read()).completedTime).toBe(completedTime);
+
+    const active = (await (
+      await SELF.fetch(`${HOST}/open/v1/task/filter`, { method: 'POST', headers: auth(token), body: JSON.stringify({ status: [0] }) })
+    ).json()) as { title: string }[];
+    expect(active.filter((t) => t.title === 'Daily')).toHaveLength(1);
+
+    const missing = await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${'0'.repeat(24)}/complete`, { method: 'POST', headers: auth(token) });
+    expect(missing.status).toBe(404);
+  });
+
   it('spawns weekly occurrences when completing via a status update', async () => {
     const { token } = await bootstrap();
     await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists

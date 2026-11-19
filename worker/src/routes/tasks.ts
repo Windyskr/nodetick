@@ -680,11 +680,22 @@ tasks.post('/project/:projectId/task/:taskId/complete', async (c) => {
   const userId = c.get('userId');
   const res = await c.env.DB.prepare(
     `UPDATE tasks SET status = 2, completed_time = ?, modified_time = ?, etag = etag + 1
-     WHERE id = ? AND project_id = ? AND user_id = ? AND deleted = 0`,
+     WHERE id = ? AND project_id = ? AND user_id = ? AND deleted = 0 AND status != 2`,
   )
     .bind(nowIso(), nowIso(), c.req.param('taskId'), c.req.param('projectId'), userId)
     .run();
-  if (!res.meta.changes) return c.json({ error: 'task not found' }, 404);
+  if (!res.meta.changes) {
+    // Already completed: stay idempotent. Re-completing must not re-stamp the
+    // completion time or spawn a duplicate next occurrence (CLI retries,
+    // double clicks); the conditional UPDATE also settles concurrent calls.
+    const existing = await c.env.DB.prepare(
+      'SELECT id FROM tasks WHERE id = ? AND project_id = ? AND user_id = ? AND deleted = 0',
+    )
+      .bind(c.req.param('taskId'), c.req.param('projectId'), userId)
+      .first();
+    if (!existing) return c.json({ error: 'task not found' }, 404);
+    return c.json(null);
+  }
   const row = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?')
     .bind(c.req.param('taskId'), userId)
     .first();
