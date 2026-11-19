@@ -244,7 +244,10 @@ export default function TokensPage() {
 
         <h2 className="mb-2 mt-8 text-[15px] font-semibold">{t('connectCli')}</h2>
         <div className="rounded-xl bg-[#0d1117] p-4 font-mono text-[12.5px] leading-relaxed text-[#c9d1d9]">
-          <p><span className="text-[#7ee787]">$</span> npm install -g @nodetick/cli</p>
+          {/* @nodetick/cli is not published (README → CLI); installing that
+              name from npm would fail or fetch someone else's package. */}
+          <p className="text-[#8b949e]">{t('cliFromSource')}</p>
+          <p><span className="text-[#7ee787]">$</span> npm run build -w cli &amp;&amp; npm link -w cli</p>
           <p><span className="text-[#7ee787]">$</span> nodetick auth login --server {origin}</p>
           <p className="mt-2 text-[#8b949e]">{t('orPasteToken')}</p>
           <p><span className="text-[#7ee787]">$</span> nodetick auth token &lt;ntk_…&gt; --server {origin}</p>

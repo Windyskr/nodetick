@@ -292,8 +292,8 @@ function HabitRow({
         <div className="ml-3 min-w-0 flex-1">
           <div className="truncate text-[14px] font-medium leading-5">{habit.name}</div>
           <div className="flex items-center gap-2 truncate text-[11px] leading-4 text-ink-3">
-            <span className="flex items-center gap-1"><BarChart3 size={11} className="text-tt" />{completedDays} {t('habitDays')}</span>
-            <span className="flex items-center gap-1"><Flame size={11} className="text-[#ff6f6f]" />{streak} {t('habitDays')}</span>
+            <span className="flex items-center gap-1"><BarChart3 size={11} className="text-tt" />{completedDays} {t(completedDays === 1 ? 'habitDay' : 'habitDays')}</span>
+            <span className="flex items-center gap-1"><Flame size={11} className="text-[#ff6f6f]" />{streak} {t(streak === 1 ? 'habitDay' : 'habitDays')}</span>
           </div>
         </div>
     </>

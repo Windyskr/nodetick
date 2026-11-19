@@ -14,7 +14,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    document.title = '登录 · NodeTick';
+    document.title = `${t('loginTitle')} · NodeTick`;
   }, []);
 
   // OAuth sends an absolute same-origin URL; only allow those (no open redirect).

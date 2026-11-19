@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { api } from '../../lib/api';
-import { useT } from '../../i18n';
+import { serverError, useT } from '../../i18n';
 
 function inputClass() {
   return 'h-8 w-full rounded-md border border-line bg-white px-2 text-[13px] outline-none focus:border-tt';
@@ -36,7 +36,7 @@ export default function ChangePasswordDialog({ onClose }: { onClose: () => void 
       setConfirm('');
       setDone(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(serverError(err instanceof Error ? err.message : String(err)));
     } finally {
       setBusy(false);
     }

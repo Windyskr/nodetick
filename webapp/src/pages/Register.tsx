@@ -13,7 +13,7 @@ export default function Register() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    document.title = '创建账号 · NodeTick';
+    document.title = `${t('createAccount')} · NodeTick`;
     // Registration is only possible until the first (admin) account exists.
     void api.registrationOpen().then((r) => setOpen(r.open)).catch(() => setOpen(false));
   }, []);
