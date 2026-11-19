@@ -118,7 +118,8 @@ export function TaskRow({
       >
         {checked ? <CheckSquare size={15} className="text-tt" /> : <Square size={15} />}
       </button>
-      <RoundCheck checked={done} priority={task.priority} title={t('markComplete')} onClick={() => void toggleComplete(task)} />
+      {/* Trashed tasks can't be completed (the API answers 404); restore first. */}
+      <RoundCheck checked={done} priority={task.priority} title={task.deletedTime ? undefined : t('markComplete')} onClick={task.deletedTime ? undefined : () => void toggleComplete(task)} />
       <div className="min-w-0 flex-1">
         <span className={`block truncate text-[14px] ${done || abandoned ? 'text-ink-3 line-through' : 'text-ink'}`}>
           {task.title || <span className="text-ink-3">{t('untitled')}</span>}
