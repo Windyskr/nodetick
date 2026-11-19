@@ -1,7 +1,15 @@
 import { Hono } from 'hono';
 import { Env, Vars } from '../env.js';
 import { serializeColumn, serializeGroup, serializeProject, serializeTask } from '../serialize.js';
-import { genId, nowIso, readJsonObject } from '../util.js';
+import { genId, nonStringField, nowIso, readJsonObject } from '../util.js';
+
+const PROJECT_STRING_FIELDS = ['name', 'color', 'viewMode', 'kind', 'groupId'] as const;
+
+/** 400 message when a listed field is present but not a string (String() would store "[object Object]"). */
+function stringFieldError(b: Record<string, unknown>, keys: readonly string[]): string | null {
+  const field = nonStringField(b, keys);
+  return field ? `${field} must be a string` : null;
+}
 
 type State = { Bindings: Env; Variables: Vars };
 
@@ -58,6 +66,8 @@ projects.get('/project/group', async (c) => {
 projects.post('/project/group', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, ['name']);
+  if (stringError) return c.json({ error: stringError }, 400);
   const name = String(b.name ?? '').trim();
   if (!name || name.length > MAX_GROUP_NAME) return c.json({ error: `name is required (max ${MAX_GROUP_NAME} chars)` }, 400);
   const sortOrder = finiteNumber(b.sortOrder, 0);
@@ -77,6 +87,8 @@ projects.post('/project/group', async (c) => {
 projects.post('/project/group/:groupId', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, ['name']);
+  if (stringError) return c.json({ error: stringError }, 400);
   if (b.name != null && (!String(b.name).trim() || String(b.name).trim().length > MAX_GROUP_NAME)) {
     return c.json({ error: `name must be 1-${MAX_GROUP_NAME} chars` }, 400);
   }
@@ -114,6 +126,8 @@ projects.delete('/project/group/:groupId', async (c) => {
 projects.post('/project', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, PROJECT_STRING_FIELDS);
+  if (stringError) return c.json({ error: stringError }, 400);
   const name = String(b.name ?? '').trim();
   if (!name || name.length > MAX_PROJECT_NAME) {
     return c.json({ error: `name is required (max ${MAX_PROJECT_NAME} chars)` }, 400);
@@ -184,6 +198,8 @@ projects.get('/project/:projectId/data', async (c) => {
 projects.post('/project/:projectId', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, PROJECT_STRING_FIELDS);
+  if (stringError) return c.json({ error: stringError }, 400);
   if (b.name != null && (!String(b.name).trim() || String(b.name).trim().length > MAX_PROJECT_NAME)) {
     return c.json({ error: `name must be 1-${MAX_PROJECT_NAME} chars` }, 400);
   }
@@ -260,6 +276,8 @@ projects.post('/project/:projectId/column', async (c) => {
   const userId = c.get('userId');
   const projectId = c.req.param('projectId');
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, ['name']);
+  if (stringError) return c.json({ error: stringError }, 400);
   const name = String(b.name ?? '').trim();
   if (!name || name.length > MAX_COLUMN_NAME) {
     return c.json({ error: `name is required (max ${MAX_COLUMN_NAME} chars)` }, 400);
@@ -283,6 +301,8 @@ projects.post('/project/:projectId/column', async (c) => {
 projects.post('/project/:projectId/column/:columnId', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, ['name']);
+  if (stringError) return c.json({ error: stringError }, 400);
   if (b.name != null && (!String(b.name).trim() || String(b.name).trim().length > MAX_COLUMN_NAME)) {
     return c.json({ error: `name must be 1-${MAX_COLUMN_NAME} chars` }, 400);
   }

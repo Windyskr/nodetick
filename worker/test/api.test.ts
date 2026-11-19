@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env, reset, SELF } from 'cloudflare:test';
 import { issueApiToken } from '../src/auth.js';
 import { dispatchDueNotifications, pushConfigured, sendToUser } from '../src/services/notifications.js';
+import { parseApiDate } from '../src/util.js';
 
 // The Vitest 4 Cloudflare integration no longer exposes the old implicit
 // per-test storage option. Reset bindings explicitly so every test retains
@@ -2210,5 +2211,61 @@ describe('kanban column delete', () => {
       headers: auth(token),
     });
     expect(again.status).toBe(404);
+  });
+});
+
+describe('strict input validation', () => {
+  it('parses only real calendar dates in the API formats', () => {
+    for (const ok of [
+      '2026-04-07T09:00:00+0800', '2026-04-07T09:00:00.000+0000', '2026-11-20', '2026-11-20T09:00',
+      '2026-11-20T01:00:00.000Z', '2024-02-29T00:00:00+0000',
+    ]) {
+      expect(typeof parseApiDate(ok), ok).toBe('number');
+    }
+    for (const bad of [
+      '2026-02-30T00:00:00+0000', '2025-02-29', '2026-13-01', '2026-04-07T24:00:00Z', 'March 7',
+      '2026-04-07T09:00:00+2500', 20260407, {},
+    ]) {
+      expect(parseApiDate(bad), String(bad)).toBeUndefined();
+    }
+    expect(parseApiDate('')).toBeNull();
+    expect(parseApiDate(null)).toBeNull();
+    expect(parseApiDate('2026-04-07T09:00:00+0800')).toBe(Date.parse('2026-04-07T01:00:00Z'));
+  });
+
+  it('rejects wrong JSON types and impossible dates on tasks and comments', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox
+    const create = (body: Record<string, unknown>) =>
+      SELF.fetch(`${HOST}/open/v1/task`, json({ projectId: 'inbox', title: 'ok', ...body }, auth(token)));
+    for (const bad of [
+      { title: { text: 'x' } }, { projectId: 42 }, { dueDate: '2026-02-30T00:00:00+0000' }, { startDate: 'March 7' },
+      { priority: 7 }, { priority: 2.5 }, { priority: 'high' }, { isAllDay: 'false' }, { tags: [{}] }, { tags: 'work' },
+      { reminders: [1] }, { items: ['just a string'] }, { items: [{ title: 5 }] },
+    ]) {
+      expect((await create(bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+    const ok = await create({ priority: 5, dueDate: '2024-02-29T00:00:00+0000', isAllDay: true, tags: ['Work'] });
+    expect(ok.status).toBe(200);
+    const task = (await ok.json()) as { id: string; title: string; priority: number };
+    expect(task).toMatchObject({ title: 'ok', priority: 5 });
+    const update = await SELF.fetch(`${HOST}/open/v1/task/${task.id}`, json({ id: task.id, projectId: 'inbox', title: ['x'] }, auth(token)));
+    expect(update.status).toBe(400);
+    const comment = await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${task.id}/comment`, json({ title: { a: 1 } }, auth(token)));
+    expect(comment.status).toBe(400);
+  });
+
+  it('rejects non-string fields on projects, habits, tags and filters, and impossible focus times', async () => {
+    const { token } = await bootstrap();
+    const post = (path: string, body: unknown) => SELF.fetch(`${HOST}/open/v1${path}`, json(body, auth(token)));
+    expect((await post('/project', { name: { x: 1 } })).status).toBe(400);
+    expect((await post('/project', { name: 'Colors', color: 5 })).status).toBe(400);
+    expect((await post('/project', { name: 'Grid', viewMode: 'grid' })).status).toBe(200); // webapp view mode stays valid
+    expect((await post('/habit', { name: 'Read', color: { hex: '#ffffff' } })).status).toBe(400);
+    expect((await post('/tag', { name: 'work', label: ['Work'] })).status).toBe(400);
+    expect((await post('/filter', { name: { n: 1 } })).status).toBe(400);
+    const focus = (startTime: string, endTime: string) => post('/focus', { type: 0, startTime, endTime });
+    expect((await focus('2026-02-30T10:00:00+0800', '2026-02-30T10:25:00+0800')).status).toBe(400);
+    expect((await focus('2026-02-28T10:00:00+0800', '2026-02-28T10:25:00+0800')).status).toBe(200);
   });
 });

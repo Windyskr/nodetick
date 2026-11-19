@@ -5,7 +5,9 @@ import { addDays, dayOf, nextOccurrence } from '../recurrence.js';
 import {
   genId,
   isRequestBodyTooLarge,
+  nonStringField,
   nowIso,
+  parseApiDate,
   parseJsonArray,
   readJsonObject,
   RequestBodyTooLargeError,
@@ -80,7 +82,7 @@ function invalidItems(value: unknown): string | null {
 }
 
 function invalidText(value: unknown, maxLength: number): boolean {
-  return value != null && String(value).length > maxLength;
+  return value != null && (typeof value !== 'string' || value.length > maxLength);
 }
 
 function invalidFiniteNumber(value: unknown): boolean {
@@ -88,13 +90,45 @@ function invalidFiniteNumber(value: unknown): boolean {
 }
 
 function invalidId(value: unknown): boolean {
-  return value != null && String(value).length > MAX_ID_LENGTH;
+  return value != null && (typeof value !== 'string' || value.length > MAX_ID_LENGTH);
 }
 
 function optionalDate(value: unknown): number | null | undefined {
-  if (value == null || String(value) === '') return null;
-  const parsed = Date.parse(String(value));
-  return Number.isNaN(parsed) ? undefined : parsed;
+  return parseApiDate(value);
+}
+
+/** TickTick priorities are 0/1/3/5; any integer 0-5 stays accepted for older clients. */
+function invalidPriority(value: unknown): boolean {
+  if (value == null || value === '') return false;
+  const n = typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN;
+  return !Number.isInteger(n) || n < 0 || n > 5;
+}
+
+/**
+ * Wrong JSON types in task input (sizes are checked separately). Without this,
+ * String() would store an object title as "[object Object]".
+ */
+function taskTypeError(b: Record<string, unknown>): string | null {
+  const field = nonStringField(b, [
+    'projectId', 'parentId', 'columnId', 'title', 'content', 'desc', 'kind', 'startDate', 'dueDate', 'timeZone', 'repeatFlag',
+  ]);
+  if (field) return `${field} must be a string`;
+  if (b.isAllDay != null && typeof b.isAllDay !== 'boolean') return 'isAllDay must be a boolean';
+  for (const key of ['tags', 'reminders'] as const) {
+    const list = b[key];
+    if (list != null && (!Array.isArray(list) || list.some((item) => typeof item !== 'string'))) {
+      return `${key} must be an array of strings`;
+    }
+  }
+  if (Array.isArray(b.items) && b.items.some((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
+    const title = (item as Record<string, unknown>).title;
+    return title != null && typeof title !== 'string';
+  })) {
+    return 'items must be objects with a string title';
+  }
+  if (invalidPriority(b.priority)) return 'priority must be an integer from 0 to 5 (TickTick uses 0, 1, 3, 5)';
+  return null;
 }
 
 function taskDateError(startDate: unknown, dueDate: unknown): string | null {
@@ -414,13 +448,15 @@ tasks.get('/project/:projectId/task/:taskId', async (c) => {
 tasks.post('/task', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  const typeError = taskTypeError(b);
+  if (typeError) return c.json({ error: typeError }, 400);
   const projectId = String(b.projectId ?? '').trim();
   if (!projectId) return c.json({ error: 'projectId is required' }, 400);
   if (invalidId(projectId) || invalidText(b.title, MAX_TASK_TITLE_LENGTH) || invalidText(b.content, MAX_TASK_TEXT_LENGTH) || invalidText(b.desc, MAX_TASK_TEXT_LENGTH) || invalidText(b.kind, 64) || invalidText(b.startDate, MAX_DATE_LENGTH) || invalidText(b.dueDate, MAX_DATE_LENGTH) || invalidText(b.timeZone, 128) || invalidText(b.repeatFlag, 512)) {
     return c.json({ error: 'task text is too long' }, 400);
   }
-  if (invalidFiniteNumber(b.priority) || invalidFiniteNumber(b.sortOrder)) {
-    return c.json({ error: 'priority and sortOrder must be finite numbers' }, 400);
+  if (invalidFiniteNumber(b.sortOrder)) {
+    return c.json({ error: 'sortOrder must be a finite number' }, 400);
   }
   const dateError = taskDateError(b.startDate, b.dueDate);
   if (dateError) return c.json({ error: dateError }, 400);
@@ -514,11 +550,13 @@ tasks.post('/task/:taskId', async (c) => {
   const userId = c.get('userId');
   const taskId = c.req.param('taskId');
   const b = await readJsonObject(c.req);
+  const typeError = taskTypeError(b);
+  if (typeError) return c.json({ error: typeError }, 400);
   if (invalidId(b.projectId) || invalidId(b.parentId) || invalidId(b.columnId) || invalidText(b.title, MAX_TASK_TITLE_LENGTH) || invalidText(b.content, MAX_TASK_TEXT_LENGTH) || invalidText(b.desc, MAX_TASK_TEXT_LENGTH) || invalidText(b.kind, 64) || invalidText(b.startDate, MAX_DATE_LENGTH) || invalidText(b.dueDate, MAX_DATE_LENGTH) || invalidText(b.timeZone, 128) || invalidText(b.repeatFlag, 512)) {
     return c.json({ error: 'task text is too long' }, 400);
   }
-  if (invalidFiniteNumber(b.priority) || invalidFiniteNumber(b.sortOrder)) {
-    return c.json({ error: 'priority and sortOrder must be finite numbers' }, 400);
+  if (invalidFiniteNumber(b.sortOrder)) {
+    return c.json({ error: 'sortOrder must be a finite number' }, 400);
   }
   for (const [value, max, itemLength, label] of [
     [b.tags, MAX_TAGS, MAX_TAG_LENGTH, 'tags'],
@@ -760,6 +798,7 @@ tasks.get('/project/:projectId/task/:taskId/comments', async (c) => {
 tasks.post('/project/:projectId/task/:taskId/comment', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  if (b.title != null && typeof b.title !== 'string') return c.json({ error: 'title must be a string' }, 400);
   const title = b.title != null ? String(b.title) : '';
   if (!title) return c.json({ error: 'title is required' }, 400);
   if (title.length > MAX_COMMENT_LENGTH) return c.json({ error: 'comment is too long' }, 400);

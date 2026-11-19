@@ -9,7 +9,7 @@ import {
   serializeHabitRecord,
   serializeTag,
 } from '../serialize.js';
-import { genId, nowIso, parseJsonArray, readJsonObject, RequestBodyTooLargeError, isRequestBodyTooLarge } from '../util.js';
+import { genId, nonStringField, nowIso, parseApiDate, parseJsonArray, readJsonObject, RequestBodyTooLargeError, isRequestBodyTooLarge } from '../util.js';
 import { BackupImportError, exportBackup, importBackup } from '../services/backup.js';
 import { tagKey } from './tasks.js';
 
@@ -48,7 +48,8 @@ function strictFocusNumber(value: unknown): number | null {
 const FOCUS_ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})$/;
 
 function validFocusDate(value: unknown): value is string {
-  return typeof value === 'string' && value.length <= 64 && FOCUS_ISO_DATE.test(value) && !Number.isNaN(Date.parse(value));
+  // parseApiDate also rejects impossible days that Date.parse rolls over (02-30 → 03-02).
+  return typeof value === 'string' && value.length <= 64 && FOCUS_ISO_DATE.test(value) && typeof parseApiDate(value) === 'number';
 }
 
 function invalidFocusRelation(value: unknown): boolean {
@@ -60,7 +61,7 @@ function invalidFocusRelation(value: unknown): boolean {
 }
 
 function invalidStringArray(value: unknown, maxItems: number, maxItemLength: number): boolean {
-  return Array.isArray(value) && (value.length > maxItems || value.some((item) => String(item).length > maxItemLength));
+  return Array.isArray(value) && (value.length > maxItems || value.some((item) => typeof item !== 'string' || item.length > maxItemLength));
 }
 
 function validStamp(value: unknown): number | null {
@@ -165,8 +166,16 @@ function invalidFiniteNumber(value: unknown): boolean {
 }
 
 function invalidText(value: unknown, maxLength: number): boolean {
-  return value != null && String(value).length > maxLength;
+  return value != null && (typeof value !== 'string' || value.length > maxLength);
 }
+
+/** Reject with 400 when a listed field is present but not a string (instead of storing "[object Object]"). */
+function stringFieldError(b: Record<string, unknown>, keys: readonly string[]): string | null {
+  const field = nonStringField(b, keys);
+  return field ? `${field} must be a string` : null;
+}
+
+const HABIT_STRING_FIELDS = ['name', 'iconRes', 'color', 'encouragement', 'type', 'unit', 'repeatRule', 'sectionId'] as const;
 
 function invalidNumericArray(value: unknown, maxItems: number): boolean {
   return Array.isArray(value) && (
@@ -244,6 +253,8 @@ misc.get('/filter', async (c) => {
 misc.post('/filter', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, ['name']);
+  if (stringError) return c.json({ error: stringError }, 400);
   const name = String(b.name ?? '').trim();
   if (!name || name.length > MAX_FILTER_NAME) {
     return c.json({ error: `name is required (max ${MAX_FILTER_NAME} chars)` }, 400);
@@ -281,6 +292,8 @@ misc.post('/filter/:filterId', async (c) => {
     // Treat a malformed legacy value as an empty filter and repair it below.
   }
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, ['name']);
+  if (stringError) return c.json({ error: stringError }, 400);
   const merged = { ...oldValue, ...b };
   const name = String(merged.name ?? existing.name ?? '').trim();
   if (!name || name.length > MAX_FILTER_NAME) {
@@ -326,6 +339,8 @@ misc.get('/tag', async (c) => {
 misc.post('/tag', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, ['name', 'label', 'color']);
+  if (stringError) return c.json({ error: stringError }, 400);
   const name = String(b.name ?? '').trim().toLowerCase();
   const label = String(b.label ?? '').trim();
   if (!name || name.length > 64) return c.json({ error: 'name is required (max 64 chars)' }, 400);
@@ -363,6 +378,8 @@ misc.post('/tag/:tagName', async (c) => {
   if (!existing) return c.json({ error: 'tag not found' }, 404);
 
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, ['name', 'label', 'color']);
+  if (stringError) return c.json({ error: stringError }, 400);
   const rawName = b.name != null ? String(b.name).trim().toLowerCase() : oldName;
   if (!rawName || rawName.length > 64) return c.json({ error: 'name must be 1-64 chars' }, 400);
   if (rawName !== oldName) {
@@ -510,6 +527,8 @@ misc.get('/habit/:habitId', async (c) => {
 misc.post('/habit', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, HABIT_STRING_FIELDS);
+  if (stringError) return c.json({ error: stringError }, 400);
   const name = String(b.name ?? '').trim();
   if (!name || name.length > MAX_HABIT_NAME) return c.json({ error: `name is required (max ${MAX_HABIT_NAME} chars)` }, 400);
   if (invalidStringArray(b.reminders, MAX_REMINDERS, MAX_REMINDER_LENGTH)) {
@@ -554,6 +573,8 @@ misc.post('/habit', async (c) => {
 misc.post('/habit/:habitId', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
+  const stringError = stringFieldError(b, HABIT_STRING_FIELDS);
+  if (stringError) return c.json({ error: stringError }, 400);
   if (b.name != null && (!String(b.name).trim() || String(b.name).trim().length > MAX_HABIT_NAME)) {
     return c.json({ error: `name must be 1-${MAX_HABIT_NAME} chars` }, 400);
   }

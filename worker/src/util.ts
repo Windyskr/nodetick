@@ -245,3 +245,49 @@ export function parseJsonArray<T>(raw: string | null | undefined): T[] {
     return [];
   }
 }
+
+/** Days in a Gregorian month (month is 1-12). */
+export function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+// yyyy-MM-dd, optionally with a clock (HH:mm[:ss[.fff]]) and a zone (Z, ±HH:mm
+// or ±HHmm). The TickTick Open API format is 2026-04-07T09:00:00+0800.
+const API_DATE =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+
+/**
+ * Strict date parsing for API input: a real calendar day plus a valid clock
+ * and offset. Date.parse alone accepts free text such as "March 7" and
+ * silently rolls "2026-02-30T00:00:00+0000" over to March 2.
+ * Returns epoch ms, null when absent/empty, or undefined when invalid.
+ */
+export function parseApiDate(value: unknown): number | null | undefined {
+  if (value == null || value === '') return null;
+  if (typeof value !== 'string' || value.length > 64) return undefined;
+  const text = value.trim();
+  const m = API_DATE.exec(text);
+  if (!m) return undefined;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return undefined;
+  if (m[4] != null && (Number(m[4]) > 23 || Number(m[5]) > 59 || Number(m[6] ?? 0) > 59)) return undefined;
+  const zone = m[7];
+  if (zone && zone !== 'Z') {
+    const digits = zone.replace(':', '');
+    if (Number(digits.slice(1, 3)) > 14 || Number(digits.slice(3, 5)) > 59) return undefined;
+  }
+  // Date.parse wants "+08:00"; the API also sends "+0800".
+  const parsed = Date.parse(text.replace(' ', 'T').replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/** The first listed field that is present but not a string (to reject with 400). */
+export function nonStringField(body: Record<string, unknown>, keys: readonly string[]): string | null {
+  for (const key of keys) {
+    const value = body[key];
+    if (value != null && typeof value !== 'string') return key;
+  }
+  return null;
+}
