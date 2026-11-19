@@ -57,6 +57,8 @@ tests/e2e/
                            list (30-day window enforcement), delete
     countdown.e2e.mjs      create / update / delete / list, dashboard
                            cross-check (needs session)
+    backup.e2e.mjs         export to file, import round-trip (nothing
+                           skipped), foreign / invalid file errors
 ```
 
 ### Run

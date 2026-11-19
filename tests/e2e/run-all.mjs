@@ -67,6 +67,7 @@ const suites = [
   ['habit', () => import('./suites/habit.e2e.mjs')],
   ['focus', () => import('./suites/focus.e2e.mjs')],
   ['countdown', () => import('./suites/countdown.e2e.mjs')],
+  ['backup', () => import('./suites/backup.e2e.mjs')],
 ];
 
 for (const [name, load] of suites) {
