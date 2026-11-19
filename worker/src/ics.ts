@@ -6,8 +6,9 @@ const basicUtc = (value: unknown): string | null => {
   return Number.isNaN(ms) ? null : new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 };
 
+// CR/CRLF too: a bare CR inside a content line is invalid RFC 5545.
 const escapeText = (value: string) =>
-  value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n?|\n/g, '\\n');
 
 const day = (value: unknown): string | null => {
   const match = typeof value === 'string' ? /^(\d{4}-\d{2}-\d{2})/.exec(value) : null;
@@ -36,7 +37,8 @@ export function buildIcsCalendar(rows: Row[]): string {
     lines.push(allDay ? `DTSTART;VALUE=DATE:${dtStart}` : `DTSTART:${dtStart}`);
     if (dtEnd && dtEnd > dtStart) lines.push(allDay ? `DTEND;VALUE=DATE:${dtEnd}` : `DTEND:${dtEnd}`);
     lines.push(`SUMMARY:${escapeText(String(r.title ?? ''))}`);
-    if (r.content) lines.push(`DESCRIPTION:${escapeText(String(r.content)).slice(0, 900)}`);
+    // Truncate before escaping so the cut never splits an escape sequence.
+    if (r.content) lines.push(`DESCRIPTION:${escapeText(String(r.content).slice(0, 900))}`);
     lines.push('END:VEVENT');
   }
   lines.push('END:VCALENDAR');

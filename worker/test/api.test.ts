@@ -1955,6 +1955,22 @@ describe('calendar subscription feed', () => {
     expect(download.status).toBe(200);
     expect(await download.text()).toContain('SUMMARY:Feed task');
   });
+
+  it('keeps CR and truncated escapes out of iCal content lines', async () => {
+    const { buildIcsCalendar } = await import('../src/ics.js');
+    const ics = buildIcsCalendar([{
+      id: 't1',
+      title: 'two\r\nlines',
+      content: `${'x'.repeat(899)}\\tail`,
+      due_date: '2026-09-10T09:00:00+0000',
+      is_all_day: 0,
+    }]);
+    const lines = ics.split('\r\n');
+    expect(lines.every((line) => !line.includes('\r'))).toBe(true);
+    expect(lines).toContain('SUMMARY:two\\nlines');
+    // 900 chars are kept, then escaped: the backslash stays a complete "\\\\".
+    expect(lines.find((line) => line.startsWith('DESCRIPTION:'))).toBe(`DESCRIPTION:${'x'.repeat(899)}\\\\`);
+  });
 });
 
 describe('password change and admin user management', () => {
