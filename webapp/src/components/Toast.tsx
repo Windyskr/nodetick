@@ -9,7 +9,9 @@ export default function Toast() {
   const f = useTF();
   if (!toast) return null;
   return (
-    <div className="fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-full bg-ink px-5 py-2.5 text-[13px] text-white shadow-[0_8px_24px_rgba(0,0,0,0.3)]">
+    // A fixed dark pill: bg-ink turns near-white in the dark theme, which made
+    // the white toast text unreadable.
+    <div className="fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-full bg-[#191919] px-5 py-2.5 text-[13px] text-white shadow-[0_8px_24px_rgba(0,0,0,0.3)] ring-1 ring-white/10">
       <span>{f(toast.messageKey, toast.messageArg ?? '')}</span>
       {toast.undo && (
         <button

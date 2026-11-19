@@ -64,7 +64,10 @@ body {
   background: var(--nt-surface);
 }
 
-[data-theme='dark'] [class~='bg-white'] {
+[data-theme='dark'] [class~='bg-white'],
+[data-theme='dark'] [class~='hover:bg-white']:hover,
+[data-theme='dark'] [class~='focus:bg-white']:focus,
+[data-theme='dark'] [class~='focus-within:bg-white']:focus-within {
   background-color: var(--nt-surface) !important;
 }
 
@@ -76,9 +79,11 @@ body {
   background-color: var(--nt-muted-surface) !important;
 }
 
-[data-theme='dark'] input,
-[data-theme='dark'] textarea,
-[data-theme='dark'] select {
+/* Fields that sit on a tinted surface (quick add, detail title, search) are
+   transparent on purpose; painting them would leave a dark patch. */
+[data-theme='dark'] input:not(.bg-transparent),
+[data-theme='dark'] textarea:not(.bg-transparent),
+[data-theme='dark'] select:not(.bg-transparent) {
   border-color: var(--color-line);
   background-color: var(--nt-surface);
   color: var(--color-ink);
