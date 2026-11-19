@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { useStore } from '../../stores/store';
@@ -7,6 +7,7 @@ import Sidebar from './Sidebar';
 import TaskDetail from './TaskDetail';
 import Toast from '../../components/Toast';
 import { useT } from '../../i18n';
+import { PageSpinner } from '../../components/PageSpinner';
 
 /** Persisted width (px) of the task detail panel; null → 36% like the original. */
 const DETAIL_WIDTH_KEY = 'ntk_detail_width';
@@ -166,7 +167,10 @@ export default function AppLayout() {
       {/* The reference layout keeps the content column flex-1 and a permanent
           36% detail panel on the right (empty until a task is selected). */}
       <div className="flex min-w-0 flex-1">
-        <Outlet />
+        {/* Pages load lazily (App.tsx); keep the rail and sidebar meanwhile. */}
+        <Suspense fallback={<PageSpinner />}>
+          <Outlet />
+        </Suspense>
       </div>
       {narrow && showDetail && selectedTask() && (
         <div className="fixed inset-0 z-40 flex flex-col bg-white">
