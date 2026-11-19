@@ -10,6 +10,7 @@ import {
   fmtClock,
   lastNDays,
   localDayClock,
+  nextOccurrence,
   parseInstant,
   relTime,
   shortDate,
@@ -221,5 +222,25 @@ describe('localized rendering', () => {
     expect(relTime(iso(3))).toBe('3天前');
     expect(relTime(null)).toBe('');
     expect(relTime('not-a-date')).toBe('');
+  });
+});
+
+describe('nextOccurrence (repeating countdowns)', () => {
+  it('moves a past yearly date to its next anniversary', () => {
+    expect(nextOccurrence('1970-03-15', 'yearly', '2026-11-19')).toBe('2027-03-15');
+    expect(nextOccurrence('1990-12-25', 'yearly', '2026-11-19')).toBe('2026-12-25');
+    expect(nextOccurrence('1990-11-19', 'yearly', '2026-11-19')).toBe('2026-11-19');
+    expect(nextOccurrence('2000-02-29', 'yearly', '2026-11-19')).toBe('2027-02-28');
+  });
+
+  it('moves a past monthly date to this or next month', () => {
+    expect(nextOccurrence('2026-01-31', 'monthly', '2026-11-19')).toBe('2026-11-30');
+    expect(nextOccurrence('2026-01-05', 'monthly', '2026-11-19')).toBe('2026-12-05');
+    expect(nextOccurrence('2025-12-31', 'monthly', '2026-12-31')).toBe('2026-12-31');
+  });
+
+  it('leaves future and non-repeating dates alone', () => {
+    expect(nextOccurrence('2026-12-31', 'yearly', '2026-11-19')).toBe('2026-12-31');
+    expect(nextOccurrence('1970-03-15', null, '2026-11-19')).toBe('1970-03-15');
   });
 });

@@ -16,8 +16,8 @@ import {
 import { Popover } from '../../components/Popover';
 import { api } from '../../lib/api';
 import type { Countdown } from '../../lib/types';
-import { dayOf, todayStr } from '../../lib/date';
-import { useI18n, useT, type Key } from '../../i18n';
+import { dayOf, nextOccurrence, todayStr } from '../../lib/date';
+import { useI18n, useT, useTF, type Key } from '../../i18n';
 
 type Kind = Countdown['kind'];
 type Draft = Omit<Countdown, 'id' | 'sortOrder'>;
@@ -171,10 +171,14 @@ export default function CountdownPage() {
 
 function CountdownCard({ countdown, archived, onEdit, onStyle, onNote, onPin, onArchive, onDelete }: { countdown: Countdown; archived: boolean; onEdit: () => void; onStyle: () => void; onNote: () => void; onPin: () => void; onArchive: () => void; onDelete: () => void }) {
   const t = useT();
+  const f = useTF();
   const lang = useI18n((state) => state.lang);
   const [expanded, setExpanded] = useState(false);
-  const target = dayOf(countdown.date);
   const today = todayStr();
+  // A yearly/monthly countdown (birthday, anniversary) counts down to its next
+  // occurrence, the day the server reminds about, not the original date.
+  const date = dayOf(countdown.date);
+  const target = date ? nextOccurrence(date, countdown.repeatFlag, today) : null;
   const days = target ? countDays(today, target, countdown.calculation === 'workday') : null;
   const past = days != null && days < 0;
   const absolute = days == null ? null : Math.abs(days);
@@ -185,7 +189,7 @@ function CountdownCard({ countdown, archived, onEdit, onStyle, onNote, onPin, on
   return <article onClick={onEdit} className="group relative h-[194px] cursor-pointer rounded-xl border border-line bg-white text-center shadow-[0_3px_14px_rgba(0,0,0,0.035)]">
     <div className="mt-7 flex items-center justify-center gap-2 text-[17px] font-semibold"><span className="flex h-6 w-6 items-center justify-center rounded-full text-[13px]" style={{ backgroundColor: countdown.color + '22' }}>{countdown.icon ?? KIND_ICON[countdown.kind]}</span><span className="max-w-[210px] truncate">{countdown.name}</span></div>
     <button type="button" title={t('countdownFormatHint')} onClick={(event) => { event.stopPropagation(); setExpanded((value) => !value); }} className="mt-1 h-[82px] w-full text-[52px] font-light leading-[82px] tabular-nums" style={{ color: countdown.color }}>{number}</button>
-    <div className="text-[12px] text-ink-3">{t('countdownDistance')} {dateLabel} {past ? t('countdownSince') : t('countdownUntil')}</div>
+    <div className="text-[12px] text-ink-3">{f(past ? 'countdownSinceDate' : 'countdownUntilDate', dateLabel)}</div>
     <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100" onClick={(event) => event.stopPropagation()}>
       {!archived && <button type="button" title={lang === 'zh' ? '置顶' : 'Pin'} onClick={onPin} className={'flex h-9 w-9 items-center justify-center rounded-[7px] text-white ' + (countdown.sortOrder === PINNED_SORT_ORDER ? 'bg-tt' : 'bg-[#858585]')}><Pin size={18} fill="currentColor" /></button>}
       <Popover

@@ -104,6 +104,29 @@ export function localDayClock(value: string | null | undefined): { day: string; 
   };
 }
 
+/**
+ * Next occurrence of a yearly/monthly repeating date on or after `today`
+ * (a 29th–31st falls back to the month's last day); other dates unchanged.
+ */
+export function nextOccurrence(day: string, repeat: string | null | undefined, today: string): string {
+  if ((repeat !== 'yearly' && repeat !== 'monthly') || day >= today) return day;
+  const d = Number(day.slice(8, 10));
+  let year = Number(today.slice(0, 4));
+  let month = repeat === 'yearly' ? Number(day.slice(5, 7)) : Number(today.slice(5, 7));
+  const p = (n: number) => String(n).padStart(2, '0');
+  for (let i = 0; i < 25; i++) {
+    const lastDay = new Date(year, month, 0).getDate();
+    const candidate = `${year}-${p(month)}-${p(Math.min(d, lastDay))}`;
+    if (candidate >= today) return candidate;
+    if (repeat === 'yearly') year += 1;
+    else if (month === 12) {
+      month = 1;
+      year += 1;
+    } else month += 1;
+  }
+  return day;
+}
+
 /** YYYYMMDD stamp for a local date. */
 export function stampOf(dateStr: string): number {
   return Number(dateStr.replaceAll('-', ''));
