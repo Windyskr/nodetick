@@ -54,6 +54,7 @@ import TimelineBoard from './TimelineBoard';
 import ProjectSettingsDialog from './ProjectSettingsDialog';
 import BatchBar from './BatchBar';
 import { isSubmitEnter } from '../../lib/keys';
+import { hasTag, tagKey } from '../../lib/tags';
 import { PRIORITY_LEVELS, priorityLabel } from '../../components/RoundCheck';
 
 type SortKey = 'custom' | 'time' | 'created' | 'modified' | 'title' | 'tags' | 'priority';
@@ -115,8 +116,10 @@ export default function TasksPage() {
   );
 
   const titleKey = TITLE_KEYS[scope as keyof typeof TITLE_KEYS];
+  // Tag links use the lowercased tag name; show the label as the user typed it.
+  const tagLabel = tagName ? tags.find((tag) => tagKey(tag.name) === tagKey(tagName))?.label ?? tagName : null;
   const title =
-    projectDisplayName(project, t) || savedFilter?.name || (tagName ? `#${tagName}` : titleKey ? t(titleKey) : t('smartAll'));
+    projectDisplayName(project, t) || savedFilter?.name || (tagLabel ? `#${tagLabel}` : titleKey ? t(titleKey) : t('smartAll'));
   const quickAddProjectId =
     project?.id ?? (scope === 'inbox' || scope === 'all' ? INBOX_ID : null);
 
@@ -143,7 +146,7 @@ export default function TasksPage() {
     if (isAbandoned) return abandoned;
     if (savedFilter) return tasks;
     if (project) return tasks.filter((t) => t.projectId === project.id);
-    if (tagName) return tasks.filter((t) => t.tags.includes(tagName));
+    if (tagName) return tasks.filter((t) => hasTag(t, tagName));
     if (scope === 'inbox') return tasks.filter((t) => t.projectId === INBOX_ID);
     if (scope === 'overdue')
       return tasks.filter((t) => {
@@ -174,7 +177,7 @@ export default function TasksPage() {
     if (isTrash || isCompleted || isAbandoned) return [];
     if (savedFilter) return filterSavedTasks(completed, savedFilter);
     if (project) return filterTasks(completed.filter((t) => t.projectId === project.id), filters);
-    if (tagName) return filterTasks(completed.filter((t) => t.tags.includes(tagName)), filters);
+    if (tagName) return filterTasks(completed.filter((t) => hasTag(t, tagName)), filters);
     if (scope === 'inbox') return filterTasks(completed.filter((t) => t.projectId === INBOX_ID), filters);
     if (scope === 'tomorrow') {
       return filterTasks(completed.filter((t) => dayOf(t.dueDate) === addDays(todayStr(), 1)), filters);

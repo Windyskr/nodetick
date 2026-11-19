@@ -9,6 +9,7 @@ import { useStore } from '../../stores/store';
 import { TaskRow } from './TaskRow';
 import { PRIORITY_LEVELS, priorityLabel } from '../../components/RoundCheck';
 import { isSubmitEnter } from '../../lib/keys';
+import { hasTag } from '../../lib/tags';
 
 type SearchStatus = 'all' | 'active' | 'completed';
 
@@ -64,7 +65,7 @@ export default function SearchPage() {
         if (!text.includes(keywords)) return false;
       }
       if (projectId && task.projectId !== projectId) return false;
-      if (tag && !task.tags.includes(tag)) return false;
+      if (tag && !hasTag(task, tag)) return false;
       if (priority !== '' && task.priority !== Number(priority)) return false;
       if (status === 'active' && task.status === 2) return false;
       if (status === 'completed' && task.status !== 2) return false;

@@ -4,6 +4,7 @@ import type { Task, Tag as TaskTag, TaskFilter } from '../lib/types';
 import { addDays, dayOf, todayStr } from '../lib/date';
 import { useT } from '../i18n';
 import { PRIORITY_LEVELS, priorityLabel } from './RoundCheck';
+import { hasTag } from '../lib/tags';
 
 export type FilterDate = 'any' | 'today' | 'week' | 'overdue';
 
@@ -27,7 +28,7 @@ function taskDays(task: Pick<Task, 'startDate' | 'dueDate'>): { start: string | 
 
 export function matchesTaskFilters(task: Task, filters: TaskFilters, today = todayStr()): boolean {
   if (filters.priority != null && task.priority !== filters.priority) return false;
-  if (filters.tag != null && !task.tags.includes(filters.tag)) return false;
+  if (filters.tag != null && !hasTag(task, filters.tag)) return false;
 
   if (filters.date === 'any') return true;
   const range = taskDays(task);
@@ -79,7 +80,7 @@ function savedDateMatch(task: Task, filter: TaskFilter, today: string): boolean 
 export function matchesSavedFilter(task: Task, filter: TaskFilter, today = todayStr()): boolean {
   const checks: boolean[] = [];
   if (filter.projectIds.length) checks.push(filter.projectIds.includes(task.projectId));
-  if (filter.tags.length) checks.push(filter.tags.some((tag) => task.tags.includes(tag)));
+  if (filter.tags.length) checks.push(filter.tags.some((tag) => hasTag(task, tag)));
   if (filter.priorities.length) checks.push(filter.priorities.includes(task.priority));
   if (filter.statuses.length) checks.push(filter.statuses.includes(task.status));
   if (filter.dateMode !== 'any') checks.push(savedDateMatch(task, filter, today));

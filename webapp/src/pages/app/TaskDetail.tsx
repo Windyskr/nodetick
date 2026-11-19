@@ -11,6 +11,7 @@ import { MenuItem, Popover } from '../../components/Popover';
 import { useT, useTF } from '../../i18n';
 import { projectDisplayName } from '../../lib/project';
 import { isSubmitEnter } from '../../lib/keys';
+import { hasTag } from '../../lib/tags';
 
 /**
  * Right-hand task detail panel, TickTick-style: title, description,
@@ -95,7 +96,7 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
       setAddingTag(false);
       return;
     }
-    if (!task.tags.includes(t)) void saveTask(task.id, { tags: [...task.tags, t] });
+    if (!hasTag(task, t)) void saveTask(task.id, { tags: [...task.tags, t] });
     setTagDraft('');
     setAddingTag(false);
   };

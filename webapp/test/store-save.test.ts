@@ -4,7 +4,11 @@ import type { ChecklistItem, Task } from '../src/lib/types';
 const updateTask = vi.fn();
 vi.mock('../src/lib/api', () => ({
   ApiError: class ApiError extends Error {},
-  api: { updateTask: (...args: unknown[]) => updateTask(...args) },
+  api: {
+    updateTask: (...args: unknown[]) => updateTask(...args),
+    deleteTag: async () => undefined,
+    updateTag: async (_name: string, patch: { name: string }) => ({ name: patch.name, label: patch.name, color: null, sortOrder: 0, parentId: null }),
+  },
 }));
 
 const { useStore } = await import('../src/stores/store');
@@ -91,5 +95,31 @@ describe('saveTask', () => {
     updateTask.mockRejectedValue(new Error('offline'));
     await expect(useStore.getState().saveTask('t1', { title: 'Renamed' })).rejects.toThrow('offline');
     expect(current().title).toBe('Ship v1');
+  });
+});
+
+describe('tag edits reach tasks that typed the tag in another case', () => {
+  const tag = { name: 'family', label: 'Family', color: null, sortOrder: 0, parentId: null };
+
+  beforeEach(() => {
+    useStore.setState({ tasks: [{ ...task, tags: ['Family', 'Home'] }], completed: [], abandoned: [], trash: [], tags: [tag] });
+  });
+
+  it('deleteTag strips "Family" when the tag "family" is deleted', async () => {
+    await useStore.getState().deleteTag('family');
+    expect(current().tags).toEqual(['Home']);
+    expect(useStore.getState().tags).toEqual([]);
+  });
+
+  it('updateTag renames "Family" in tasks', async () => {
+    await useStore.getState().updateTag('family', { name: 'kin' });
+    expect(current().tags).toEqual(['kin', 'Home']);
+  });
+
+  it('a new tag from the detail panel is listed like the server lists it', async () => {
+    useStore.setState({ tags: [] });
+    updateTask.mockImplementation(async (_id: string, patch: Partial<Task>) => ({ ...task, ...patch }));
+    await useStore.getState().saveTask('t1', { tags: ['Family', 'Home'] });
+    expect(useStore.getState().tags.map((t) => [t.name, t.label])).toEqual([['family', 'Family'], ['home', 'Home']]);
   });
 });

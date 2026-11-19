@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { ApiError, api } from '../lib/api';
 import type { Me, Project, ProjectGroup, Tag, Task, TaskFilter } from '../lib/types';
 import { postponePatch } from '../components/taskSchedule';
+import { hasTag, tagKey, uniqueTags } from '../lib/tags';
 
 export { INBOX_ID } from '../lib/project';
 
@@ -414,10 +415,11 @@ export const useStore = create<AppState>((set, getState) => ({
     saveQueues.delete(id);
     // New tags added in the detail panel should surface in the sidebar at once.
     set((s) => {
-      const known = new Set(s.tags.map((tag) => tag.name));
-      const additions = task.tags
-        .filter((name) => !known.has(name))
-        .map((name, i) => ({ name, label: name, color: null, sortOrder: s.tags.length + i, parentId: null }));
+      // Same shape as the server's tag list: lowercased name, typed label.
+      const known = new Set(s.tags.map((tag) => tagKey(tag.name)));
+      const additions = uniqueTags(task.tags)
+        .filter((name) => !known.has(tagKey(name)))
+        .map((name, i) => ({ name: tagKey(name), label: name, color: null, sortOrder: s.tags.length + i, parentId: null }));
       const tags = additions.length ? [...s.tags, ...additions] : s.tags;
       if (current && current.status === task.status) return { tags, ...replaceTask(s, task) };
       // The status changed → move the task to the matching list.
@@ -595,27 +597,32 @@ export const useStore = create<AppState>((set, getState) => ({
 
   updateTag: async (name, patch) => {
     const tag = await api.updateTag(name, patch);
-    const oldName = name.toLowerCase();
+    const oldName = tagKey(name);
     // A rename must reach every stored task tag so tag pages stay coherent.
+    // Tasks keep tags as typed ("Work" for the tag "work"): match by key.
     const rewrite = (list: Task[]) =>
-      list.map((t) => (t.tags.includes(oldName) ? { ...t, tags: t.tags.map((x) => (x === oldName ? tag.name : x)) } : t));
+      tag.name === oldName
+        ? list
+        : list.map((t) => (hasTag(t, oldName) ? { ...t, tags: t.tags.map((x) => (tagKey(x) === oldName ? tag.name : x)) } : t));
     set((s) => ({
-      tags: s.tags.map((item) => (item.name === oldName ? tag : item)),
+      tags: s.tags.map((item) => (tagKey(item.name) === oldName ? tag : item)),
       tasks: rewrite(s.tasks),
       completed: rewrite(s.completed),
+      abandoned: rewrite(s.abandoned),
       trash: rewrite(s.trash),
     }));
   },
 
   deleteTag: async (name) => {
     await api.deleteTag(name);
-    const oldName = name.toLowerCase();
+    const oldName = tagKey(name);
     const strip = (list: Task[]) =>
-      list.map((t) => (t.tags.includes(oldName) ? { ...t, tags: t.tags.filter((x) => x !== oldName) } : t));
+      list.map((t) => (hasTag(t, oldName) ? { ...t, tags: t.tags.filter((x) => tagKey(x) !== oldName) } : t));
     set((s) => ({
-      tags: s.tags.filter((item) => item.name !== oldName),
+      tags: s.tags.filter((item) => tagKey(item.name) !== oldName),
       tasks: strip(s.tasks),
       completed: strip(s.completed),
+      abandoned: strip(s.abandoned),
       trash: strip(s.trash),
     }));
   },

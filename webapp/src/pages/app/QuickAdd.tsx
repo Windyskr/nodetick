@@ -21,6 +21,7 @@ import type { Project, Tag } from '../../lib/types';
 import { Popover } from '../../components/Popover';
 import { PRIORITY_COLORS, PRIORITY_LEVELS, priorityLabel } from '../../components/RoundCheck';
 import { ScheduleMenu, type TaskSchedule } from '../../components/ScheduleMenu';
+import { uniqueTags } from '../../lib/tags';
 
 const EMPTY_SCHEDULE: TaskSchedule = {
   startDate: null,
@@ -147,7 +148,7 @@ export function QuickAdd({ projectId, placeholder }: { projectId: string; placeh
         const item = queue.current.shift()!;
         const parsed = parseQuickAdd(item.raw, item.lang, { recognizeBareDates: item.recognizeBareDates });
         if (!parsed.title) continue;
-        const parsedTags = [...new Set([...item.tags, ...parsed.tags])];
+        const parsedTags = uniqueTags([...item.tags, ...parsed.tags]);
         const dueDate = parsed.dueDate ?? item.recognizedDueDate;
         const taskSchedule = dueDate
           ? { ...item.schedule, startDate: null, dueDate: allDayDate(dueDate), isAllDay: true }

@@ -24,6 +24,7 @@ import { addDays, dayOf, todayStr } from '../../lib/date';
 import { projectDisplayName } from '../../lib/project';
 import type { Task } from '../../lib/types';
 import { isSubmitEnter } from '../../lib/keys';
+import { hasTag } from '../../lib/tags';
 
 type SummaryStatus = 'all' | 'active' | 'completed';
 type SummaryGroup = 'status' | 'list' | 'date';
@@ -148,7 +149,7 @@ export default function SummaryPage() {
     if (projectId && task.projectId !== projectId) return false;
     if (status === 'active' && task.status === 2) return false;
     if (status === 'completed' && task.status !== 2) return false;
-    if (tag && !task.tags.includes(tag)) return false;
+    if (tag && !hasTag(task, tag)) return false;
     return true;
   }), [all, start, reportEnd, projectId, status, tag]);
 
