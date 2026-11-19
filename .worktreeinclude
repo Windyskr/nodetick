@@ -1,0 +1,3 @@
+# Gitignored files that Claude Code copies into new worktrees (.gitignore syntax).
+# node_modules is intentionally not listed: run `npm ci` in each new worktree instead.
+worker/.dev.vars
