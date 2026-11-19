@@ -61,7 +61,17 @@ function getInlineDate(raw: string, recognized: QuickDateToken | null, lang: Lan
  * explicit quick-add tokens (`~明天`, `!高`, `#标签`), and the same date and
  * task-options menus used by the task detail panel.
  */
-export function QuickAdd({ projectId, placeholder }: { projectId: string; placeholder: string }) {
+/** The schedule a new task starts with: empty, or all-day on a smart list's default day. */
+function defaultSchedule(day: string | null): TaskSchedule {
+  return day ? { ...EMPTY_SCHEDULE, dueDate: allDayDate(day), isAllDay: true } : EMPTY_SCHEDULE;
+}
+
+export function QuickAdd({ projectId, placeholder, defaultDueDate = null }: {
+  projectId: string;
+  placeholder: string;
+  /** YYYY-MM-DD preset from date smart lists (Today, Tomorrow, Next 7 Days); typed dates still win. */
+  defaultDueDate?: string | null;
+}) {
   const createTask = useStore((state) => state.createTask);
   const projects = useStore((state) => state.projects);
   const tags = useStore((state) => state.tags);
@@ -81,13 +91,18 @@ export function QuickAdd({ projectId, placeholder }: { projectId: string; placeh
   const [selectedProjectId, setSelectedProjectId] = useState(projectId);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [priority, setPriority] = useState(0);
-  const [schedule, setSchedule] = useState<TaskSchedule>(EMPTY_SCHEDULE);
+  const [schedule, setSchedule] = useState<TaskSchedule>(() => defaultSchedule(defaultDueDate));
   const [kind, setKind] = useState<'TASK' | 'NOTE'>('TASK');
   const [smartParsing, setSmartParsing] = useState(true);
 
   useEffect(() => {
     setSelectedProjectId(projectId);
   }, [projectId]);
+
+  // Switching between Today / Tomorrow / a project resets the preset date.
+  useEffect(() => {
+    setSchedule(defaultSchedule(defaultDueDate));
+  }, [defaultDueDate]);
 
   const updateRecognizedDate = (next: QuickDateToken | null) => {
     recognizedDateRef.current = next;

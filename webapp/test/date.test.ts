@@ -17,6 +17,7 @@ import {
   stampOf,
   todayStr,
   weekdayShort,
+  smartListDefaultDue,
 } from '../src/lib/date';
 import {
   dateTimeParts,
@@ -242,5 +243,16 @@ describe('nextOccurrence (repeating countdowns)', () => {
   it('leaves future and non-repeating dates alone', () => {
     expect(nextOccurrence('2026-12-31', 'yearly', '2026-11-19')).toBe('2026-12-31');
     expect(nextOccurrence('1970-03-15', null, '2026-11-19')).toBe('1970-03-15');
+  });
+});
+
+describe('smart list quick-add defaults', () => {
+  it('pre-dates Today and Next 7 Days to today, Tomorrow to tomorrow, and nothing elsewhere', () => {
+    expect(smartListDefaultDue('today', '2026-12-31')).toBe('2026-12-31');
+    expect(smartListDefaultDue('next7', '2026-12-31')).toBe('2026-12-31');
+    expect(smartListDefaultDue('tomorrow', '2026-12-31')).toBe('2027-01-01');
+    expect(smartListDefaultDue('inbox', '2026-12-31')).toBeNull();
+    expect(smartListDefaultDue('all', '2026-12-31')).toBeNull();
+    expect(smartListDefaultDue(undefined, '2026-12-31')).toBeNull();
   });
 });

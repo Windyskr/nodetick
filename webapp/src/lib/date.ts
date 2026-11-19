@@ -28,6 +28,16 @@ export function addDays(dateStr: string, days: number): string {
   return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
 }
 
+/**
+ * Default due day for tasks quick-added in a date smart list, as in TickTick:
+ * Today and Next 7 Days → today, Tomorrow → tomorrow; other lists → none.
+ */
+export function smartListDefaultDue(scope: string | undefined, today: string): string | null {
+  if (scope === 'today' || scope === 'next7') return today;
+  if (scope === 'tomorrow') return addDays(today, 1);
+  return null;
+}
+
 /** 'YYYY-MM-DD' + current wall time, backend-compatible format. */
 export function allDayDate(dateStr: string): string {
   return `${dateStr}T00:00:00+0000`;

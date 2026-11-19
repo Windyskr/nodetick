@@ -30,6 +30,7 @@ import {
   dayOf,
   stampOf,
   stampToday,
+  smartListDefaultDue,
   todayStr,
   weekdayShort,
 } from '../../lib/date';
@@ -121,8 +122,10 @@ export default function TasksPage() {
   const tagLabel = tagName ? tags.find((tag) => tagKey(tag.name) === tagKey(tagName))?.label ?? tagName : null;
   const title =
     projectDisplayName(project, t) || savedFilter?.name || (tagLabel ? `#${tagLabel}` : titleKey ? t(titleKey) : t('smartAll'));
+  // Today / Tomorrow / Next 7 Days add to the inbox with a preset date, like TickTick.
+  const quickAddDue = project ? null : smartListDefaultDue(scope, todayStr());
   const quickAddProjectId =
-    project?.id ?? (scope === 'inbox' || scope === 'all' ? INBOX_ID : null);
+    project?.id ?? (scope === 'inbox' || scope === 'all' || quickAddDue ? INBOX_ID : null);
 
   const sorter = (a: Task, b: Task): number => {
     // TickTick pins tasks to the top of the list under every sort key.
@@ -410,6 +413,7 @@ export default function TasksPage() {
         <QuickAdd
           projectId={quickAddProjectId}
           placeholder={f('addTaskTo', scope === 'all' ? t('smartInbox') : title)}
+          defaultDueDate={quickAddDue}
         />
       )}
       <BatchBarOverlay />
