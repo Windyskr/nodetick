@@ -31,6 +31,17 @@ function saveFeatures(prefs: FeaturePrefs) {
   }
 }
 
+/** In-flight saveTask request per task id (see saveTask). */
+const saveQueues = new Map<string, Promise<Task>>();
+
+type TaskLists = Pick<AppState, 'tasks' | 'completed' | 'abandoned' | 'trash'>;
+
+/** Swap a task in whichever list holds it, keeping its position. */
+function replaceTask(s: TaskLists, task: Task): TaskLists {
+  const swap = (list: Task[]) => (list.some((t) => t.id === task.id) ? list.map((t) => (t.id === task.id ? task : t)) : list);
+  return { tasks: swap(s.tasks), completed: swap(s.completed), abandoned: swap(s.abandoned), trash: swap(s.trash) };
+}
+
 export interface ToastState {
   messageKey:
     | 'toastCompleted'
@@ -375,17 +386,39 @@ export const useStore = create<AppState>((set, getState) => ({
       null;
     const projectId = (patch.projectId as string) ?? current?.projectId;
     if (!projectId) throw new Error('Task project not found');
-    const task = await api.updateTask(id, { ...patch, projectId });
+    // Apply the edit locally first: a second edit made while the first request
+    // is in flight (adding subtasks or tags in a row) must build on it, not on
+    // the stale task, or the first edit is overwritten and lost.
+    if (current) set((s) => replaceTask(s, { ...current, ...patch, projectId } as Task));
+    const previous = saveQueues.get(id) ?? Promise.resolve();
+    // One task's saves go out in order so the server applies them in order.
+    const request = previous.catch(() => undefined).then(() => api.updateTask(id, { ...patch, projectId }));
+    saveQueues.set(id, request);
+    let task: Task;
+    try {
+      task = await request;
+    } catch (error) {
+      if (saveQueues.get(id) === request) {
+        saveQueues.delete(id);
+        if (current) set((s) => replaceTask(s, current));
+      }
+      throw error;
+    }
+    // A newer queued save for this task will deliver the final state.
+    if (saveQueues.get(id) !== request) return task;
+    saveQueues.delete(id);
     // New tags added in the detail panel should surface in the sidebar at once.
     set((s) => {
       const known = new Set(s.tags.map((tag) => tag.name));
       const additions = task.tags
         .filter((name) => !known.has(name))
         .map((name, i) => ({ name, label: name, color: null, sortOrder: s.tags.length + i, parentId: null }));
-      // projectId may have changed → refresh lists conservatively but cheaply:
+      const tags = additions.length ? [...s.tags, ...additions] : s.tags;
+      if (current && current.status === task.status) return { tags, ...replaceTask(s, task) };
+      // The status changed → move the task to the matching list.
       const move = (list: Task[]) => list.filter((t) => t.id !== id);
       return {
-        tags: additions.length ? [...s.tags, ...additions] : s.tags,
+        tags,
         tasks: task.status === 0 ? [...move(s.tasks), task] : move(s.tasks),
         completed: task.status === 2 ? [task, ...move(s.completed)] : move(s.completed),
         abandoned: task.status === -1 ? [task, ...move(s.abandoned)] : move(s.abandoned),
