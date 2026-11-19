@@ -23,6 +23,7 @@ import { useI18n, useT } from '../../i18n';
 import { addDays, dayOf, todayStr } from '../../lib/date';
 import { projectDisplayName } from '../../lib/project';
 import type { Task } from '../../lib/types';
+import { isSubmitEnter } from '../../lib/keys';
 
 type SummaryStatus = 'all' | 'active' | 'completed';
 type SummaryGroup = 'status' | 'list' | 'date';
@@ -349,7 +350,7 @@ export default function SummaryPage() {
             </div>
             <div className="px-5 pb-5">
               <p className="mb-4 text-[14px] text-ink-2">{t('summaryTemplateDescription')}</p>
-              <input autoFocus value={templateName} onChange={(event) => setTemplateName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveTemplate(); }} placeholder={t('summaryTemplateName')} className="h-9 w-full rounded-md border border-line px-3 text-[14px] outline-none focus:border-tt" />
+              <input autoFocus value={templateName} onChange={(event) => setTemplateName(event.target.value)} onKeyDown={(event) => { if (isSubmitEnter(event)) saveTemplate(); }} placeholder={t('summaryTemplateName')} className="h-9 w-full rounded-md border border-line px-3 text-[14px] outline-none focus:border-tt" />
             </div>
             <div className="flex h-[58px] items-center justify-end gap-2 border-t border-line px-5">
               <button type="button" className="h-[30px] min-w-[100px] rounded-md border border-line px-4 text-[14px]" onClick={() => setTemplateDialogOpen(false)}>{t('close')}</button>

@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import type { Project, Tag, TaskFilter, FilterDateMode } from '../lib/types';
 import { useT, type Key } from '../i18n';
 import { projectDisplayName } from '../lib/project';
+import { isSubmitEnter } from '../lib/keys';
 
 type FilterInput = Omit<TaskFilter, 'id' | 'sortOrder' | 'createdTime' | 'modifiedTime'> & { sortOrder?: number };
 
@@ -94,7 +95,7 @@ export default function FilterEditor({
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void submit()}
+            onKeyDown={(e) => isSubmitEnter(e) && void submit()}
             placeholder={t('filterNamePh')}
             className="w-full rounded-md border border-tt px-3 py-2 text-[14px] shadow-[0_0_0_2px_rgba(71,114,250,0.08)] placeholder:text-ink-3"
           />

@@ -31,6 +31,7 @@ import { IconFunnel } from '../../components/icons';
 import FilterEditor from '../../components/FilterEditor';
 import ProjectSettingsDialog from './ProjectSettingsDialog';
 import type { Project } from '../../lib/types';
+import { isSubmitEnter } from '../../lib/keys';
 
 const EMOJI_RE = /^\p{Extended_Pictographic}/u;
 
@@ -217,7 +218,7 @@ export default function Sidebar() {
                   onChange={(e) => setNewListName(e.target.value)}
                   onBlur={submitNewList}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') void submitNewList();
+                    if (isSubmitEnter(e)) void submitNewList();
                     if (e.key === 'Escape') {
                       setNewListName('');
                       setAddingList(false);
@@ -488,7 +489,7 @@ function TagItem({
             setEditing(false);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (isSubmitEnter(e)) (e.target as HTMLInputElement).blur();
             if (e.key === 'Escape') {
               setDraft(label);
               setEditing(false);
@@ -612,7 +613,7 @@ function ProjectItem({
             setEditing(false);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (isSubmitEnter(e)) (e.target as HTMLInputElement).blur();
             if (e.key === 'Escape') {
               setDraft(name);
               setEditing(false);

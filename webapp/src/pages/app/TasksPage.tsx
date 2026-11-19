@@ -52,6 +52,7 @@ import KanbanBoard from './KanbanBoard';
 import TimelineBoard from './TimelineBoard';
 import ProjectSettingsDialog from './ProjectSettingsDialog';
 import BatchBar from './BatchBar';
+import { isSubmitEnter } from '../../lib/keys';
 
 type SortKey = 'custom' | 'time' | 'created' | 'modified' | 'title' | 'tags' | 'priority';
 type GroupKey = 'custom' | 'time' | 'created' | 'tags' | 'priority' | 'none';
@@ -575,7 +576,7 @@ function ListHeader({
               onChange={(e) => setTitleDraft(e.target.value)}
               onBlur={commitTitle}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') commitTitle();
+                if (isSubmitEnter(e)) commitTitle();
                 if (e.key === 'Escape') {
                   setTitleDraft(project.name);
                   setEditingTitle(false);

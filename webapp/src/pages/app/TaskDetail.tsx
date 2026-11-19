@@ -10,6 +10,7 @@ import { ScheduleMenu, type TaskSchedule } from '../../components/ScheduleMenu';
 import { MenuItem, Popover } from '../../components/Popover';
 import { useT, useTF } from '../../i18n';
 import { projectDisplayName } from '../../lib/project';
+import { isSubmitEnter } from '../../lib/keys';
 
 /**
  * Right-hand task detail panel, TickTick-style: title, description,
@@ -190,7 +191,7 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
           onChange={(e) => setTitle(e.target.value)}
           onBlur={commitTitle}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
+            if (isSubmitEnter(e)) {
               e.preventDefault();
               (e.target as HTMLTextAreaElement).blur();
             }
@@ -241,7 +242,7 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
               value={newSubtask}
               placeholder={t('addSubtask')}
               onChange={(e) => setNewSubtask(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addSubtask()}
+              onKeyDown={(e) => isSubmitEnter(e) && addSubtask()}
               className="w-full bg-transparent text-[14px] placeholder:text-ink-3"
             />
           </div>
@@ -267,7 +268,7 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
               placeholder={t('addTag').toLowerCase()}
               onChange={(e) => setTagDraft(e.target.value)}
               onBlur={addTag}
-              onKeyDown={(e) => e.key === 'Enter' && addTag()}
+              onKeyDown={(e) => isSubmitEnter(e) && addTag()}
               className="w-24 rounded-md border border-tt px-2 py-0.5 text-[12px]"
             />
           ) : (
@@ -294,7 +295,7 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
             value={commentDraft}
             placeholder={t('commentPlaceholder')}
             onChange={(e) => setCommentDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void sendComment()}
+            onKeyDown={(e) => isSubmitEnter(e) && void sendComment()}
             className="mt-2 w-full rounded-md bg-hover px-3 py-2 text-[13px] placeholder:text-ink-3"
           />
         </div>}

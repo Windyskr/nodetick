@@ -3,6 +3,7 @@ import { List, Columns3, CalendarClock, X } from 'lucide-react';
 import type { Project } from '../../lib/types';
 import { useStore } from '../../stores/store';
 import { useT, useTF } from '../../i18n';
+import { isSubmitEnter } from '../../lib/keys';
 
 /** TickTick list palette for project colors. */
 const LIST_COLORS = [
@@ -65,7 +66,7 @@ export default function ProjectSettingsDialog({
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={commitName}
-            onKeyDown={(e) => e.key === 'Enter' && commitName()}
+            onKeyDown={(e) => isSubmitEnter(e) && commitName()}
             className="mt-1 w-full rounded-md border border-line px-2.5 py-2 text-[14px] focus:border-tt"
           />
         </label>

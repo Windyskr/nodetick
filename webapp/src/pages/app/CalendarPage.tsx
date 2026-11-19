@@ -6,6 +6,7 @@ import type { Task } from '../../lib/types';
 import { addDays, allDayDate, dayDistance, dayOf, daysInRange, moveDateToDay, timeOf, todayStr } from '../../components/taskSchedule';
 import { RoundCheck } from '../../components/RoundCheck';
 import { MenuItem, Popover } from '../../components/Popover';
+import { isSubmitEnter } from '../../lib/keys';
 
 const WEEKDAYS: Record<string, string[]> = {
   en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -714,7 +715,7 @@ export default function CalendarPage() {
       onChange={(event) => setDraft(event.target.value)}
       onBlur={() => void addOn(day)}
       onKeyDown={(event) => {
-        if (event.key === 'Enter') void addOn(day);
+        if (isSubmitEnter(event)) void addOn(day);
         if (event.key === 'Escape') {
           setAddingDay(null);
           setDraft('');

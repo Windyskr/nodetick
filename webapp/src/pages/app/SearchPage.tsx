@@ -7,6 +7,7 @@ import { addDays, dayOf, todayStr } from '../../lib/date';
 import { projectDisplayName } from '../../lib/project';
 import { useStore } from '../../stores/store';
 import { TaskRow } from './TaskRow';
+import { isSubmitEnter } from '../../lib/keys';
 
 type SearchStatus = 'all' | 'active' | 'completed';
 
@@ -157,7 +158,7 @@ export default function SearchPage() {
               <button type="button" title={t('close')} onClick={() => setSaveOpen(false)} className="ml-auto text-ink-3"><X size={18} /></button>
             </div>
             <div className="p-5">
-              <input autoFocus value={filterName} onChange={(event) => setFilterName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void saveFilter(); }} placeholder={t('filterNamePh')} className="h-9 w-full rounded-md border border-tt px-3 text-[14px] outline-none" />
+              <input autoFocus value={filterName} onChange={(event) => setFilterName(event.target.value)} onKeyDown={(event) => { if (isSubmitEnter(event)) void saveFilter(); }} placeholder={t('filterNamePh')} className="h-9 w-full rounded-md border border-tt px-3 text-[14px] outline-none" />
               {query.trim() && <p className="mt-2 text-[12px] text-ink-3">{t('searchFilterKeywordHint')}</p>}
             </div>
             <div className="flex h-[58px] items-center justify-end gap-2 border-t border-line px-5">

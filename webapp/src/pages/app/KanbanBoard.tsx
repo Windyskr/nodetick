@@ -6,6 +6,7 @@ import { useStore } from '../../stores/store';
 import { useT } from '../../i18n';
 import { MenuItem, Popover } from '../../components/Popover';
 import { TaskRow } from './TaskRow';
+import { isSubmitEnter } from '../../lib/keys';
 
 /**
  * Kanban board for a project: one column per task_columns row plus an
@@ -181,7 +182,7 @@ export default function KanbanBoard({
             onChange={(e) => setColumnDraft(e.target.value)}
             onBlur={() => void addCardIn(columnId)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void addCardIn(columnId);
+              if (isSubmitEnter(e)) void addCardIn(columnId);
               if (e.key === 'Escape') {
                 setAddingIn(null);
                 setColumnDraft('');
@@ -219,7 +220,7 @@ export default function KanbanBoard({
             onChange={(e) => setNewName(e.target.value)}
             onBlur={() => void addColumn()}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void addColumn();
+              if (isSubmitEnter(e)) void addColumn();
               if (e.key === 'Escape') {
                 setNewName('');
                 setAdding(false);
