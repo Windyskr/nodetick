@@ -192,7 +192,11 @@ describe('quickParse: neutral formats + junk', () => {
   });
 
   it('M-D works', () => {
-    expect(d('9-7')).toBe('2026-09-07');
+    // Relative to today: a hard-coded date starts failing once it is in the past
+    // (the parser correctly rolls past month-days to next year).
+    const future = shift(10);
+    const [, m, dd] = future.split('-');
+    expect(d(`${Number(m)}-${Number(dd)}`)).toBe(future);
   });
 
   it('ISO date passes through', () => {
