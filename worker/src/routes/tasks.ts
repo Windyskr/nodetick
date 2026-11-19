@@ -302,7 +302,7 @@ tasks.post('/task/filter', async (c) => {
     .all();
   const projectIds = Array.isArray(b.projectIds) ? b.projectIds.map(String) : null;
   const priorities = Array.isArray(b.priority) ? b.priority.map(Number) : null;
-  const tagFilter = Array.isArray(b.tag) ? b.tag.map(String) : null;
+  const tagFilter = Array.isArray(b.tag) ? b.tag.map(tagKey) : null;
   const statuses = Array.isArray(b.status) && b.status.length ? b.status.map(Number) : [0];
   const start = optionalDate(b.startDate);
   const end = optionalDate(b.endDate);
@@ -315,7 +315,7 @@ tasks.post('/task/filter', async (c) => {
     .filter((r) => !priorities || priorities.includes(Number(r.priority)))
     .filter((r) => {
       if (!tagFilter) return true;
-      const tags = parseJsonArray<string>(r.tags as string).map(String);
+      const tags = parseJsonArray<string>(r.tags as string).map(tagKey);
       return tagFilter.some((t) => tags.includes(t));
     })
     .filter((r) => {
@@ -352,7 +352,7 @@ tasks.post('/task/search', async (c) => {
     .bind(userId)
     .all();
   const projectIds = Array.isArray(b.projectIds) ? b.projectIds.map(String) : null;
-  const tagFilter = Array.isArray(b.tags) ? b.tags.map(String) : null;
+  const tagFilter = Array.isArray(b.tags) ? b.tags.map(tagKey) : null;
   const statuses = Array.isArray(b.status) && b.status.length ? b.status.map(Number) : null;
   const dueFrom = optionalDate(b.dueFrom);
   const dueTo = optionalDate(b.dueTo);
@@ -368,7 +368,7 @@ tasks.post('/task/search', async (c) => {
     .filter((r) => !projectIds || projectIds.includes(String(r.project_id)))
     .filter((r) => {
       if (!tagFilter) return true;
-      const tags = parseJsonArray<string>(r.tags as string).map(String);
+      const tags = parseJsonArray<string>(r.tags as string).map(tagKey);
       return tagFilter.some((t) => tags.includes(t));
     })
     .filter((r) => !statuses || statuses.includes(Number(r.status)))
@@ -880,6 +880,14 @@ export async function spawnNextOccurrence(
   return clone ? serializeTask(clone) : null;
 }
 
+/**
+ * Tag identity: tasks keep tag text as typed ("Work"), the tags table keys
+ * on the trimmed lowercase name. Compare tags through this, never verbatim.
+ */
+export function tagKey(tag: unknown): string {
+  return String(tag).trim().toLowerCase();
+}
+
 export async function upsertTags(db: D1Database, userId: string, tags: string[]) {
   for (const name of tags.slice(0, MAX_TAGS)) {
     const trimmed = name.trim();
@@ -888,7 +896,7 @@ export async function upsertTags(db: D1Database, userId: string, tags: string[])
       .prepare(
         'INSERT INTO tags (id, user_id, name, label, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, name) DO NOTHING',
       )
-      .bind(genId(), userId, trimmed.toLowerCase(), trimmed, Date.now())
+      .bind(genId(), userId, tagKey(trimmed), trimmed, Date.now())
       .run();
   }
 }

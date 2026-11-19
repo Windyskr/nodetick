@@ -1674,6 +1674,34 @@ describe('tag management', () => {
     });
     expect(gone.status).toBe(404);
   });
+
+  it('matches tags typed with capitals by their lowercase name', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    const post = async (path: string, body: unknown) =>
+      (await SELF.fetch(`${HOST}/open/v1${path}`, { method: 'POST', headers: auth(token), body: JSON.stringify(body) })).json();
+    const read = async (id: string) =>
+      ((await (await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${id}`, { headers: auth(token) })).json()) as { tags: string[] }).tags;
+    // The webapp keeps the typed case on the task; the tag row is "work".
+    const task = (await post('/task', { title: 'Typed', projectId: 'inbox', tags: ['Work'] })) as { id: string };
+
+    const filtered = (await post('/task/filter', { tag: ['work'] })) as { id: string }[];
+    expect(filtered.map((t) => t.id)).toContain(task.id);
+    const searched = (await post('/task/search', { tags: ['WORK'] })) as { id: string }[];
+    expect(searched.map((t) => t.id)).toContain(task.id);
+
+    await post('/tag/work', { name: 'office' });
+    expect(await read(task.id)).toEqual(['office']);
+
+    const del = await SELF.fetch(`${HOST}/open/v1/tag/office`, { method: 'DELETE', headers: auth(token) });
+    expect(del.status).toBe(200);
+    expect(await read(task.id)).toEqual([]);
+    // Nothing left on the task to resurrect the deleted tag on the next save.
+    await post(`/task/${task.id}`, { title: 'Typed again', tags: await read(task.id) });
+    const tags = (await (await SELF.fetch(`${HOST}/open/v1/tag`, { headers: auth(token) })).json()) as { name: string }[];
+    expect(tags.map((t) => t.name)).not.toContain('work');
+    expect(tags.map((t) => t.name)).not.toContain('office');
+  });
 });
 
 describe('backup export/import', () => {

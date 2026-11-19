@@ -11,6 +11,7 @@ import {
 } from '../serialize.js';
 import { genId, nowIso, parseJsonArray, readJsonObject, RequestBodyTooLargeError, isRequestBodyTooLarge } from '../util.js';
 import { BackupImportError, exportBackup, importBackup } from '../services/backup.js';
+import { tagKey } from './tasks.js';
 
 type State = { Bindings: Env; Variables: Vars };
 
@@ -391,8 +392,9 @@ misc.post('/tag/:tagName', async (c) => {
       .all<{ id: string; tags: string }>();
     for (const r of rows.results) {
       const tags = parseJsonArray<string>(r.tags).map(String);
-      if (!tags.includes(oldName)) continue;
-      const next = tags.map((tag) => (tag === oldName ? rawName : tag));
+      // Task rows keep the typed case ("Work"); match on the tag name.
+      if (!tags.some((tag) => tagKey(tag) === oldName)) continue;
+      const next = [...new Set(tags.map((tag) => (tagKey(tag) === oldName ? rawName : tag)))];
       await c.env.DB.prepare('UPDATE tasks SET tags = ?, modified_time = ?, etag = etag + 1 WHERE id = ? AND user_id = ?')
         .bind(JSON.stringify(next), nowIso(), r.id, userId)
         .run();
@@ -420,8 +422,8 @@ misc.delete('/tag/:tagName', async (c) => {
     .all<{ id: string; tags: string }>();
   for (const r of rows.results) {
     const tags = parseJsonArray<string>(r.tags).map(String);
-    if (!tags.includes(name)) continue;
-    const next = tags.filter((tag) => tag !== name);
+    if (!tags.some((tag) => tagKey(tag) === name)) continue;
+    const next = tags.filter((tag) => tagKey(tag) !== name);
     await c.env.DB.prepare('UPDATE tasks SET tags = ?, modified_time = ?, etag = etag + 1 WHERE id = ? AND user_id = ?')
       .bind(next.length ? JSON.stringify(next) : null, nowIso(), r.id, userId)
       .run();
