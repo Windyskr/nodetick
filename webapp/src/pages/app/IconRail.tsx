@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { KeyRound, Languages, Lock, LogOut, Palette, Settings2, Users } from 'lucide-react';
 import { Popover } from '../../components/Popover';
 import { useI18n, useT } from '../../i18n';
@@ -39,6 +39,7 @@ function initialTheme(): Theme {
 
 export default function IconRail() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { me, logout, features } = useStore();
   const t = useT();
   const { lang, setLang } = useI18n();
@@ -56,14 +57,14 @@ export default function IconRail() {
     }
   }, [theme]);
 
-  const item = (to: string, label: string, Icon: (props: { size?: number }) => ReactNode) => (
+  const item = (to: string, label: string, Icon: (props: { size?: number }) => ReactNode, activeFor?: RegExp) => (
     <NavLink
       key={to}
       to={to}
       title={label}
       className={({ isActive }) =>
         `flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
-          isActive ? 'text-tt' : 'text-[#8c8c8c] hover:bg-hover hover:text-ink-2'
+          (activeFor ? activeFor.test(location.pathname) : isActive) ? 'text-tt' : 'text-[#8c8c8c] hover:bg-hover hover:text-ink-2'
         }`
       }
     >
@@ -181,7 +182,8 @@ export default function IconRail() {
       </Popover>
 
       <div className="flex flex-col items-center gap-2.5">
-        {item('/app/tasks/all', t('navTasks'), IconAll)}
+        {/* Every list, smart list and the summary belong to the task workspace. */}
+        {item('/app/tasks/all', t('navTasks'), IconAll, /^\/app\/(tasks|summary)(\/|$)/)}
         {item('/app/calendar', t('navCalendar'), IconCalendar)}
         {features.matrix && item('/app/matrix', t('navMatrix'), IconMatrix)}
         {features.focus && item('/app/focus', t('navFocus'), IconFocus)}

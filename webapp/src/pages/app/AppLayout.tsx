@@ -115,10 +115,11 @@ export default function AppLayout() {
     location.pathname.startsWith('/app/tasks') || location.pathname === '/app/summary';
   const taskWorkspace = location.pathname.startsWith('/app/tasks');
 
-  // The detail panel accompanies the task-centric pages only.
+  // The detail panel accompanies the task-centric pages only (search results
+  // are task rows too: without it, clicking a result did nothing).
   const showDetail =
     selectedTaskId !== null &&
-    /^\/app\/(tasks|calendar|matrix)/.test(location.pathname) &&
+    /^\/app\/(tasks|calendar|matrix|search)/.test(location.pathname) &&
     selectedTask() !== null;
   const floatingDetail = showDetail && !taskWorkspace;
 
