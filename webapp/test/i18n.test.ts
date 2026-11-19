@@ -63,8 +63,14 @@ describe('server error localization', () => {
   it('maps known messages to Chinese', () => {
     setLangSilently('zh');
     expect(serverError('Invalid email or password.')).toBe('邮箱或密码错误。');
-    expect(serverError('Registration requires a valid invite code.')).toContain('邀请码');
+    expect(serverError('Registration is disabled. Ask an admin to create your account.')).toContain('注册已关闭');
     expect(serverError('That email is already registered.')).toContain('已被注册');
+  });
+
+  it('keeps the retry delay of lockout messages', () => {
+    setLangSilently('zh');
+    expect(serverError('Too many failed login attempts. Try again in 97 seconds.')).toBe('登录失败次数过多，请 97 秒后再试。');
+    expect(serverError('Too many registration attempts. Try again in 900 seconds.')).toBe('注册尝试次数过多，请 900 秒后再试。');
   });
 
   it('passes unknown and English-language messages through', () => {

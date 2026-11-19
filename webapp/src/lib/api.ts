@@ -31,10 +31,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {};
   if (init?.body != null) headers['Content-Type'] = 'application/json';
   const res = await fetch(path, { ...init, headers: { ...headers, ...init?.headers } });
-  if (res.status === 401) throw new ApiError(401, 'Unauthorized');
   if (!res.ok) {
+    // Keep the server's message for 401s too: a failed login answers 401
+    // "Invalid email or password.", which the login form maps to its locale.
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new ApiError(res.status, body?.error ?? `Request failed (${res.status})`);
+    const fallback = res.status === 401 ? 'Unauthorized' : `Request failed (${res.status})`;
+    throw new ApiError(res.status, body?.error ?? fallback);
   }
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;

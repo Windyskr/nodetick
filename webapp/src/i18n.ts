@@ -1262,9 +1262,12 @@ export function serverError(message: string): string {
     [/Registration is disabled/i, '注册已关闭，请联系管理员开通账号。'],
     [/already registered/i, '该邮箱已被注册。'],
     [/at least 8 characters/i, '请输入有效邮箱，密码至少 8 位。'],
+    [/Too many failed login attempts\. Try again in (\d+) seconds/i, '登录失败次数过多，请 {0} 秒后再试。'],
+    [/Too many registration attempts\. Try again in (\d+) seconds/i, '注册尝试次数过多，请 {0} 秒后再试。'],
   ];
   for (const [re, zhMsg] of table) {
-    if (re.test(message)) return zhMsg;
+    const match = re.exec(message);
+    if (match) return zhMsg.replace('{0}', match[1] ?? '');
   }
   return message;
 }
