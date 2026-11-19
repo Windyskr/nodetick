@@ -34,7 +34,9 @@ async function restrictPermissions(): Promise<void> {
 
 export async function writeConfig(config: NodeTickConfig): Promise<void> {
   await mkdir(dirname(CONFIG_PATH), { recursive: true });
-  await writeFile(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
+  // Create the file 0600 up front (mode applies on creation only); the chmod
+  // below also tightens files that already existed with looser modes.
+  await writeFile(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
   await restrictPermissions();
 }
 

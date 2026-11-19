@@ -49,7 +49,8 @@ const commands: Record<string, [string, () => Promise<unknown>]> = {
 // Register lightweight placeholders (fast top-level --help), but load the real
 // command tree for whichever top-level command the user actually invoked.
 const args = process.argv.slice(2);
-const commandName = args.find((a) => !a.startsWith('-') && a in commands);
+// Own keys only: `a in commands` would match prototype names like "constructor".
+const commandName = args.find((a) => !a.startsWith('-') && Object.hasOwn(commands, a));
 if (commandName) {
   const register = (await commands[commandName][1]()) as (p: typeof program) => void;
   for (const [name, [description]] of Object.entries(commands)) {

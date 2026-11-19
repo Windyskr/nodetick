@@ -16,14 +16,24 @@ export class NodeTickApi {
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+    } catch (error) {
+      // undici only says "fetch failed"; name the server and the cause.
+      const cause = error instanceof Error
+        ? ((error.cause as { message?: string; code?: string } | undefined)?.message ||
+          (error.cause as { code?: string } | undefined)?.code || error.message)
+        : String(error);
+      throw new Error(`Cannot reach NodeTick server at ${new URL(url).origin}: ${cause}`);
+    }
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`NodeTick API error ${response.status}: ${text}`);

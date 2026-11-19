@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { has, ok } from '../lib.mjs';
 
 /**
@@ -20,6 +22,15 @@ export async function run({ h, server, token }) {
   h.test('auth token: installs an access token with --server', () => {
     const r = h.runOk(['auth', 'token', token, '--server', server], 'auth token set');
     has(r.stdout, 'Token saved', 'save confirmation');
+    if (process.platform !== 'win32') {
+      const mode = fs.statSync(path.join(h.home, '.config', 'nodetick', 'config.json')).mode & 0o777;
+      ok(mode === 0o600, `config.json holds a bearer token and must be 0600, got ${mode.toString(8)}`);
+    }
+  });
+
+  h.test('cli: prototype-named arguments are unknown commands, not crashes', () => {
+    const r = h.runFails(['constructor'], null, 'nodetick constructor');
+    ok(!/is not a function/.test(r.stderr), `unexpected crash: ${r.stderr.slice(0, 200)}`);
   });
 
   h.test('auth status: signed in, shows server and masked token', () => {
