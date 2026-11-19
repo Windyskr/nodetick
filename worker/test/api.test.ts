@@ -1102,6 +1102,34 @@ describe('habits / focus / countdown', () => {
     expect(deleted.id).toBe(focus.id);
   });
 
+  it('lists a focus window for users with a long history', async () => {
+    const { token, cookie } = await bootstrap();
+    const me = (await (await SELF.fetch(`${HOST}/api/me`, { headers: { Cookie: cookie } })).json()) as { id: string };
+    // 5001 pomodoros from 2025: the result cap must apply to the window only.
+    await env.DB.prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5001)
+       INSERT INTO focus_records (id, user_id, type, start_time, end_time, duration, created_at)
+       SELECT printf('old%021d', i), ?, 0, strftime('%Y-%m-%dT%H:%M:%S+0000', '2025-01-01', '+' || i || ' hours'), NULL, 1500, 0
+       FROM n`,
+    ).bind(me.id).run();
+    const create = async (startTime: string) => ((await (await SELF.fetch(`${HOST}/open/v1/focus`, {
+      method: 'POST', headers: auth(token), body: JSON.stringify({ type: 0, startTime }),
+    })).json()) as { id: string }).id;
+    // Local-day prefixes one day off their UTC day still fall in the window.
+    const east = await create('2026-08-02T01:00:00+1400'); // 2026-08-01T11:00Z
+    const west = await create('2026-07-31T20:00:00-1200'); // 2026-08-01T08:00Z
+    const outside = await create('2026-08-03T09:00:00+0000');
+    const res = await SELF.fetch(
+      `${HOST}/open/v1/focus?from=2026-08-01T00:00:00Z&to=2026-08-01T23:59:59Z&type=0`,
+      { headers: auth(token) },
+    );
+    expect(res.status).toBe(200);
+    const ids = ((await res.json()) as { id: string }[]).map((f) => f.id);
+    expect(ids).toEqual(expect.arrayContaining([east, west]));
+    expect(ids).not.toContain(outside);
+    expect(ids).toHaveLength(2);
+  });
+
   it('creates countdowns with the session cookie (webapp path)', async () => {
     const { cookie } = await bootstrap();
     // The SPA writes through /open/v1 with just its session cookie.

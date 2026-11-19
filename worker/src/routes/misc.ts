@@ -711,10 +711,15 @@ misc.get('/focus', async (c) => {
   if (toMs - fromMs > MAX_FOCUS_RANGE_DAYS * 24 * 60 * 60 * 1000) {
     return c.json({ error: `time range must not exceed ${MAX_FOCUS_RANGE_DAYS} days` }, 400);
   }
+  // Narrow by day in SQL so the result cap applies to the requested window,
+  // not to the user's whole history. A stored time's YYYY-MM-DD prefix is
+  // its local day, within a day of its UTC day, so this padded range can
+  // only over-include; the exact instant check below decides.
+  const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
   const rows = await c.env.DB.prepare(
-    'SELECT * FROM focus_records WHERE user_id = ? AND type = ? AND start_time IS NOT NULL ORDER BY start_time ASC LIMIT ?',
+    'SELECT * FROM focus_records WHERE user_id = ? AND type = ? AND start_time >= ? AND start_time < ? ORDER BY start_time ASC LIMIT ?',
   )
-    .bind(userId, type, MAX_FOCUS_RESULTS + 1)
+    .bind(userId, type, utcDay(fromMs - 86400000), utcDay(toMs + 2 * 86400000), MAX_FOCUS_RESULTS + 1)
     .all();
   if (rows.results.length > MAX_FOCUS_RESULTS) {
     return c.json({ error: `focus result set exceeds ${MAX_FOCUS_RESULTS} records` }, 413);
