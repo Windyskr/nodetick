@@ -40,6 +40,7 @@ export function page(title: string, body: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)} · NodeTick</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>${CSS}</style>
 </head>
 <body>
@@ -84,8 +85,8 @@ export async function consentPage(
         <input type="hidden" name="code_challenge" value="${escapeHtml(params.codeChallenge)}">
         <input type="hidden" name="code_challenge_method" value="${escapeHtml(params.method)}">
         <input type="hidden" name="scope" value="${escapeHtml(params.scope)}">
-        <button type="submit">Authorize</button>
-        <a class="btn" style="background:transparent;color:inherit;border-color:#8886" href="/">Cancel</a>
+        <button type="submit" name="decision" value="allow">Authorize</button>
+        <button type="submit" name="decision" value="deny" class="btn" style="background:transparent;color:inherit;border-color:#8886">Cancel</button>
       </form>
     </div>`,
   );

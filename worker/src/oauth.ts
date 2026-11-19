@@ -117,6 +117,15 @@ oauth.post('/authorize', async (c) => {
   );
   if (typeof params === 'string') return c.text(`OAuth error: ${params}`, 400);
 
+  if (form['decision'] === 'deny') {
+    // RFC 6749 §4.1.2.1: report the refusal to the (validated loopback)
+    // redirect URI so the CLI's callback listener stops waiting at once.
+    const denied = new URL(params.redirectUri);
+    denied.searchParams.set('error', 'access_denied');
+    if (params.state) denied.searchParams.set('state', params.state);
+    return c.redirect(denied.toString());
+  }
+
   const code = randomHex(32);
   await c.env.DB.prepare(
     'INSERT INTO oauth_codes (code_hash, user_id, code_challenge, redirect_uri, expires_at) VALUES (?, ?, ?, ?, ?)',

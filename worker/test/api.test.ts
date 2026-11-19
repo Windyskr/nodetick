@@ -1530,6 +1530,32 @@ describe('oauth', () => {
     const other = await SELF.fetch(`${HOST}/open/v1/project`, { headers: { Cookie: cookie } });
     expect(other.headers.get('Content-Security-Policy')).toMatch(/form-action 'self'$/);
   });
+
+  it('reports a cancelled consent to the loopback callback as access_denied', async () => {
+    const { cookie } = await bootstrap();
+    const challenge = await s256Challenge('cancel-verifier-' + 'c'.repeat(40));
+    const query = new URLSearchParams({
+      client_id: 'nodetick-cli', redirect_uri: 'http://127.0.0.1:8765/callback', response_type: 'code',
+      code_challenge: challenge, code_challenge_method: 'S256', state: 'st',
+    });
+    const consent = await SELF.fetch(`${HOST}/oauth/authorize?${query}`, { headers: { Cookie: cookie } });
+    const html = await consent.text();
+    expect(html).toContain('name="decision" value="deny"');
+    const fields = Object.fromEntries(
+      [...html.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map((m) => [m[1], m[2]]),
+    );
+    const denied = await SELF.fetch(`${HOST}/oauth/authorize`, {
+      ...form({ ...fields, decision: 'deny' }),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
+      redirect: 'manual',
+    });
+    expect(denied.status).toBe(302);
+    const location = new URL(denied.headers.get('Location')!);
+    expect(location.origin + location.pathname).toBe('http://127.0.0.1:8765/callback');
+    expect(location.searchParams.get('error')).toBe('access_denied');
+    expect(location.searchParams.get('state')).toBe('st');
+    expect(location.searchParams.has('code')).toBe(false);
+  });
 });
 
 describe('recurring tasks', () => {
