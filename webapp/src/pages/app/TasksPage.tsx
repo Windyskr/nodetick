@@ -310,7 +310,7 @@ export default function TasksPage() {
                   <button
                     type="button"
                     className="text-[13px] text-p-high hover:underline"
-                    onClick={() => void postponeAll(today)}
+                    onClick={() => void postponeAll(today, list.map((task) => task.id))}
                   >
                     {t('postpone')}
                   </button>

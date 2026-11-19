@@ -21,6 +21,7 @@ import {
   daysInRange,
   localDateTime,
   moveDateToDay,
+  postponePatch,
   scheduleLabel,
   timeOf,
 } from '../src/components/taskSchedule';
@@ -68,6 +69,30 @@ describe('date basics', () => {
     expect(moveDateToDay('2026-09-05T09:00:00+0800', '2026-09-06', false)).toMatch(
       /^2026-09-06T09:00:00[+-]\d{4}$/,
     );
+  });
+
+  it('postponePatch moves the due day to today and keeps clock times', () => {
+    const base = { projectId: 'inbox', startDate: null };
+    expect(postponePatch({ ...base, dueDate: '2026-11-16T00:00:00+0000', isAllDay: true }, '2026-11-19')).toEqual({
+      projectId: 'inbox',
+      isAllDay: true,
+      dueDate: '2026-11-19T00:00:00+0000',
+    });
+    const timed = postponePatch({ ...base, dueDate: '2026-11-17T14:30:00+0800', isAllDay: false }, '2026-11-19');
+    expect(timed.isAllDay).toBe(false);
+    expect(dateTimeParts(timed.dueDate as string)).toEqual({ date: '2026-11-19', time: '14:30' });
+    expect(timed).not.toHaveProperty('startDate');
+  });
+
+  it('postponePatch shifts a range by the same number of days', () => {
+    const patch = postponePatch({
+      projectId: 'work',
+      startDate: '2026-11-15T09:00:00+0800',
+      dueDate: '2026-11-17T18:00:00+0800',
+      isAllDay: false,
+    }, '2026-11-19');
+    expect(dateTimeParts(patch.startDate as string)).toEqual({ date: '2026-11-17', time: '09:00' });
+    expect(dateTimeParts(patch.dueDate as string)).toEqual({ date: '2026-11-19', time: '18:00' });
   });
 
   it('stampOf strips dashes', () => {

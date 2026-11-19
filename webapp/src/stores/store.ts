@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { ApiError, api } from '../lib/api';
 import type { Me, Project, ProjectGroup, Tag, Task, TaskFilter } from '../lib/types';
+import { postponePatch } from '../components/taskSchedule';
 
 export { INBOX_ID } from '../lib/project';
 
@@ -107,7 +108,8 @@ interface AppState {
   restoreTask: (id: string) => Promise<void>;
   purgeTask: (id: string) => Promise<void>;
   emptyTrash: () => Promise<void>;
-  postponeAll: (bucketDay: string) => Promise<void>;
+  /** Move overdue tasks (optionally only `ids`) to `bucketDay`, keeping their times. */
+  postponeAll: (bucketDay: string, ids?: string[]) => Promise<void>;
 
   addProject: (name: string, viewMode?: string) => Promise<Project>;
   renameProject: (id: string, name: string) => Promise<void>;
@@ -480,12 +482,12 @@ export const useStore = create<AppState>((set, getState) => ({
     set({ trash: [] });
   },
 
-  postponeAll: async (today) => {
+  postponeAll: async (today, ids) => {
     const overdue = getState().tasks.filter((t) => {
       const d = t.dueDate?.slice(0, 10);
-      return d && d < today && !t.parentId;
+      return d && d < today && !t.parentId && (!ids || ids.includes(t.id));
     });
-    await Promise.all(overdue.map((t) => api.updateTask(t.id, { projectId: t.projectId, dueDate: `${today}T00:00:00+0000` })));
+    await Promise.all(overdue.map((t) => api.updateTask(t.id, postponePatch(t, today))));
     await getState().refresh();
   },
 

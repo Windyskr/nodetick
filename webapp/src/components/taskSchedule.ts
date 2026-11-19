@@ -105,3 +105,29 @@ export function moveDateToDay(value: string | null | undefined, day: string, all
   const parts = dateTimeParts(value);
   return parts.time ? localDateTime(day, parts.time) : allDayDate(day);
 }
+
+interface Schedulable {
+  projectId: string;
+  startDate: string | null;
+  dueDate: string | null;
+  isAllDay: boolean;
+}
+
+/**
+ * Update patch for TickTick's "postpone": the due day becomes `day`, the start
+ * moves by the same number of days, and timed tasks keep their clock time.
+ */
+export function postponePatch(task: Schedulable, day: string): Record<string, unknown> {
+  const patch: Record<string, unknown> = {
+    projectId: task.projectId,
+    isAllDay: task.isAllDay,
+    dueDate: moveDateToDay(task.dueDate, day, task.isAllDay),
+  };
+  const dueDay = dayOf(task.dueDate);
+  const startDay = dayOf(task.startDate);
+  const delta = dueDay ? dayDistance(dueDay, day) : null;
+  if (startDay && delta != null) {
+    patch.startDate = moveDateToDay(task.startDate, addDays(startDay, delta), task.isAllDay);
+  }
+  return patch;
+}
