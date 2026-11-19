@@ -395,7 +395,11 @@ export const useStore = create<AppState>((set, getState) => ({
     // Apply the edit locally first: a second edit made while the first request
     // is in flight (adding subtasks or tags in a row) must build on it, not on
     // the stale task, or the first edit is overwritten and lost.
-    if (current) set((s) => replaceTask(s, { ...current, ...patch, projectId } as Task));
+    if (current) {
+      // Like JSON.stringify for the request, ignore keys set to undefined.
+      const defined = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+      set((s) => replaceTask(s, { ...current, ...defined, projectId } as Task));
+    }
     const previous = saveQueues.get(id) ?? Promise.resolve();
     // One task's saves go out in order so the server applies them in order.
     const request = previous.catch(() => undefined).then(() => api.updateTask(id, { ...patch, projectId }));
