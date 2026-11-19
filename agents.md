@@ -79,3 +79,70 @@
 - Web Push 端到端（真 Chrome）：订阅成功（已开启 · 1 台设备）→ 发送测试通知 → Windows 系统气泡弹出「NodeTick 通知测试 / 通知功能已经连接成功」，链路 FCM → sw.js → 系统通知全部打通。
 - 生产冒烟：`/` 200；`/api/register/status` 返回 `{"open":true}`；坏 token 访问 `/open/v1/feed.ics` 403；无会话访问 `/api/export/calendar.ics` 401。
 - `.dev.vars` 在 `.gitignore` 第 4 行，私钥不会进 Git。
+
+## 2026-11-19：README 重写、全功能测试与修复
+
+本次在本地开发环境完成，未部署、未提交。两个子代理在独立 git worktree 中并行测试（后端/CLI 与网页端），各自使用独立端口和本地 D1，修复后合并回工作区。
+
+### 实现内容
+
+- README 重写：导航、Mermaid 架构图、分步部署、配置项表、可折叠 API 参考；并按代码修正（CLI 未发布到 npm、`wrangler d1 export` 需要 `--remote --output`、`SESSION_SECRET` 是所有登录的前提、本地开发需要 `worker/.dev.vars`）。
+- 部署：`npm run deploy` 先构建网页应用；`wrangler.toml` 去掉 `database_id` 和 VAPID 变量，加 `keep_vars = true`（部署时沿用线上已绑定的 `nodetick-db` 和线上变量）；`.sql` 规则加 `fallthrough = false` 消除警告。
+- 新增 `.worktreeinclude`（把 `worker/.dev.vars` 复制进新 worktree），`.gitignore` 忽略 `.claude/worktrees/`。
+- 后端/CLI 修复（分支 `agent/api-cli-fixes`，13 个提交）：导入他人备份会把对方数据移到自己账号（严重）；重复完成任务会重复生成下一次；全天提醒按 UTC 零点触发、`TRIGGER:PT0S` 被忽略；推送订阅可用 `localhost.` 绕过检查；OAuth 授权页 CSP `form-action` 拦截回调重定向（Chrome 下 `nodetick auth login` 卡住）；大小写不同的标签改名/删除/筛选失效；批量移动出错时已部分生效；专注记录超过 5000 条后查询全部 413；ICS 出现裸 CR；CLI 数值参数写错被静默忽略、配置文件创建时短暂可读、E2E 只能在 Windows 上运行。
+- 网页端修复（分支 `agent/webapp-fixes`，22 个提交）：开发代理导致所有写请求 403；优先级统一为 TickTick 的 0/1/3/5；专注记录时间按瞬时解析、以本地时间显示，DST 后历史为空；快速连续编辑子任务/标签丢失；输入法回车误提交；顺延丢失时间；倒计时"下一步"直接保存、重复倒计时天数错误；搜索结果点击无效；深色主题文字不可读；手机宽度下任务列表为 0；键盘焦点不可见；Escape 关闭对话框；回收站勾选报 404；按路由懒加载（落地页 610 KB → 257 KB）。
+- OAuth 授权页「取消」改为带 `error=access_denied` 回到 CLI 回调；授权页加 favicon。
+- 修复按写死日期断言的快速添加测试。
+
+### 关键实现要点（坑）
+
+- 本地 `main` 当时落后 `origin/main` 19 个提交，而 Claude Code 的 worktree 基于 `origin/main` 创建；已快进到 `0ccd713` 再合并。
+- 去掉 `database_id` 后，本地 `wrangler dev` 的 D1 文件 key 从占位符变为 binding 名 `DB`；已把原本地库 `82898e5c…sqlite` 复制为 `e7352547…sqlite`，原文件保留作备份。
+- wrangler 4.127 的 D1 自动关联顺序：沿用线上 Worker 已有绑定 → 按 `database_name` 查找 → 都没有才创建（读源码确认，未实际部署）。
+- Vite 字符串形式的代理默认 `changeOrigin: true`，会让 Worker 的同源校验拒绝所有写请求。
+- zsh 中 `$VAR:path` 会被当成修饰符（如 `:w`、`:e`），git 引用要写成 `"${VAR}:path"`。
+
+### 待决定
+
+- 旧版网页端按 0–3 存的优先级（高 = 3）现在显示为「中」。如需迁移线上数据：`UPDATE tasks SET priority = CASE priority WHEN 3 THEN 5 WHEN 2 THEN 3 ELSE priority END WHERE priority IN (2,3);`。只在没有人通过 CLI/API 设过「中」(3) 时执行；已保存过滤器的 priorities 同理。
+- 未修复：修改密码后 API 令牌仍有效；并发 `POST /task/{id}` 完成重复任务仍可能生成两次；输入校验偏宽松；每月 29–31 日的倒计时跳过短月，1 月 1–3 日的年度倒计时缺「提前 3 天」提醒；时间线视图不显示无日期任务；今天/明天/最近 7 天没有快速添加；在一台设备上关闭通知会关掉所有设备。
+
+### 验证记录
+
+- `npm test -w worker` 73/73；`npm test -w webapp` 109/109；`npm run type-check` 通过；`npm run build` 通过。
+- E2E（本地 `wrangler dev`，临时存储）78/78。
+- Playwright 冒烟：登录、快速添加（`!3` 存为 5、标签保留大小写、「明天」为全天）、大小写标签页、390 px 手机布局、OAuth 授权与取消都正确回调，无控制台错误。
+- `wrangler deploy --dry-run` 通过（`env.DB (nodetick-db)`）。
+
+## 2026-11-19（续）：输入校验、提醒与通知修复，部署到生产
+
+用户授权直接操作生产数据并部署。
+
+### 实现内容
+
+- 输入校验：新增 `parseApiDate`（只接受真实日历日期，格式 `yyyy-MM-dd[THH:mm[:ss]][Z|±HH:mm|±HHmm]`）和 `nonStringField`；任务、评论、清单/分组/看板列、习惯、标签、过滤器的字符串字段类型错误返回 400（原来对象会被存成 `"[object Object]"`），`2026-02-30` 之类的日期不再被 `Date.parse` 顺延成 3 月 2 日；任务 `priority` 只接受 0–5 的整数，`isAllDay` 必须是布尔值，标签/提醒数组元素必须是字符串；专注记录时间同样做日历校验。清单 `viewMode` 只校验类型（网页端还在用 `grid`）。
+- 倒计时重复：`countdownFallsOn` 按「今天 + 提前天数」匹配，每月 29–31 日遇到小月在月末提醒、2 月 29 日的每年重复平年在 2 月 28 日提醒、1 月初的「提前 3 天」能跨年触发，重复不会早于原始日期。网页端 `nextOccurrence` 原本就按月末截断，两边一致。
+- 每台设备单独开关通知：开关只订阅/取消当前浏览器，不再把账号级 `enabled` 改成关闭；对话框显示「此设备未开启 · 其他 N 台设备已开启」；当前设备已订阅但账号级开关是旧版遗留的关闭状态时自动修复为开启。
+- 推送文案多语言：`push_subscriptions` 新增 `lang`（默认 `zh`，靠 `ensureSchema` 自动补列）；订阅时网页端带上界面语言，旧客户端按 `Accept-Language` 推断；切换界面语言时重新登记当前设备；服务端按每个订阅的语言选择文案，测试通知同理；`sw.js` 的兜底文案也按浏览器语言选择。
+- 时间线视图下方列出无日期任务，点击打开详情设日期。
+- 「今天」「明天」「最近 7 天」显示快速添加，任务进入收集箱并预设今天/明天/今天；输入中的日期优先。
+
+### 生产部署记录
+
+- 部署前生产数据：1 个用户、1 个清单、1 个习惯，任务和过滤器都是 0 条，所以优先级迁移没有可改的数据，未执行。
+- 备份：`~/nodetick-backups/nodetick-prod-20261119-234132.sql`（权限 600）；D1 Time Travel 书签 `00000e67-00000000-00005128-804ff266f563bf9642e808f3b3ab040e`，回滚命令 `npx wrangler d1 time-travel restore nodetick-db --bookmark=<书签> -c worker/wrangler.toml`。
+- `npm run deploy` 发布版本 `8c5a9f24-a087-4512-b2e5-e417eeb13b51`；去掉 `database_id` 后 wrangler 显示 `env.DB (inherited)`，仍绑定 `b271ddb8…`；`keep_vars` 保住了线上的 `VAPID_PUBLIC_KEY`、`VAPID_SUBJECT`。
+- 部署后：`push_subscriptions.lang` 已自动补列，数据行数不变；`/` 200、`/api/register/status` 为 `{"open":false}`、无会话访问受保护接口 401、坏 feed 令牌 403、`/oauth/authorize` 未登录跳转登录页。
+
+### 验证记录
+
+- `npm test -w worker` 80/80；`npm test -w webapp` 110/110；`npm run type-check`、`npm run build` 通过；E2E 78/78。
+- Playwright 冒烟：三个智能清单的快速添加日期正确且输入日期优先；时间线列出无日期任务并能打开详情；通知对话框在「无设备」和「其他设备已开启」两种状态下文案和可用性正确；无控制台错误。
+
+## 2026-11-20：README 截图与专注页布局修复
+
+- 新增 `docs/screenshots/`（任务列表与详情、日历月视图、四象限、习惯、专注深色主题，1280×800 PNG，共约 435 KB），README 顶部放主图，「功能」下放 2×2 截图表。截图用本地 `wrangler dev` 的临时库和演示账号拍摄，浏览器时钟用 Playwright `page.clock` 固定在 2026-11-20 15:30，避免跨零点；环境没有 emoji 字体，演示数据不用 emoji 图标。
+- 修复专注页两个问题（尚未部署到生产，需要 `npm run deploy`）：
+  - 开始/暂停/继续/结束按钮原来用 `top-[717px]` 绝对定位，在高度约 800px 的窗口里被 `overflow-hidden` 裁掉、无法点全；现在按钮回到正常文档流，间距和表盘尺寸用 `clamp()`/`min()` 随视口高度缩放，720px 高度下暂停态的两个按钮也完整可见。
+  - 表盘刻度和圆环写死了 `rgba(20,20,20,0.1)` 和 `#4772fa`，深色主题下圆环看不见、紫/绿主题下进度色不跟随；改用 `var(--color-ink)`（低不透明度）和 `var(--color-tt)`。
+- 验证：`npm test -w webapp` 110/110，`npm run type-check` 通过；Playwright 在 1280×800、1280×720 下检查空闲、计时、暂停三种状态的按钮都在可视区内。
