@@ -1571,6 +1571,55 @@ describe('open backup endpoints', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("never moves another user's rows when importing their export", async () => {
+    const { token: owner } = await bootstrap();
+    const post = async (tok: string, path: string, body: unknown) =>
+      (await SELF.fetch(`${HOST}/open/v1${path}`, { method: 'POST', headers: auth(tok), body: JSON.stringify(body) })).json() as Promise<Record<string, unknown>>;
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(owner) }); // ensure inbox
+    const task = await post(owner, '/task', { title: 'Owner task', projectId: 'inbox' });
+    const habit = await post(owner, '/habit', { name: 'Owner habit' });
+    await post(owner, `/habit/${habit.id}/checkin`, { stamp: 20260105, value: 1 });
+    await post(owner, `/habit/${habit.id}/record`, { stamp: 20260105, content: 'owner note' });
+    const focus = await post(owner, '/focus', { type: 0, startTime: '2026-01-05T09:00:00+0800', endTime: '2026-01-05T09:25:00+0800' });
+    const countdown = await post(owner, '/countdown', { name: 'Owner day', date: '2027-01-01' });
+    const backup = await (await SELF.fetch(`${HOST}/open/v1/backup/export`, { headers: auth(owner) })).json();
+
+    await env.DB.prepare(
+      'INSERT INTO users (id, email, password_hash, salt, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    )
+      .bind('other-user', 'other@example.com', 'test-only', '33'.repeat(16), 0, Date.now())
+      .run();
+    const other = await issueApiToken(env.DB, 'other-user', 'test');
+    const importRes = await SELF.fetch(`${HOST}/open/v1/backup/import`, {
+      method: 'POST',
+      headers: auth(other),
+      body: JSON.stringify(backup),
+    });
+    expect(importRes.status).toBe(200);
+    const result = (await importRes.json()) as { imported: number; skipped: number };
+    expect(result.skipped).toBeGreaterThanOrEqual(6);
+
+    // Every owner row is still owned (and readable) by the owner only.
+    expect((await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${task.id}`, { headers: auth(owner) })).status).toBe(200);
+    expect((await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${task.id}`, { headers: auth(other) })).status).toBe(404);
+    expect((await SELF.fetch(`${HOST}/open/v1/habit/${habit.id}`, { headers: auth(owner) })).status).toBe(200);
+    expect((await SELF.fetch(`${HOST}/open/v1/focus/${focus.id}?type=0`, { headers: auth(owner) })).status).toBe(200);
+    const checkins = (await (await SELF.fetch(
+      `${HOST}/open/v1/habit/checkins?habitIds=${habit.id}&from=20260101&to=20260131`,
+      { headers: auth(owner) },
+    )).json()) as { checkins: unknown[] }[];
+    expect(checkins[0].checkins).toHaveLength(1);
+    const records = (await (await SELF.fetch(
+      `${HOST}/open/v1/habit/${habit.id}/records?from=20260101&to=20260131`,
+      { headers: auth(owner) },
+    )).json()) as unknown[];
+    expect(records).toHaveLength(1);
+    const countdowns = (await (await SELF.fetch(`${HOST}/open/v1/countdown`, { headers: auth(owner) })).json()) as { id: string }[];
+    expect(countdowns.map((c) => c.id)).toContain(countdown.id);
+    const stolen = await env.DB.prepare("SELECT COUNT(*) AS n FROM tasks WHERE user_id = 'other-user'").first<{ n: number }>();
+    expect(stolen?.n).toBe(0);
+  });
 });
 
 describe('calendar subscription feed', () => {

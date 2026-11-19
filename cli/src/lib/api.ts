@@ -315,7 +315,7 @@ export class NodeTickApi {
     return this.request('/backup/export');
   }
 
-  async importBackup(backup: unknown): Promise<{ imported: number }> {
+  async importBackup(backup: unknown): Promise<{ imported: number; skipped?: number }> {
     return this.request('/backup/import', {
       method: 'POST',
       body: JSON.stringify(backup),

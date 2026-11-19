@@ -50,6 +50,9 @@ async function importBackup(file: string, options: { json?: boolean }) {
     return;
   }
   console.log(`${chalk.green('Imported:')} ${result.imported} rows from ${file}`);
+  if (result.skipped) {
+    console.log(chalk.yellow(`Skipped: ${result.skipped} rows whose ids belong to another account`));
+  }
 }
 
 export function registerBackupCommand(program: Command) {

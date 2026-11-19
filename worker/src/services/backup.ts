@@ -64,13 +64,14 @@ export async function exportBackup(env: Env, userId: string): Promise<BackupDocu
 /**
  * Merge-import a previously exported backup (upserts by id). Throws
  * BackupImportError for files that are not NodeTick backups or exceed the
- * per-table row limit; unknown/extra fields are ignored.
+ * per-table row limit; unknown/extra fields are ignored. Rows whose id
+ * belongs to another user are skipped (counted in `skipped`).
  */
 export async function importBackup(
   env: Env,
   userId: string,
   parsed: unknown,
-): Promise<{ imported: number }> {
+): Promise<{ imported: number; skipped: number }> {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new BackupImportError('expected a NodeTick backup JSON object', 400);
   }
@@ -80,22 +81,36 @@ export async function importBackup(
   }
 
   let imported = 0;
+  let skipped = 0;
   const upsert = async (table: string, rows: unknown, columns: string[]) => {
     if (!Array.isArray(rows)) return;
     if (rows.length > MAX_IMPORT_ITEMS) {
       throw new BackupImportError(`too many ${table} rows`, 413);
     }
+    // Row ids (and the check-in/record (habit_id, stamp) keys) are unique
+    // across ALL users, so a bare INSERT OR REPLACE would delete another
+    // user's row and re-create it under this account. Only replace rows
+    // this user owns or that do not exist yet; projects are keyed by
+    // (id, user_id) and cannot collide across users.
+    const guards: string[] = [];
+    if (table !== 'projects') guards.push(`NOT EXISTS (SELECT 1 FROM ${table} WHERE id = ? AND user_id != ?)`);
+    const habitScoped = table === 'habit_checkins' || table === 'habit_records';
+    if (habitScoped) guards.push('EXISTS (SELECT 1 FROM habits WHERE id = ? AND user_id = ?)');
     for (const raw of rows) {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
       const row = raw as Record<string, unknown>;
       if (typeof row.id !== 'string' || !row.id || row.id.length > 128) continue;
       const names = ['user_id', ...columns];
       const values = [userId, ...columns.map((col) => row[col] ?? null)];
+      if (table !== 'projects') values.push(row.id, userId);
+      if (habitScoped) values.push(row.habit_id ?? null, userId);
       const placeholders = names.map(() => '?').join(', ');
-      await env.DB.prepare(
-        `INSERT OR REPLACE INTO ${table} (${names.join(', ')}) VALUES (${placeholders})`,
+      const where = guards.length ? ` WHERE ${guards.join(' AND ')}` : '';
+      const result = await env.DB.prepare(
+        `INSERT OR REPLACE INTO ${table} (${names.join(', ')}) SELECT ${placeholders}${where}`,
       ).bind(...values).run();
-      imported++;
+      if (result.meta.changes) imported++;
+      else skipped++;
     }
   };
 
@@ -122,5 +137,5 @@ export async function importBackup(
   await upsert('focus_records', doc.focusRecords, ['id', 'type', 'task_id', 'note', 'start_time', 'end_time', 'duration', 'pause_duration', 'relation', 'status', 'etag', 'created_at']);
   await upsert('countdowns', doc.countdowns, ['id', 'name', 'date', 'kind', 'reminders', 'repeat_flag', 'calculation', 'display_mode', 'style', 'color', 'icon', 'sort_order', 'created_at']);
 
-  return { imported };
+  return { imported, skipped };
 }
