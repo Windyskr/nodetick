@@ -1233,6 +1233,26 @@ describe('notifications', () => {
     });
     expect(subscribe.status).toBe(pushConfigured(env) ? 200 : 503);
   });
+
+  it('rejects push endpoints that are not public HTTPS hosts', async () => {
+    const { token } = await bootstrap();
+    for (const endpoint of [
+      'http://push.example/sub',
+      'https://localhost/sub',
+      'https://localhost./sub',
+      'https://device.localhost./sub',
+      'https://printer.local./sub',
+      'https://127.0.0.1/sub',
+      'https://2130706433/sub',
+      'https://[::1]/sub',
+      'https://user:pass@push.example/sub',
+    ]) {
+      const res = await SELF.fetch(`${HOST}/open/v1/notification/subscribe`, {
+        ...json({ endpoint, keys: { p256dh: 'abc', auth: 'abc' } }, auth(token)),
+      });
+      expect(res.status, endpoint).toBe(pushConfigured(env) ? 400 : 503);
+    }
+  });
 });
 
 describe('notification dispatch', () => {

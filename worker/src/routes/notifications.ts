@@ -66,8 +66,9 @@ notifications.post('/notification/subscribe', async (c) => {
   let endpoint: URL;
   try { endpoint = new URL(b.endpoint); } catch { return c.json({ error: 'invalid push endpoint' }, 400); }
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password) return c.json({ error: 'push endpoint must use HTTPS' }, 400);
-  const host = endpoint.hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || /^\d+(?:\.\d+){3}$/.test(host) || host.includes(':')) {
+  // Drop the FQDN trailing dot first: "localhost." resolves like "localhost".
+  const host = endpoint.hostname.toLowerCase().replace(/\.+$/, '');
+  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || /^\d+(?:\.\d+){3}$/.test(host) || host.includes(':')) {
     return c.json({ error: 'invalid push endpoint host' }, 400);
   }
   const now = Date.now();
