@@ -24,7 +24,7 @@ export async function run({ h, server, session }) {
   h.test('countdown create: empty date rejected by the server', () => {
     h.runFails(
       ['countdown', 'create', '--name', 'x', '--date', ''],
-      'date is required',
+      'date must be a valid YYYY-MM-DD date',
       'countdown create empty date',
     );
   });

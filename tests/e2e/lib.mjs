@@ -27,9 +27,16 @@ export function has(str, sub, msg) {
 /** Compile the CLI so the suite always tests the current source. */
 export function buildCli() {
   console.log('[setup] building the nodetick CLI ...');
-  const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  if (!fs.existsSync(npmCli)) {
-    throw new Error(`npm-cli.js not found next to ${process.execPath}; run manually: npm run build -w cli`);
+  // `npm run` exports npm_execpath; otherwise probe the Windows layout
+  // (node_modules next to node.exe) and the POSIX one (lib/node_modules).
+  const nodeDir = path.dirname(process.execPath);
+  const npmCli = [
+    process.env.npm_execpath,
+    path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    path.join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ].find((candidate) => candidate && /npm-cli\.js$/.test(candidate) && fs.existsSync(candidate));
+  if (!npmCli) {
+    throw new Error(`npm-cli.js not found for ${process.execPath}; run manually: npm run build -w cli`);
   }
   const r = spawnSync(process.execPath, [npmCli, 'run', 'build', '-w', 'cli'], {
     cwd: REPO_ROOT,

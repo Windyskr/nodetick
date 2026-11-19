@@ -161,7 +161,8 @@ export async function run({ h }) {
     const list = h.j(['task', 'completed', '--projects', work.id], 'task completed');
     ok(list.some((t) => t.title === `${pfx}-done`), 'contains completed task');
 
-    const now = new Date();
+    // Epoch millis: `Date + number` would concatenate strings, not add.
+    const now = Date.now();
     const iso = (d) => d.toISOString().replace('Z', '+0000');
     const window = h.j(
       ['task', 'completed', '--projects', work.id,
