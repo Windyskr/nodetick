@@ -19,7 +19,7 @@ import { findQuickDateToken, parseQuickAdd, type QuickDateToken } from '../../li
 import { projectDisplayName } from '../../lib/project';
 import type { Project, Tag } from '../../lib/types';
 import { Popover } from '../../components/Popover';
-import { PRIORITY_COLORS, priorityLabel } from '../../components/RoundCheck';
+import { PRIORITY_COLORS, PRIORITY_LEVELS, priorityLabel } from '../../components/RoundCheck';
 import { ScheduleMenu, type TaskSchedule } from '../../components/ScheduleMenu';
 
 const EMPTY_SCHEDULE: TaskSchedule = {
@@ -405,7 +405,7 @@ function QuickAddOptions({
     <div className="w-[316px] max-w-[calc(100vw-24px)]">
       <div className="px-4 pb-2 pt-3 text-[14px] text-ink-3">{t('filterPriority')}</div>
       <div className="grid grid-cols-4 gap-2 border-b border-line px-4 pb-3">
-        {[3, 2, 1, 0].map((value) => (
+        {PRIORITY_LEVELS.map((value) => (
           <button
             key={value}
             type="button"

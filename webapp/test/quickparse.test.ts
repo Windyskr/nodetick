@@ -40,13 +40,14 @@ describe('quickParse: tags', () => {
 });
 
 describe('quickParse: priority', () => {
+  // Levels !0–!3 map to TickTick's stored values: 0 none, 1 low, 3 medium, 5 high.
   it.each([
     ['!1', 1],
-    ['!2', 2],
-    ['!3', 3],
+    ['!2', 3],
+    ['!3', 5],
     ['!0', 0],
-    ['!高', 3],
-    ['!中', 2],
+    ['!高', 5],
+    ['!中', 3],
     ['!低', 1],
     ['!无', 0],
   ])('zh %s → %i', (token, expected) => {
@@ -55,10 +56,10 @@ describe('quickParse: priority', () => {
   });
 
   it.each([
-    ['!high', 3],
-    ['!High', 3],
-    ['!medium', 2],
-    ['!med', 2],
+    ['!high', 5],
+    ['!High', 5],
+    ['!medium', 3],
+    ['!med', 3],
     ['!low', 1],
     ['!none', 0],
   ])('en %s → %i', (token, expected) => {
@@ -166,7 +167,7 @@ describe('quickParse: en dates', () => {
   it('`~next week` works inside full quick-add input (space normalization)', () => {
     const r = en('Plan sprint ~next week !med');
     expect(r.title).toBe('Plan sprint');
-    expect(r.priority).toBe(2);
+    expect(r.priority).toBe(3);
     const [y, m, dd] = r.dueDate!.split('-').map(Number);
     expect(new Date(y, m - 1, dd).getDay()).toBe(1);
   });
@@ -214,7 +215,7 @@ describe('quickParse: neutral formats + junk', () => {
 describe('quickParse: combinations', () => {
   it('parses tag + date + priority together (zh)', () => {
     const r = zh('提交报销单 ~明天 !高 #财务');
-    expect(r).toEqual({ title: '提交报销单', tags: ['财务'], priority: 3, dueDate: shift(1) });
+    expect(r).toEqual({ title: '提交报销单', tags: ['财务'], priority: 5, dueDate: shift(1) });
   });
 
   it('parses in any order', () => {
@@ -229,7 +230,7 @@ describe('quickParse: combinations', () => {
 
   it('parses full English input', () => {
     const r = en('Ship release ~tomorrow !high #ops');
-    expect(r).toEqual({ title: 'Ship release', tags: ['ops'], priority: 3, dueDate: shift(1) });
+    expect(r).toEqual({ title: 'Ship release', tags: ['ops'], priority: 5, dueDate: shift(1) });
   });
 
   it('plain text passes through untouched', () => {

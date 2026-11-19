@@ -41,14 +41,15 @@ export function parseQuickAdd(raw: string, lang: Lang, options: QuickParseOption
   }
   text = text.replace(/#[^\s#]+/g, ' ');
 
-  // priority: `!` followed by 0-3 or a level word (zh or en)
+  // priority: `!` followed by level 0-3 or a level word (zh or en), stored as
+  // TickTick's values (0 none, 1 low, 3 medium, 5 high)
   const pri = /(?:^|\s)!(\S+)(?=\s|$)/i.exec(text);
   if (pri) {
     const word = pri[1].toLowerCase();
     const map: Record<string, number> = {
-      '0': 0, '1': 1, '2': 2, '3': 3,
-      high: 3, medium: 2, med: 2, low: 1, none: 0,
-      高: 3, 中: 2, 低: 1, 无: 0,
+      '0': 0, '1': 1, '2': 3, '3': 5,
+      high: 5, medium: 3, med: 3, low: 1, none: 0,
+      高: 5, 中: 3, 低: 1, 无: 0,
     };
     if (word in map) {
       priority = map[word];

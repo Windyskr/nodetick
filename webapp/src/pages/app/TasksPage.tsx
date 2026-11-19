@@ -53,6 +53,7 @@ import TimelineBoard from './TimelineBoard';
 import ProjectSettingsDialog from './ProjectSettingsDialog';
 import BatchBar from './BatchBar';
 import { isSubmitEnter } from '../../lib/keys';
+import { PRIORITY_LEVELS, priorityLabel } from '../../components/RoundCheck';
 
 type SortKey = 'custom' | 'time' | 'created' | 'modified' | 'title' | 'tags' | 'priority';
 type GroupKey = 'custom' | 'time' | 'created' | 'tags' | 'priority' | 'none';
@@ -989,7 +990,7 @@ function groupTasks(tasks: Task[], key: GroupKey, translate: (key: Key) => strin
   }
   const order = key === 'time'
     ? BUCKET_ORDER
-    : key === 'priority' ? ['3', '2', '1', '0'] : undefined;
+    : key === 'priority' ? PRIORITY_LEVELS.map(String) : undefined;
   const entries = [...grouped.entries()].sort(([a], [b]) => {
     if (order) return (order.indexOf(a as never) - order.indexOf(b as never));
     return a.localeCompare(b);
@@ -1002,12 +1003,7 @@ function groupTasks(tasks: Task[], key: GroupKey, translate: (key: Key) => strin
         ? group === 'no-date' ? translate('groupNone') : group
         : key === 'tags'
           ? group === 'no-tag' ? translate('groupNone') : `#${group}`
-          : ({
-              '3': translate('priorityHigh'),
-              '2': translate('priorityMedium'),
-              '1': translate('priorityLow'),
-              '0': translate('priorityNone'),
-            }[group] ?? group),
+          : PRIORITY_LEVELS.includes(Number(group)) ? priorityLabel(Number(group)) : group,
     tasks: list,
   }));
 }

@@ -3,6 +3,7 @@ import { Flag, Tag } from 'lucide-react';
 import type { Task, Tag as TaskTag, TaskFilter } from '../lib/types';
 import { addDays, dayOf, todayStr } from '../lib/date';
 import { useT } from '../i18n';
+import { PRIORITY_LEVELS, priorityLabel } from './RoundCheck';
 
 export type FilterDate = 'any' | 'today' | 'week' | 'overdue';
 
@@ -110,10 +111,7 @@ export function TaskFilterMenu({
   ];
   const priorityOptions: [number | null, string][] = [
     [null, t('filterAnyPriority')],
-    [3, t('priorityHigh')],
-    [2, t('priorityMedium')],
-    [1, t('priorityLow')],
-    [0, t('priorityNone')],
+    ...PRIORITY_LEVELS.map((value): [number, string] => [value, priorityLabel(value)]),
   ];
 
   return (

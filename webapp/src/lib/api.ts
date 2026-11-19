@@ -42,6 +42,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/**
+ * Priorities follow TickTick (0 none, 1 low, 3 medium, 5 high). Web builds
+ * before that stored medium as 2, so read a stray 2 as medium.
+ */
+const fromApi = <T extends Task | null>(task: T): T =>
+  (task && task.priority === 2 ? { ...task, priority: 3 } : task);
+const fromApiList = (tasks: Task[]) => tasks.map(fromApi);
+
 const get = <T>(path: string) => request<T>(path);
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
@@ -107,18 +115,18 @@ export const api = {
     del<void>(`/open/v1/project/${projectId}/column/${columnId}`),
 
   // --- Tasks (/open/v1) ---
-  filterTasks: (query: Record<string, unknown> = {}) => post<Task[]>('/open/v1/task/filter', query),
-  searchTasks: (keywords: string) => post<Task[]>('/open/v1/task/search', { keywords }),
+  filterTasks: (query: Record<string, unknown> = {}) => post<Task[]>('/open/v1/task/filter', query).then(fromApiList),
+  searchTasks: (keywords: string) => post<Task[]>('/open/v1/task/search', { keywords }).then(fromApiList),
   listCompleted: (query: Record<string, unknown> = {}) =>
-    post<Task[]>('/open/v1/task/completed', query),
-  listTrash: () => get<Task[]>('/open/v1/task/trash'),
-  createTask: (input: Record<string, unknown>) => post<Task>('/open/v1/task', input),
-  updateTask: (id: string, patch: Record<string, unknown>) => post<Task>(`/open/v1/task/${id}`, patch),
+    post<Task[]>('/open/v1/task/completed', query).then(fromApiList),
+  listTrash: () => get<Task[]>('/open/v1/task/trash').then(fromApiList),
+  createTask: (input: Record<string, unknown>) => post<Task>('/open/v1/task', input).then(fromApi),
+  updateTask: (id: string, patch: Record<string, unknown>) => post<Task>(`/open/v1/task/${id}`, patch).then(fromApi),
   completeTask: (projectId: string, taskId: string) =>
-    post<Task | null>(`/open/v1/project/${projectId}/task/${taskId}/complete`),
+    post<Task | null>(`/open/v1/project/${projectId}/task/${taskId}/complete`).then(fromApi),
   deleteTask: (projectId: string, taskId: string) =>
     del<void>(`/open/v1/project/${projectId}/task/${taskId}`),
-  restoreTask: (taskId: string) => post<Task>(`/open/v1/task/trash/${taskId}/restore`),
+  restoreTask: (taskId: string) => post<Task>(`/open/v1/task/trash/${taskId}/restore`).then(fromApi),
   purgeTask: (taskId: string) => del<void>(`/open/v1/task/trash/${taskId}`),
 
   // --- Comments ---

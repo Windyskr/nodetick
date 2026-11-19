@@ -4,7 +4,7 @@ import { MenuItem, Popover } from '../../components/Popover';
 import { useT, useTF } from '../../i18n';
 import { addDays, allDayDate, todayStr } from '../../lib/date';
 import { projectDisplayName } from '../../lib/project';
-import { priorityLabel } from '../../components/RoundCheck';
+import { PRIORITY_LEVELS, priorityLabel } from '../../components/RoundCheck';
 
 /**
  * TickTick-style floating toolbar for multi-selected tasks: complete, move,
@@ -62,7 +62,7 @@ export default function BatchBar() {
       >
         {(close) => (
           <>
-            {[3, 2, 1, 0].map((p) => (
+            {PRIORITY_LEVELS.map((p) => (
               <MenuItem
                 key={p}
                 label={priorityLabel(p)}

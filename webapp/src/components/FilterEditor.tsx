@@ -4,6 +4,7 @@ import type { Project, Tag, TaskFilter, FilterDateMode } from '../lib/types';
 import { useT, type Key } from '../i18n';
 import { projectDisplayName } from '../lib/project';
 import { isSubmitEnter } from '../lib/keys';
+import { PRIORITY_LEVELS, priorityLabel } from './RoundCheck';
 
 type FilterInput = Omit<TaskFilter, 'id' | 'sortOrder' | 'createdTime' | 'modifiedTime'> & { sortOrder?: number };
 
@@ -142,8 +143,8 @@ export default function FilterEditor({
 
           <FilterField label={t('filterPriority')}>
             <div className="flex flex-wrap gap-1.5">
-              {([[3, t('priorityHigh')], [2, t('priorityMedium')], [1, t('priorityLow')], [0, t('priorityNone')]] as [number, string][]).map(([value, label]) => (
-                <Chip key={value} active={priorities.includes(value)} label={label} onClick={() => toggle(value, priorities, setPriorities)} />
+              {PRIORITY_LEVELS.map((value) => (
+                <Chip key={value} active={priorities.includes(value)} label={priorityLabel(value)} onClick={() => toggle(value, priorities, setPriorities)} />
               ))}
             </div>
           </FilterField>

@@ -1,18 +1,24 @@
 import { Check } from 'lucide-react';
 import { tOf, type Key } from '../i18n';
 
+/** TickTick Open API priority values, as the CLI and the server store them. */
+export const PRIORITY = { none: 0, low: 1, medium: 3, high: 5 } as const;
+
+/** Highest first, the order every priority picker lists them in. */
+export const PRIORITY_LEVELS: number[] = [PRIORITY.high, PRIORITY.medium, PRIORITY.low, PRIORITY.none];
+
 export const PRIORITY_COLORS: Record<number, string> = {
-  0: '#d5d5d5',
-  1: '#4772fa',
-  2: '#faa80c',
-  3: '#d54848',
+  [PRIORITY.none]: '#d5d5d5',
+  [PRIORITY.low]: '#4772fa',
+  [PRIORITY.medium]: '#faa80c',
+  [PRIORITY.high]: '#d54848',
 };
 
 const PRIORITY_KEYS: Record<number, Key> = {
-  0: 'priorityNone',
-  1: 'priorityLow',
-  2: 'priorityMedium',
-  3: 'priorityHigh',
+  [PRIORITY.none]: 'priorityNone',
+  [PRIORITY.low]: 'priorityLow',
+  [PRIORITY.medium]: 'priorityMedium',
+  [PRIORITY.high]: 'priorityHigh',
 };
 
 export const priorityLabel = (priority: number): string => tOf(PRIORITY_KEYS[priority] ?? 'priorityNone');

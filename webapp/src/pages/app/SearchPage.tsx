@@ -7,6 +7,7 @@ import { addDays, dayOf, todayStr } from '../../lib/date';
 import { projectDisplayName } from '../../lib/project';
 import { useStore } from '../../stores/store';
 import { TaskRow } from './TaskRow';
+import { PRIORITY_LEVELS, priorityLabel } from '../../components/RoundCheck';
 import { isSubmitEnter } from '../../lib/keys';
 
 type SearchStatus = 'all' | 'active' | 'completed';
@@ -132,10 +133,7 @@ export default function SearchPage() {
         </FilterSelect>
         <FilterSelect label={t('filterPriority')} value={priority} onChange={setPriority}>
           <option value="">{t('filterAnyPriority')}</option>
-          <option value="3">{t('priorityHigh')}</option>
-          <option value="2">{t('priorityMedium')}</option>
-          <option value="1">{t('priorityLow')}</option>
-          <option value="0">{t('priorityNone')}</option>
+          {PRIORITY_LEVELS.map((value) => <option key={value} value={value}>{priorityLabel(value)}</option>)}
         </FilterSelect>
         <FilterSelect label={t('filterStatus')} value={status} onChange={(value) => setStatus(value as SearchStatus)}>
           <option value="all">{t('filterAnyStatus')}</option>

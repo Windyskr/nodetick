@@ -5,7 +5,7 @@ import { useStore, INBOX_ID } from '../../stores/store';
 import { api } from '../../lib/api';
 import { relTime, todayStr } from '../../lib/date';
 import { scheduleLabel } from '../../components/taskSchedule';
-import { RoundCheck, PRIORITY_COLORS, priorityLabel } from '../../components/RoundCheck';
+import { RoundCheck, PRIORITY_COLORS, PRIORITY_LEVELS, priorityLabel } from '../../components/RoundCheck';
 import { ScheduleMenu, type TaskSchedule } from '../../components/ScheduleMenu';
 import { MenuItem, Popover } from '../../components/Popover';
 import { useT, useTF } from '../../i18n';
@@ -163,7 +163,7 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
         >
           {(close) => (
             <>
-              {[3, 2, 1, 0].map((p) => (
+              {PRIORITY_LEVELS.map((p) => (
                 <MenuItem
                   key={p}
                   label={`${priority === p ? '✓ ' : ''}${priorityLabel(p)}`}

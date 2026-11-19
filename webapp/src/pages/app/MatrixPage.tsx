@@ -3,16 +3,17 @@ import { useStore } from '../../stores/store';
 import { useT } from '../../i18n';
 import type { Task } from '../../lib/types';
 import { TaskRow } from './TaskRow';
+import { PRIORITY } from '../../components/RoundCheck';
 
 /**
  * Eisenhower matrix. Priority maps to quadrants the TickTick way:
  * High = Urgent & Important, Medium = Important, Low = Urgent, None = neither.
  */
 const QUADRANTS: { titleKey: 'q1' | 'q2' | 'q3' | 'q4'; hintKey: 'q1hint' | 'q2hint' | 'q3hint' | 'q4hint'; priority: number; tint: string }[] = [
-  { titleKey: 'q1', hintKey: 'q1hint', priority: 3, tint: '#d54848' },
-  { titleKey: 'q2', hintKey: 'q2hint', priority: 2, tint: '#faa80c' },
-  { titleKey: 'q3', hintKey: 'q3hint', priority: 1, tint: '#4772fa' },
-  { titleKey: 'q4', hintKey: 'q4hint', priority: 0, tint: '#9aa0a6' },
+  { titleKey: 'q1', hintKey: 'q1hint', priority: PRIORITY.high, tint: '#d54848' },
+  { titleKey: 'q2', hintKey: 'q2hint', priority: PRIORITY.medium, tint: '#faa80c' },
+  { titleKey: 'q3', hintKey: 'q3hint', priority: PRIORITY.low, tint: '#4772fa' },
+  { titleKey: 'q4', hintKey: 'q4hint', priority: PRIORITY.none, tint: '#9aa0a6' },
 ];
 
 export default function MatrixPage() {
