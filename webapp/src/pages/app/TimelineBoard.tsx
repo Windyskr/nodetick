@@ -104,8 +104,24 @@ export default function TimelineBoard({ tasks, sorter }: { tasks: Task[]; sorter
         })}
 
         {undated.length > 0 && (
-          <div className="border-t border-line bg-[#fafafa] px-3 py-2 text-[12px] text-ink-3">
-            {t('bucketNoDate')} · {undated.length}
+          <div className="border-t border-line">
+            <div className="bg-[#fafafa] px-3 py-2 text-[12px] font-medium text-ink-3">
+              {t('bucketNoDate')} · {undated.length}
+            </div>
+            {/* Undated tasks can't sit on the timeline; list them so they can be opened and scheduled. */}
+            {undated.map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => selectTask(task.id)}
+                className="flex min-h-[40px] w-full items-center gap-2 border-t border-line/70 px-3 py-2 text-left hover:bg-hover"
+              >
+                <span className={`h-2 w-2 shrink-0 rounded-full ${task.status === 2 ? 'bg-[#bdbdbd]' : 'bg-tt'}`} />
+                <span className={`truncate text-[13px] ${task.status === 2 ? 'text-ink-3 line-through' : 'text-ink'}`}>
+                  {task.title || t('untitled')}
+                </span>
+              </button>
+            ))}
           </div>
         )}
         {tasks.length === 0 && <div className="px-4 py-12 text-center text-[13px] text-ink-3">{t('emptyNoTasks')}</div>}
