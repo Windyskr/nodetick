@@ -79,8 +79,13 @@ function localDay(now: Date, timeZone: string): string {
   return `${part.year}-${String(part.month).padStart(2, '0')}-${String(part.day).padStart(2, '0')}`;
 }
 
-function parseAnchor(value: unknown, timeZone: string, allDayTime: string): number | null {
+function parseAnchor(value: unknown, timeZone: string, allDayTime: string, allDay = false): number | null {
   if (typeof value !== 'string' || !value) return null;
+  // All-day dates keep the calendar day in their YYYY-MM-DD prefix (the
+  // webapp stores `<day>T00:00:00+0000`), so they fire at the user's all-day
+  // time on that day in their zone, not at the literal UTC-midnight instant.
+  const day = allDay ? /^\d{4}-\d{2}-\d{2}/.exec(value)?.[0] : undefined;
+  if (day) return zonedTimestamp(day, allDayTime, timeZone);
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return zonedTimestamp(value, allDayTime, timeZone);
   const direct = Date.parse(value);
   if (!Number.isNaN(direct) && /(?:Z|[+-]\d{2}:?\d{2})$/.test(value)) return direct;
@@ -89,9 +94,13 @@ function parseAnchor(value: unknown, timeZone: string, allDayTime: string): numb
 }
 
 function reminderOffset(value: string): number | null {
-  const match = /^TRIGGER:-P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(value);
+  // "-PT15M" / "-P1DT2H" fire before the anchor; TickTick's on-time trigger
+  // is "PT0S". Other positive (after-the-anchor) offsets are not supported.
+  const match = /^TRIGGER:(-?)P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(value);
   if (!match) return null;
-  return (Number(match[1] ?? 0) * 86400 + Number(match[2] ?? 0) * 3600 + Number(match[3] ?? 0) * 60) * 1000;
+  const offset = (Number(match[2] ?? 0) * 86400 + Number(match[3] ?? 0) * 3600 +
+    Number(match[4] ?? 0) * 60 + Number(match[5] ?? 0)) * 1000;
+  return match[1] || offset === 0 ? offset : null;
 }
 
 function dueNow(timestamp: number, now: number): boolean {
@@ -128,7 +137,7 @@ async function settings(db: D1Database): Promise<SettingRow[]> {
 async function taskCandidates(db: D1Database, setting: SettingRow, now: number): Promise<Candidate[]> {
   if (!setting.task_enabled) return [];
   const rows = await db.prepare(
-    `SELECT id, title, start_date, due_date, reminders FROM tasks
+    `SELECT id, title, start_date, due_date, is_all_day, reminders FROM tasks
      WHERE user_id = ? AND status = 0 AND deleted = 0 AND reminders IS NOT NULL
        AND (due_date IS NOT NULL OR start_date IS NOT NULL)`,
   ).bind(setting.user_id).all<Record<string, unknown>>();
@@ -136,7 +145,9 @@ async function taskCandidates(db: D1Database, setting: SettingRow, now: number):
   for (const row of rows.results) {
     // A ranged task fires at its start; due_date is the fallback for tasks
     // that only have a deadline.
-    const anchor = parseAnchor(row.start_date ?? row.due_date, setting.timezone, setting.all_day_time);
+    const anchor = parseAnchor(
+      row.start_date ?? row.due_date, setting.timezone, setting.all_day_time, Number(row.is_all_day ?? 0) === 1,
+    );
     if (anchor == null) continue;
     for (const reminder of parseJsonArray<string>(String(row.reminders ?? '[]'))) {
       const offset = reminderOffset(reminder);

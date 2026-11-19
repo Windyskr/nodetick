@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env, reset, SELF } from 'cloudflare:test';
 import { issueApiToken } from '../src/auth.js';
-import { pushConfigured } from '../src/services/notifications.js';
+import { dispatchDueNotifications, pushConfigured, sendToUser } from '../src/services/notifications.js';
 
 // The Vitest 4 Cloudflare integration no longer exposes the old implicit
 // per-test storage option. Reset bindings explicitly so every test retains
@@ -1232,6 +1232,138 @@ describe('notifications', () => {
       ...json({ endpoint: 'https://push.example/sub', keys: { p256dh: 'abc', auth: 'abc' } }, auth(token)),
     });
     expect(subscribe.status).toBe(pushConfigured(env) ? 200 : 503);
+  });
+});
+
+describe('notification dispatch', () => {
+  // Real-time-adjacent day so the 90-day delivery cleanup keeps our claims.
+  const day = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+  const at = (time: string) => Date.parse(`${day}T${time}Z`);
+  const b64url = (bytes: Uint8Array) =>
+    btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const settings = {
+    enabled: true, taskEnabled: true, habitEnabled: true, countdownEnabled: true,
+    soundEnabled: true, timezone: 'Asia/Shanghai', allDayTime: '09:00',
+  };
+  const payload = { title: 't', body: 'b', tag: 'x', url: '/', sourceType: 'test' as const, sourceId: 'test' };
+
+  /** A throwaway VAPID key pair so dispatch works regardless of .dev.vars. */
+  async function pushEnv() {
+    const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+    const publicKey = new Uint8Array((await crypto.subtle.exportKey('raw', pair.publicKey)) as ArrayBuffer);
+    const privateKey = (await crypto.subtle.exportKey('jwk', pair.privateKey)) as JsonWebKey;
+    return { ...env, VAPID_PUBLIC_KEY: b64url(publicKey), VAPID_PRIVATE_KEY: privateKey.d!, VAPID_SUBJECT: 'mailto:test@example.com' };
+  }
+
+  async function subscribe(userId: string, endpoint: string) {
+    const pair = (await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])) as CryptoKeyPair;
+    const p256dh = b64url(new Uint8Array((await crypto.subtle.exportKey('raw', pair.publicKey)) as ArrayBuffer));
+    await env.DB.prepare(
+      'INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(crypto.randomUUID(), userId, endpoint, p256dh, b64url(crypto.getRandomValues(new Uint8Array(16))), Date.now(), Date.now())
+      .run();
+  }
+
+  async function pushUser(overrides: Partial<typeof settings> = {}) {
+    const { token, cookie } = await bootstrap();
+    const me = (await (await SELF.fetch(`${HOST}/api/me`, { headers: { Cookie: cookie } })).json()) as { id: string };
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox
+    const saved = await SELF.fetch(`${HOST}/open/v1/notification/settings`, {
+      method: 'PUT', headers: auth(token), body: JSON.stringify({ ...settings, ...overrides }),
+    });
+    expect(saved.status).toBe(200);
+    await subscribe(me.id, 'https://push.example/device');
+    const post = (path: string, body: unknown) =>
+      SELF.fetch(`${HOST}/open/v1${path}`, { method: 'POST', headers: auth(token), body: JSON.stringify(body) });
+    return { token, userId: me.id, post };
+  }
+
+  it('fires all-day reminders at the all-day time in the user zone and never twice', async () => {
+    const { post } = await pushUser();
+    // The webapp stores all-day dates as `<day>T00:00:00+0000`.
+    await post('/task', { title: 'All day', projectId: 'inbox', startDate: `${day}T00:00:00+0000`, isAllDay: true, reminders: ['TRIGGER:-PT0M'] });
+    await post('/task', { title: 'On time', projectId: 'inbox', startDate: `${day}T10:00:00+0800`, reminders: ['TRIGGER:PT0S'] });
+    const testEnv = await pushEnv();
+    const delivered: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      delivered.push(input instanceof Request ? input.url : String(input));
+      return new Response(null, { status: 201 });
+    });
+    try {
+      // UTC midnight is 08:00 in Shanghai: too early for a 09:00 all-day reminder.
+      expect(await dispatchDueNotifications(testEnv, at('00:00:00'))).toEqual({ candidates: 0, sent: 0, failed: 0 });
+      expect(await dispatchDueNotifications(testEnv, at('01:00:00'))).toEqual({ candidates: 1, sent: 1, failed: 0 });
+      // The next cron run still sees it inside the lookback window: no resend.
+      expect(await dispatchDueNotifications(testEnv, at('01:01:00'))).toEqual({ candidates: 1, sent: 0, failed: 0 });
+      // TickTick's on-time trigger fires at the start time (10:00 local).
+      expect(await dispatchDueNotifications(testEnv, at('02:00:00'))).toEqual({ candidates: 1, sent: 1, failed: 0 });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+    expect(delivered).toEqual(['https://push.example/device', 'https://push.example/device']);
+  });
+
+  it('honors the global switch and the per-category toggles', async () => {
+    const { token, post } = await pushUser();
+    await post('/task', { title: 'Timed', projectId: 'inbox', startDate: `${day}T09:00:00+0800`, reminders: ['TRIGGER:-PT0M'] });
+    await post('/habit', { name: 'Stretch', reminders: ['09:00'] });
+    await post('/countdown', { name: 'Launch', date: day, reminders: ['same-day'] });
+    const testEnv = await pushEnv();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(null, { status: 201 }));
+    const candidatesWith = async (overrides: Partial<typeof settings>) => {
+      await SELF.fetch(`${HOST}/open/v1/notification/settings`, {
+        method: 'PUT', headers: auth(token), body: JSON.stringify({ ...settings, ...overrides }),
+      });
+      return (await dispatchDueNotifications(testEnv, at('01:00:00'))).candidates;
+    };
+    try {
+      expect(await candidatesWith({})).toBe(3);
+      expect(await candidatesWith({ taskEnabled: false })).toBe(2);
+      expect(await candidatesWith({ habitEnabled: false })).toBe(2);
+      expect(await candidatesWith({ countdownEnabled: false })).toBe(2);
+      expect(await candidatesWith({ enabled: false })).toBe(0);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('drops subscriptions the push service reports as gone (404/410)', async () => {
+    const { userId } = await pushUser();
+    await subscribe(userId, 'https://push.example/gone-410');
+    await subscribe(userId, 'https://push.example/flaky-500');
+    const status: Record<string, number> = {
+      'https://push.example/device': 404,
+      'https://push.example/gone-410': 410,
+      'https://push.example/flaky-500': 500,
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) =>
+      new Response(null, { status: status[input instanceof Request ? input.url : String(input)] ?? 599 }));
+    try {
+      expect(await sendToUser(await pushEnv(), userId, payload)).toEqual({ sent: 0, failed: 3 });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+    const left = await env.DB.prepare('SELECT endpoint FROM push_subscriptions WHERE user_id = ?')
+      .bind(userId)
+      .all<{ endpoint: string }>();
+    expect(left.results.map((row) => row.endpoint)).toEqual(['https://push.example/flaky-500']);
+  });
+
+  it('does nothing without a complete VAPID configuration', async () => {
+    const { userId, post } = await pushUser();
+    await post('/task', { title: 'Timed', projectId: 'inbox', startDate: `${day}T09:00:00+0800`, reminders: ['TRIGGER:-PT0M'] });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const unconfigured = { ...(await pushEnv()), VAPID_PRIVATE_KEY: undefined };
+      expect(await dispatchDueNotifications(unconfigured, at('01:00:00'))).toEqual({ candidates: 0, sent: 0, failed: 0 });
+      expect(await sendToUser({ ...unconfigured, VAPID_PRIVATE_KEY: '  ' }, userId, payload)).toEqual({ sent: 0, failed: 0 });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+    const claims = await env.DB.prepare('SELECT COUNT(*) AS n FROM notification_deliveries').first<{ n: number }>();
+    expect(claims?.n).toBe(0);
   });
 });
 
