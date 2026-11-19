@@ -1451,6 +1451,36 @@ describe('oauth', () => {
     ]);
     expect(concurrent.map((response) => response.status).sort()).toEqual([200, 400]);
   });
+
+  it('lets the consent form redirect to the loopback callback under CSP', async () => {
+    const { cookie } = await bootstrap();
+    const challenge = await s256Challenge('consent-verifier-' + 'b'.repeat(40));
+    const query = new URLSearchParams({
+      client_id: 'nodetick-cli', redirect_uri: 'http://127.0.0.1:8765/callback', response_type: 'code',
+      code_challenge: challenge, code_challenge_method: 'S256', state: 's',
+    });
+    const consent = await SELF.fetch(`${HOST}/oauth/authorize?${query}`, { headers: { Cookie: cookie } });
+    expect(consent.status).toBe(200);
+    // form-action also applies to the redirect answering the form POST.
+    expect(consent.headers.get('Content-Security-Policy')).toContain("form-action 'self' http://127.0.0.1:8765");
+    expect(consent.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+
+    const html = await consent.text();
+    const fields = Object.fromEntries(
+      [...html.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)">/g)].map((m) => [m[1], m[2]]),
+    );
+    const approved = await SELF.fetch(`${HOST}/oauth/authorize`, {
+      ...form(fields),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
+      redirect: 'manual',
+    });
+    expect(approved.status).toBe(302);
+    expect(new URL(approved.headers.get('Location')!).origin).toBe('http://127.0.0.1:8765');
+
+    // Everything else keeps the strict default.
+    const other = await SELF.fetch(`${HOST}/open/v1/project`, { headers: { Cookie: cookie } });
+    expect(other.headers.get('Content-Security-Policy')).toMatch(/form-action 'self'$/);
+  });
 });
 
 describe('recurring tasks', () => {

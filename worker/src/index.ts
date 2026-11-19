@@ -11,6 +11,7 @@ import { web } from './routes/web.js';
 import { feed } from './routes/feed.js';
 import { dispatchDueNotifications } from './services/notifications.js';
 import { limitRequestBody, RequestBodyTooLargeError } from './util.js';
+import { contentSecurityPolicy } from './ui.js';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -24,8 +25,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   'Cache-Control': 'no-store',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'X-Robots-Tag': 'noindex, nofollow, noarchive, nosnippet',
-  'Content-Security-Policy':
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  'Content-Security-Policy': contentSecurityPolicy(),
 };
 
 function withSecurityHeaders(response: Response): Response {
@@ -49,7 +49,11 @@ app.use('*', async (c, next) => {
   if (c.req.raw.body) c.req.raw = limitRequestBody(c.req.raw, MAX_BODY_BYTES);
   await ensureSchema(c.env);
   await next();
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) c.res.headers.set(name, value);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    // A route may ship its own CSP (the OAuth consent page widens form-action).
+    if (name === 'Content-Security-Policy' && c.res.headers.has(name)) continue;
+    c.res.headers.set(name, value);
+  }
 });
 
 const MAX_BODY_BYTES = 1024 * 1024;

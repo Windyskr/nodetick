@@ -1,6 +1,16 @@
 import { newCsrf, SessionCtx } from './auth.js';
 
 /**
+ * CSP for everything the worker serves. form-action also governs redirects
+ * that answer a form submission, so the OAuth consent page widens it to its
+ * validated loopback redirect origin (the CLI's callback listener).
+ */
+export function contentSecurityPolicy(formAction = "'self'"): string {
+  return "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; " +
+    `form-action ${formAction}`;
+}
+
+/**
  * Server-rendered OAuth consent page only — login/register/dashboard moved to
  * the React SPA in webapp/ (served as static assets).
  */

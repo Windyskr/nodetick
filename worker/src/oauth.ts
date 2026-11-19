@@ -10,7 +10,7 @@ import {
   RequestBodyTooLargeError,
   sha256Hex,
 } from './util.js';
-import { consentPage } from './ui.js';
+import { consentPage, contentSecurityPolicy } from './ui.js';
 
 export const DEFAULT_CLIENT_ID = 'nodetick-cli';
 export const OAUTH_SCOPES = 'tasks:read tasks:write';
@@ -89,6 +89,9 @@ oauth.get('/authorize', async (c) => {
     const next = encodeURIComponent(c.req.url);
     return c.redirect(`/login?next=${next}`);
   }
+  // Approving POSTs back here and is answered with a redirect to the
+  // loopback callback, which browsers check against form-action too.
+  c.header('Content-Security-Policy', contentSecurityPolicy(`'self' ${new URL(params.redirectUri).origin}`));
   return c.html(await consentPage(c, params));
 });
 
