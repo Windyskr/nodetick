@@ -3,6 +3,7 @@ import { BellRing, Loader2, Send, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { NotificationConfig, NotificationSettings } from '../../lib/types';
 import { useT, useTF, type Key } from '../../i18n';
+import { useEscape } from '../../lib/useEscape';
 
 interface Props {
   onClose: () => void;
@@ -42,6 +43,7 @@ export async function unsubscribeCurrentBrowser(): Promise<void> {
 }
 
 export default function NotificationSettingsDialog({ onClose }: Props) {
+  useEscape(onClose);
   const [config, setConfig] = useState<NotificationConfig | null>(null);
   const [settings, setSettings] = useState<NotificationSettings>(fallbackSettings);
   const [permission, setPermission] = useState<NotificationPermission>(

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { useStore, type FeatureKey } from '../../stores/store';
 import { useT } from '../../i18n';
+import { useEscape } from '../../lib/useEscape';
 
 function CheckRow({
   checked,
@@ -56,6 +57,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { features, toggleFeature } = useStore();
   const t = useT();
+  useEscape(onClose);
 
   const modules: [FeatureKey, string, string][] = [
     ['matrix', t('navMatrix'), t('featureDescMatrix')],

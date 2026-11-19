@@ -4,6 +4,7 @@ import type { Project } from '../../lib/types';
 import { useStore } from '../../stores/store';
 import { useT, useTF } from '../../i18n';
 import { isSubmitEnter } from '../../lib/keys';
+import { useEscape } from '../../lib/useEscape';
 
 /** TickTick list palette for project colors. */
 const LIST_COLORS = [
@@ -35,6 +36,7 @@ export default function ProjectSettingsDialog({
   const { groups, updateProject, addGroup, deleteGroup, deleteProject } = useStore();
   const t = useT();
   const f = useTF();
+  useEscape(onClose);
   const [name, setName] = useState(project.name);
   const [newGroupName, setNewGroupName] = useState('');
 

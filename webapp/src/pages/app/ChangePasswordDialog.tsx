@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { serverError, useT } from '../../i18n';
+import { useEscape } from '../../lib/useEscape';
 
 function inputClass() {
   return 'h-8 w-full rounded-md border border-line bg-white px-2 text-[13px] outline-none focus:border-tt';
@@ -10,6 +11,7 @@ function inputClass() {
 /** 修改密码 dialog: verifies the current password server-side and re-signs in. */
 export default function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
+  useEscape(onClose);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');

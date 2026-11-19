@@ -5,6 +5,7 @@ import { useT, type Key } from '../i18n';
 import { projectDisplayName } from '../lib/project';
 import { isSubmitEnter } from '../lib/keys';
 import { PRIORITY_LEVELS, priorityLabel } from './RoundCheck';
+import { useEscape } from '../lib/useEscape';
 
 type FilterInput = Omit<TaskFilter, 'id' | 'sortOrder' | 'createdTime' | 'modifiedTime'> & { sortOrder?: number };
 
@@ -32,6 +33,7 @@ export default function FilterEditor({
   onClose: () => void;
 }) {
   const t = useT();
+  useEscape(onClose);
   const [advanced, setAdvanced] = useState(false);
   const [name, setName] = useState(initialFilter?.name ?? '');
   const [logic, setLogic] = useState<'and' | 'or'>(initialFilter?.logic ?? 'and');

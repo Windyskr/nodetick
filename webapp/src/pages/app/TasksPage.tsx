@@ -56,6 +56,7 @@ import BatchBar from './BatchBar';
 import { isSubmitEnter } from '../../lib/keys';
 import { hasTag, tagKey } from '../../lib/tags';
 import { PRIORITY_LEVELS, priorityLabel } from '../../components/RoundCheck';
+import { useEscape } from '../../lib/useEscape';
 
 type SortKey = 'custom' | 'time' | 'created' | 'modified' | 'title' | 'tags' | 'priority';
 type GroupKey = 'custom' | 'time' | 'created' | 'tags' | 'priority' | 'none';
@@ -1036,6 +1037,7 @@ function ListSettingsDialog({
   onClose: () => void;
 }) {
   const t = useT();
+  useEscape(onClose);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 px-4" onMouseDown={onClose}>
       <div
