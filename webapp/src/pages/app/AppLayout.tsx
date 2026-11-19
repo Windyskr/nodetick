@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { ChevronLeft, Loader2 } from 'lucide-react';
 import { useStore } from '../../stores/store';
 import IconRail from './IconRail';
 import Sidebar from './Sidebar';
 import TaskDetail from './TaskDetail';
 import Toast from '../../components/Toast';
+import { useT } from '../../i18n';
 
 /** Persisted width (px) of the task detail panel; null → 36% like the original. */
 const DETAIL_WIDTH_KEY = 'ntk_detail_width';
@@ -22,11 +23,32 @@ function readDetailWidth(): number | null {
 const clampDetailWidth = (px: number) =>
   Math.min(Math.max(px, 280), Math.max(340, Math.floor(window.innerWidth * 0.6)));
 
+/** Phones: the 240px sidebar plus the 280px+ detail column left the task list no width. */
+const NARROW_QUERY = '(max-width: 767px)';
+
+function useNarrowScreen(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches);
+  useEffect(() => {
+    const query = window.matchMedia(NARROW_QUERY);
+    const onChange = () => setNarrow(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return narrow;
+}
+
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { booted, me, boot, selectedTaskId, selectedTask } = useStore();
+  const { booted, me, boot, selectedTaskId, selectedTask, navOpen, setNavOpen } = useStore();
   const [detailWidth, setDetailWidth] = useState<number | null>(readDetailWidth);
+  const narrow = useNarrowScreen();
+  const t = useT();
+
+  // The list drawer closes once the user picks a destination.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname, setNavOpen]);
 
   // Drag handle on the detail panel's left edge resizes and persists it,
   // like the reference app's detail-dragger.
@@ -91,6 +113,7 @@ export default function AppLayout() {
         // Official behavior: Esc closes the open task detail first.
         const { selectedTaskId: openTask } = useStore.getState();
         if (openTask) useStore.getState().selectTask(null);
+        useStore.getState().setNavOpen(false);
         useStore.getState().clearSelection();
         useStore.getState().dismissToast();
       }
@@ -121,18 +144,47 @@ export default function AppLayout() {
     selectedTaskId !== null &&
     /^\/app\/(tasks|calendar|matrix|search)/.test(location.pathname) &&
     selectedTask() !== null;
-  const floatingDetail = showDetail && !taskWorkspace;
+  const floatingDetail = showDetail && !taskWorkspace && !narrow;
 
   return (
     <div className="flex h-full overflow-hidden">
       <IconRail />
-      {showSidebar && <Sidebar />}
+      {showSidebar && !narrow && <Sidebar />}
+      {showSidebar && narrow && navOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/20"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setNavOpen(false);
+          }}
+        >
+          <div className="ml-[50px] h-full w-fit shadow-[0_12px_36px_rgba(0,0,0,0.18)]">
+            <Sidebar />
+          </div>
+        </div>
+      )}
       {/* The reference layout keeps the content column flex-1 and a permanent
           36% detail panel on the right (empty until a task is selected). */}
       <div className="flex min-w-0 flex-1">
         <Outlet />
       </div>
-      {taskWorkspace && (
+      {narrow && showDetail && selectedTask() && (
+        <div className="fixed inset-0 z-40 flex flex-col bg-white">
+          <div className="flex h-11 shrink-0 items-center border-b border-line px-2">
+            <button
+              type="button"
+              onClick={() => useStore.getState().selectTask(null)}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-[14px] text-ink-2 hover:bg-hover"
+            >
+              <ChevronLeft size={18} /> {t('close')}
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            <TaskDetail key={selectedTask()!.id} task={selectedTask()!} />
+          </div>
+        </div>
+      )}
+      {taskWorkspace && !narrow && (
         <div
           className="relative h-full shrink-0 border-l border-line bg-white"
           style={{ width: detailWidth ?? '36%', minWidth: 280 }}

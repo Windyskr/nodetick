@@ -68,6 +68,8 @@ interface AppState {
   trash: Task[];
   selectedTaskId: string | null;
   selectedIds: string[];
+  /** Narrow screens show the list sidebar as a drawer; this is its state. */
+  navOpen: boolean;
   features: FeaturePrefs;
   error: string | null;
   toast: ToastState | null;
@@ -85,6 +87,7 @@ interface AppState {
 
   toggleSelect: (id: string) => void;
   clearSelection: () => void;
+  setNavOpen: (open: boolean) => void;
   batchComplete: () => Promise<void>;
   batchTrash: () => Promise<void>;
   batchMove: (projectId: string) => Promise<void>;
@@ -150,6 +153,7 @@ export const useStore = create<AppState>((set, getState) => ({
   trash: [],
   selectedTaskId: null,
   selectedIds: [],
+  navOpen: false,
   features: readFeatures(),
   error: null,
   toast: null,
@@ -224,6 +228,7 @@ export const useStore = create<AppState>((set, getState) => ({
       selectedIds: s.selectedIds.includes(id) ? s.selectedIds.filter((x) => x !== id) : [...s.selectedIds, id],
     })),
   clearSelection: () => set({ selectedIds: [] }),
+  setNavOpen: (navOpen) => set({ navOpen }),
 
   batchComplete: async () => {
     const { selectedIds, tasks } = getState();

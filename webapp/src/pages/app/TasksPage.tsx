@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   List,
   ListFilter,
+  Menu,
   MoreHorizontal,
   Plus,
   Printer,
@@ -536,7 +537,7 @@ function ListHeader({
   onShowDetails?: () => void;
   onEmptyTrash?: () => void;
 }) {
-  const { renameProject, deleteProject, addGroup, showToast } = useStore();
+  const { renameProject, deleteProject, addGroup, showToast, setNavOpen } = useStore();
   const t = useT();
   const f = useTF();
   const [editingTitle, setEditingTitle] = useState(false);
@@ -569,6 +570,16 @@ function ListHeader({
   return (
     <>
       <div className="flex h-16 shrink-0 items-center gap-2 px-[22px]">
+        {/* Phones hide the list sidebar behind this button (see AppLayout). */}
+        <button
+          type="button"
+          onClick={() => setNavOpen(true)}
+          title={t('sectionLists')}
+          aria-label={t('sectionLists')}
+          className="-ml-2 shrink-0 rounded-md p-1 text-ink-2 hover:bg-hover md:hidden"
+        >
+          <Menu size={20} />
+        </button>
         {project && project.id !== INBOX_ID ? (
           editingTitle ? (
             <input
