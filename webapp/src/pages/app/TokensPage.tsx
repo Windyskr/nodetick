@@ -247,7 +247,7 @@ export default function TokensPage() {
           {/* @nodetick/cli is not published (README → CLI); installing that
               name from npm would fail or fetch someone else's package. */}
           <p className="text-[#8b949e]">{t('cliFromSource')}</p>
-          <p><span className="text-[#7ee787]">$</span> npm run build -w cli &amp;&amp; npm link -w cli</p>
+          <p><span className="text-[#7ee787]">$</span> pnpm --filter cli build &amp;&amp; pnpm add -g ./cli</p>
           <p><span className="text-[#7ee787]">$</span> nodetick auth login --server {origin}</p>
           <p className="mt-2 text-[#8b949e]">{t('orPasteToken')}</p>
           <p><span className="text-[#7ee787]">$</span> nodetick auth token &lt;ntk_…&gt; --server {origin}</p>

@@ -13,7 +13,7 @@ globs = ["**/*.sql"]
 fallthrough = false
 
 # Serve the React SPA (webapp/) as static assets with SPA fallback, while
-# API routes always hit the worker. Build with: npm run build -w webapp
+# API routes always hit the worker. Build with: pnpm --filter webapp build
 [assets]
 directory = "../webapp/dist"
 binding = "ASSETS"
@@ -33,13 +33,13 @@ database_name = "nodetick-db"
 # Optional Web Push configuration: set these here or as variables in the
 # Cloudflare dashboard (kept across deploys, see keep_vars above). Keep
 # VAPID_PRIVATE_KEY in a Wrangler secret. Generate a key pair with:
-#   npm run generate:vapid -w worker
+#   pnpm --filter worker generate:vapid
 # VAPID_PUBLIC_KEY = "replace-with-your-public-vapid-key"
 # VAPID_SUBJECT = "mailto:admin@example.com"
 
 [triggers]
 crons = ["* * * * *"]
 
-# Secrets (set with `npx wrangler secret put <NAME> -c worker/wrangler.toml`):
+# Secrets (set with `pnpm --filter worker exec wrangler secret put <NAME>`):
 #   SESSION_SECRET - random 32+ char string used to sign CSRF tokens
 #   VAPID_PRIVATE_KEY - private half of the Web Push VAPID key pair

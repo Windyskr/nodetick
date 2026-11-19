@@ -83,7 +83,7 @@ flowchart LR
 
 ## 部署
 
-需要一个 Cloudflare 账号（免费套餐即可）和 Node.js 20+。D1 表结构会在首个请求时自动创建，无需手动建表。
+需要一个 Cloudflare 账号（免费套餐即可）、Node.js 22+ 和 pnpm（推荐 `corepack enable pnpm`，会自动使用 `package.json` 里固定的 pnpm 版本）。D1 表结构会在首个请求时自动创建，无需手动建表。
 
 ### 用命令行部署（约 2 分钟）
 
@@ -92,22 +92,24 @@ flowchart LR
 ```bash
 git clone https://github.com/Windyskr/nodetick.git
 cd nodetick
-npm install
+pnpm install
 ```
 
 **2. 登录 Cloudflare 并部署**
 
 ```bash
-npx wrangler login
-npm run deploy     # 先构建网页应用，再部署 Worker 和静态资源
+pnpm --filter worker exec wrangler login
+pnpm run deploy     # 先构建网页应用，再部署 Worker 和静态资源
 ```
+
+`pnpm --filter worker exec wrangler …` 在 `worker/` 目录下运行项目自带的 Wrangler，会自动读取 `worker/wrangler.toml`，下文的 Wrangler 命令都这样写。
 
 首次部署时，Wrangler 会自动创建名为 `nodetick-db` 的 D1 数据库（账号里已有同名数据库则直接使用），不需要填写 `database_id`。
 
 **3. 设置会话密钥**
 
 ```bash
-npx wrangler secret put SESSION_SECRET -c worker/wrangler.toml
+pnpm --filter worker exec wrangler secret put SESSION_SECRET
 ```
 
 按提示粘贴一个 32 位以上的随机字符串（可以用 `openssl rand -hex 32` 生成）。不设置它就无法注册和登录。Secret 写入后立即生效，不需要重新部署。
@@ -123,8 +125,8 @@ npx wrangler secret put SESSION_SECRET -c worker/wrangler.toml
 
 1. Fork 本仓库，在 Workers & Pages 中导入你的 fork，构建设置如下：
    - Worker 名称：`nodetick`（与 `wrangler.toml` 中的 `name` 一致）
-   - 构建命令：`npm install`
-   - 部署命令：`npm run deploy`
+   - 构建命令：`pnpm install`
+   - 部署命令：`pnpm run deploy`
 2. 首次部署会自动创建 D1 数据库 `nodetick-db`。如果自动创建失败，先在控制台手动创建同名数据库，再重新部署。
 3. 部署完成后，在 Worker 的设置里添加 Secret `SESSION_SECRET`（32 位以上随机字符串）。
 
@@ -133,12 +135,12 @@ npx wrangler secret put SESSION_SECRET -c worker/wrangler.toml
 **1. 生成 VAPID 密钥对**
 
 ```bash
-npm run generate:vapid -w worker
+pnpm --filter worker generate:vapid
 ```
 
 **2. 设置公钥和联系方式**
 
-在 Cloudflare 控制台的 Worker 设置里添加变量 `VAPID_PUBLIC_KEY`（输出的公钥）和 `VAPID_SUBJECT`（如 `mailto:admin@example.com`）。也可以写进 `worker/wrangler.toml` 的 `[vars]` 后重新 `npm run deploy`：
+在 Cloudflare 控制台的 Worker 设置里添加变量 `VAPID_PUBLIC_KEY`（输出的公钥）和 `VAPID_SUBJECT`（如 `mailto:admin@example.com`）。也可以写进 `worker/wrangler.toml` 的 `[vars]` 后重新 `pnpm run deploy`：
 
 ```toml
 [vars]
@@ -149,7 +151,7 @@ VAPID_SUBJECT = "mailto:admin@example.com"
 **3. 私钥只存为 Secret**
 
 ```bash
-npx wrangler secret put VAPID_PRIVATE_KEY -c worker/wrangler.toml
+pnpm --filter worker exec wrangler secret put VAPID_PRIVATE_KEY
 ```
 
 私钥不要写进任何文件或提交到仓库。配置完成后，Cron Trigger 每分钟扫描一次到期的提醒，通过 Web Push 推送到已订阅的浏览器。
@@ -163,16 +165,18 @@ npx wrangler secret put VAPID_PRIVATE_KEY -c worker/wrangler.toml
 | `VAPID_SUBJECT` | 变量 | 否 | 推送发送者的联系方式（`mailto:` 或 `https:`） |
 | `VAPID_PRIVATE_KEY` | Secret | 否 | Web Push 私钥 |
 
-变量可以在 Cloudflare 控制台的 Worker 设置里添加，立即生效，之后部署也会保留（`wrangler.toml` 开启了 `keep_vars`）；也可以写进 `worker/wrangler.toml` 的 `[vars]`，重新部署后生效，并覆盖控制台里的同名变量。Secret 用 `npx wrangler secret put <名称> -c worker/wrangler.toml` 设置。
+变量可以在 Cloudflare 控制台的 Worker 设置里添加，立即生效，之后部署也会保留（`wrangler.toml` 开启了 `keep_vars`）；也可以写进 `worker/wrangler.toml` 的 `[vars]`，重新部署后生效，并覆盖控制台里的同名变量。Secret 用 `pnpm --filter worker exec wrangler secret put <名称>` 设置。
 
 ## CLI
 
 `@nodetick/cli` 尚未发布到 npm，目前从源码安装：
 
 ```bash
-npm run build -w cli
-npm link -w cli      # 全局提供 nodetick 命令；也可以不安装，直接运行 node cli/dist/index.js
+pnpm --filter cli build
+pnpm add -g ./cli    # 全局提供 nodetick 命令；也可以不安装，直接运行 node cli/dist/index.js
 ```
+
+`pnpm add -g` 要求 pnpm 的全局 bin 目录在 `PATH` 里，第一次使用前先运行一次 `pnpm setup`。
 
 **登录**
 
@@ -368,16 +372,16 @@ SESSION_SECRET=<32 位以上随机字符串>
 
 | 命令 | 作用 |
 | --- | --- |
-| `npm run dev` | 启动 Worker（`wrangler dev`，端口 8787，自动创建本地 D1） |
-| `npm run dev -w webapp` | 启动 Vite（端口 5173），`/api`、`/open/v1`、`/oauth` 代理到 8787 |
-| `npm test` | 运行 worker 和 webapp 的全部测试 |
-| `npm test -w worker` | Worker 集成测试（vitest + @cloudflare/vitest-pool-workers，真实 D1 语义） |
-| `npm test -w webapp` | 网页应用的纯逻辑单元测试（快速添加解析、日期、i18n） |
-| `npm run test:e2e` | 用 `nodetick` CLI 测试真实服务器，见 [tests/README.md](tests/README.md) |
-| `npm run build` | 编译 CLI，并构建网页应用到 `webapp/dist` |
-| `npm run type-check` | 对所有 workspace 运行 `tsc` |
+| `pnpm dev` | 启动 Worker（`wrangler dev`，端口 8787，自动创建本地 D1） |
+| `pnpm --filter webapp dev` | 启动 Vite（端口 5173），`/api`、`/open/v1`、`/oauth` 代理到 8787 |
+| `pnpm test` | 运行 worker 和 webapp 的全部测试 |
+| `pnpm --filter worker test` | Worker 集成测试（vitest + @cloudflare/vitest-pool-workers，真实 D1 语义） |
+| `pnpm --filter webapp test` | 网页应用的纯逻辑单元测试（快速添加解析、日期、i18n） |
+| `pnpm test:e2e` | 用 `nodetick` CLI 测试真实服务器，见 [tests/README.md](tests/README.md) |
+| `pnpm build` | 编译 CLI，并构建网页应用到 `webapp/dist` |
+| `pnpm type-check` | 对所有 workspace 运行 `tsc` |
 
-`npm run deploy` 会先构建网页应用，再部署 Worker 和静态资源。
+`pnpm run deploy` 会先构建网页应用，再部署 Worker 和静态资源。
 
 ## 路线图
 
@@ -400,7 +404,7 @@ NodeTick 实现的是官方 CLI 所用 TickTick Open API 的*文档化*行为，
 记得定期备份数据：
 
 ```bash
-npx wrangler d1 export nodetick-db --remote --output nodetick-backup.sql -c worker/wrangler.toml
+pnpm --filter worker exec wrangler d1 export nodetick-db --remote --output ../nodetick-backup.sql   # 在 worker/ 下执行，备份写到仓库根目录
 ```
 
 也可以用 `nodetick task filter --json` 等命令导出。

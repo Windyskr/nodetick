@@ -81,7 +81,7 @@ export function sessionSecret(c: SessionCtx): string {
   // with a secret that is missing or too short to be meaningful.
   if (secret.length < 32) {
     throw new Error(
-      'SESSION_SECRET is not set or shorter than 32 characters. Run `npx wrangler secret put SESSION_SECRET` with a random 32+ char string.',
+      'SESSION_SECRET is not set or shorter than 32 characters. Run `pnpm --filter worker exec wrangler secret put SESSION_SECRET` with a random 32+ char string.',
     );
   }
   return secret;

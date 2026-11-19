@@ -5,20 +5,16 @@
   "description": "Self-hosted TickTick-compatible server on Cloudflare Workers + a matching CLI",
   "license": "MIT",
   "type": "module",
-  "workspaces": [
-    "worker",
-    "cli",
-    "webapp"
-  ],
+  "packageManager": "pnpm@12.21.0",
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
     "test:e2e": "node tests/e2e/run-all.mjs",
-    "dev": "npm run dev -w worker",
-    "deploy": "npm run build -w webapp && npm run deploy -w worker",
-    "type-check": "npm run type-check --workspaces --if-present"
+    "dev": "pnpm --filter worker run dev",
+    "deploy": "pnpm --filter webapp run build && pnpm --filter worker run deploy",
+    "type-check": "pnpm -r run type-check"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }

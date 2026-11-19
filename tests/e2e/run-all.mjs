@@ -7,7 +7,7 @@
  * Usage:
  *   NODETICK_SERVER=https://nodetick.example.workers.dev \
  *   NODETICK_EMAIL=admin@example.com NODETICK_PASSWORD=... \
- *   npm run test:e2e
+ *   pnpm test:e2e
  *
  * Token acquisition, in priority order:
  *   1. NODETICK_TOKEN                — use as-is (never revoked afterwards)
@@ -25,7 +25,7 @@ import {
 
 const SERVER = (process.env.NODETICK_SERVER ?? '').replace(/\/+$/, '');
 if (!SERVER) {
-  console.error('Usage: NODETICK_SERVER=https://your-worker NODETICK_EMAIL=... NODETICK_PASSWORD=... npm run test:e2e');
+  console.error('Usage: NODETICK_SERVER=https://your-worker NODETICK_EMAIL=... NODETICK_PASSWORD=... pnpm test:e2e');
   process.exit(2);
 }
 

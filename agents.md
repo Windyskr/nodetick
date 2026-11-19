@@ -146,3 +146,14 @@
   - 开始/暂停/继续/结束按钮原来用 `top-[717px]` 绝对定位，在高度约 800px 的窗口里被 `overflow-hidden` 裁掉、无法点全；现在按钮回到正常文档流，间距和表盘尺寸用 `clamp()`/`min()` 随视口高度缩放，720px 高度下暂停态的两个按钮也完整可见。
   - 表盘刻度和圆环写死了 `rgba(20,20,20,0.1)` 和 `#4772fa`，深色主题下圆环看不见、紫/绿主题下进度色不跟随；改用 `var(--color-ink)`（低不透明度）和 `var(--color-tt)`。
 - 验证：`npm test -w webapp` 110/110，`npm run type-check` 通过；Playwright 在 1280×800、1280×720 下检查空闲、计时、暂停三种状态的按钮都在可视区内。
+
+## 2026-11-20（续）：改用 pnpm 管理依赖
+
+- 包管理器换成 pnpm 12.21.0，由根 `package.json` 的 `packageManager` 固定（Cloudflare Workers Builds 通过 Corepack 读取这个字段）。删除 `package-lock.json` 和 npm 装的 `node_modules`，workspaces 移到 `pnpm-workspace.yaml`，不保留 npm 兼容。
+- `pnpm-lock.yaml` 用 `pnpm import` 从旧锁文件生成，直接依赖版本不变；少数间接依赖升了补丁版本，worker 的 vitest 改用 webapp 已有的 vite 6.4.3（npm 下是 7.3.6）。
+- pnpm 默认拒绝依赖的安装脚本，未列出就报 `ERR_PNPM_IGNORED_BUILDS`；`allowBuilds` 只放行 esbuild 和 workerd。fsevents 的 tarball 里没有安装脚本，不用列（用 `supportedArchitectures` 模拟 macOS/Windows 安装验证过）。
+- 命令对照（前面记录里的 npm 命令按此换算）：`npm run X -w pkg` → `pnpm --filter pkg X`（pnpm 的 `-w` 是 workspace 根目录，不是 npm 的 `--workspace`）；`npx wrangler … -c worker/wrangler.toml` → `pnpm --filter worker exec wrangler …`（在 `worker/` 下运行，相对路径以 `worker/` 为准）；`npm link -w cli` → `pnpm add -g ./cli`（需先 `pnpm setup`）；部署写 `pnpm run deploy`。
+- E2E 的 `buildCli()` 改为通过 shell 运行 `pnpm --filter cli build`：pnpm 12 是原生二进制，`npm_execpath` 不再是能交给 node 执行的 JS 文件。
+- Node 要求改为 22+：wrangler 4.127 要求 `>=22.0.0`，原来写的 20+ 已不准确。
+- 验证：`pnpm type-check`、`pnpm build` 通过；`pnpm test` 中 worker 80/80、webapp 110/110；`wrangler deploy --dry-run` 通过；E2E（本地 `pnpm dev`，临时存储）78/78。
+- 遗留：`pnpm peers check` 提示 wrangler 需要 `@cloudflare/workers-types@^5`，worker 装的是 v4（npm 下同样如此，只是不提示）；worker 测试输出里的 `deleteAllDurableObjects` 未捕获异常日志在 npm 基线上也有，不影响结果。

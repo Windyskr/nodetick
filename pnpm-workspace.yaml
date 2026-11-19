@@ -1,0 +1,10 @@
+packages:
+  - worker
+  - cli
+  - webapp
+
+# pnpm refuses to install while a dependency with an install script is missing
+# from this list. Both only check (and if needed fetch) their platform binary.
+allowBuilds:
+  esbuild: true
+  workerd: true

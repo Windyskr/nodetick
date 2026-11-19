@@ -164,9 +164,9 @@ export default function Landing() {
               <span className="h-3 w-3 rounded-full bg-[#28c840]" />
             </div>
             <p><span className="text-[#7ee787]">$</span> git clone https://github.com/Windyskr/nodetick</p>
-            <p><span className="text-[#7ee787]">$</span> cd nodetick &amp;&amp; npm install</p>
-            <p><span className="text-[#7ee787]">$</span> npx wrangler d1 create nodetick-db</p>
-            <p><span className="text-[#7ee787]">$</span> npm run deploy</p>
+            <p><span className="text-[#7ee787]">$</span> cd nodetick &amp;&amp; pnpm install</p>
+            <p><span className="text-[#7ee787]">$</span> pnpm --filter worker exec wrangler d1 create nodetick-db</p>
+            <p><span className="text-[#7ee787]">$</span> pnpm run deploy</p>
             <p className="mt-2 text-[#8b949e]">🌐 https://nodetick.&lt;your-subdomain&gt;.workers.dev</p>
           </div>
         </div>

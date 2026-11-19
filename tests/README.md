@@ -25,7 +25,7 @@ Covers the frontend logic that has no DOM dependency, so it runs in plain Node:
   localization mapping
 
 ```bash
-npm test -w webapp    # or: npx vitest run (inside webapp/)
+pnpm --filter webapp test    # or: pnpm exec vitest run (inside webapp/)
 ```
 
 ## E2E: nodetick CLI against a live server (`tests/e2e/`)
@@ -67,11 +67,11 @@ tests/e2e/
 # against production
 NODETICK_SERVER=https://nodetick.example.workers.dev \
 NODETICK_EMAIL=admin@example.com NODETICK_PASSWORD='...' \
-npm run test:e2e
+pnpm test:e2e
 
 # against a local dev server
-npx wrangler dev -w worker &
-NODETICK_SERVER=http://localhost:8787 NODETICK_EMAIL=... NODETICK_PASSWORD=... npm run test:e2e
+pnpm dev &
+NODETICK_SERVER=http://localhost:8787 NODETICK_EMAIL=... NODETICK_PASSWORD=... pnpm test:e2e
 ```
 
 Credential options (in priority order):
@@ -83,7 +83,7 @@ Credential options (in priority order):
 
 Behavior details:
 
-- The harness always rebuilds the CLI (`npm run build -w cli`) so suites never
+- The harness always rebuilds the CLI (`pnpm --filter cli build`) so suites never
   run against a stale build.
 - Every CLI invocation uses an **isolated HOME** with `NODETICK_SERVER` /
   `NODETICK_TOKEN` stripped from the environment: the suite exercises the real
