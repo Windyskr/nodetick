@@ -16,7 +16,7 @@ import {
 import { Popover } from '../../components/Popover';
 import { api } from '../../lib/api';
 import type { Focus, Task } from '../../lib/types';
-import { fmtClock, lastNDays, shortDate, todayStr, weekdayShort } from '../../lib/date';
+import { fmtClock, lastNDays, localDayClock, parseInstant, shortDate, todayStr, weekdayShort } from '../../lib/date';
 import { useI18n, useT } from '../../i18n';
 
 type FocusMode = 'pomodoro' | 'stopwatch';
@@ -44,6 +44,7 @@ interface FocusPreset {
 const SETTINGS_KEY = 'ntk_focus_settings';
 const PRESETS_KEY = 'ntk_focus_presets';
 const MIN_RECORDED_FOCUS_SECONDS = 5 * 60;
+const FOCUS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const TIMER_RING_CIRCUMFERENCE = 2 * Math.PI * 196;
 const DEFAULT_SETTINGS: FocusSettings = {
   pomodoroMinutes: 25,
@@ -121,15 +122,17 @@ function isoWithOffset(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${sign}${pad(Math.floor(absolute / 60))}${pad(absolute % 60)}`;
 }
 
+// Focus times are real instants (the CLI and TickTick write UTC), so group
+// and label them in the browser's time zone instead of reading the digits.
 function recordDay(record: Focus): string | null {
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(record.startTime ?? '');
-  return match?.[1] ?? null;
+  return localDayClock(record.startTime)?.day ?? null;
 }
 
 function recordClock(value: string | null): string {
-  const match = /T(\d{2}:\d{2})/.exec(value ?? '');
-  return match?.[1] ?? '';
+  return localDayClock(value)?.clock ?? '';
 }
+
+const newestFirst = (a: Focus, b: Focus) => (parseInstant(b.startTime) ?? 0) - (parseInstant(a.startTime) ?? 0);
 
 function compactDuration(seconds: number, _lang: 'en' | 'zh'): string {
   const safe = Math.max(0, Math.round(seconds));
@@ -252,15 +255,16 @@ export default function FocusPage() {
     from.setHours(0, 0, 0, 0);
     from.setDate(from.getDate() - 29);
     const to = new Date(now);
-    to.setHours(23, 59, 59, 999);
+    to.setHours(23, 59, 59, 0);
+    // The API rejects windows longer than 30 × 24 h. Thirty local days are an
+    // hour longer when they span a DST change, which used to empty the page.
+    from.setTime(Math.max(from.getTime(), to.getTime() - FOCUS_WINDOW_MS));
     try {
       const [pomodoros, stopwatch] = await Promise.all([
         api.listFocus(isoWithOffset(from), isoWithOffset(to), 0),
         api.listFocus(isoWithOffset(from), isoWithOffset(to), 1),
       ]);
-      setRecords(
-        [...pomodoros, ...stopwatch].sort((a, b) => (b.startTime ?? '').localeCompare(a.startTime ?? '')),
-      );
+      setRecords([...pomodoros, ...stopwatch].sort(newestFirst));
     } catch {
       // The empty state remains useful if the history endpoint is unavailable.
     }
@@ -892,7 +896,7 @@ function FocusOverview({
                 <div className="pt-4 text-[12px] font-medium text-ink-3">{shortDate(day, lang)}</div>
                 <div className="pb-1 pt-1">
                   {[...group]
-                    .sort((a, b) => (b.startTime ?? '').localeCompare(a.startTime ?? ''))
+                    .sort(newestFirst)
                     .map((record) => {
                       const task = record.taskId ? taskById.get(record.taskId) : undefined;
                       const start = recordClock(record.startTime);

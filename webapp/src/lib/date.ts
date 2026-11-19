@@ -82,6 +82,28 @@ const BUCKET_KEY: Record<Bucket, Key> = {
 
 export const bucketLabel = (b: Bucket): string => tOf(BUCKET_KEY[b]);
 
+/**
+ * Epoch ms of a real timestamp such as a focus record's `startTime`. TickTick
+ * writes offsets without a colon (`+0000`), which Safari's Date.parse rejects.
+ */
+export function parseInstant(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/** Local calendar day and HH:mm of a timestamp, whatever offset it was written with. */
+export function localDayClock(value: string | null | undefined): { day: string; clock: string } | null {
+  const ms = parseInstant(value);
+  if (ms == null) return null;
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return {
+    day: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+    clock: `${p(d.getHours())}:${p(d.getMinutes())}`,
+  };
+}
+
 /** YYYYMMDD stamp for a local date. */
 export function stampOf(dateStr: string): number {
   return Number(dateStr.replaceAll('-', ''));

@@ -9,6 +9,8 @@ import {
   fmtDuration,
   fmtClock,
   lastNDays,
+  localDayClock,
+  parseInstant,
   relTime,
   shortDate,
   stampOf,
@@ -110,6 +112,25 @@ describe('date basics', () => {
     expect(fmtClock(0)).toBe('00:00');
     expect(fmtClock(1500)).toBe('25:00');
     expect(fmtClock(65)).toBe('01:05');
+  });
+
+  it('parseInstant honours the offset, with or without a colon', () => {
+    const ms = Date.UTC(2026, 10, 19, 3, 0);
+    expect(parseInstant('2026-11-19T03:00:00.000+0000')).toBe(ms);
+    expect(parseInstant('2026-11-19T11:00:00+0800')).toBe(ms);
+    expect(parseInstant('2026-11-18T22:00:00-05:00')).toBe(ms);
+    expect(parseInstant('garbage')).toBeNull();
+    expect(parseInstant(null)).toBeNull();
+  });
+
+  it('localDayClock labels a UTC focus time in the local zone', () => {
+    const local = new Date(Date.UTC(2026, 10, 18, 20, 0));
+    const p = (n: number) => String(n).padStart(2, '0');
+    expect(localDayClock('2026-11-18T20:00:00.000+0000')).toEqual({
+      day: `${local.getFullYear()}-${p(local.getMonth() + 1)}-${p(local.getDate())}`,
+      clock: `${p(local.getHours())}:${p(local.getMinutes())}`,
+    });
+    expect(localDayClock('')).toBeNull();
   });
 });
 
