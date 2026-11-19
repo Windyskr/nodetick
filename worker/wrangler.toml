@@ -1,11 +1,16 @@
 name = "nodetick"
 main = "src/index.ts"
 compatibility_date = "2025-05-05"
+# Keep variables already set on the deployed Worker (e.g. VAPID_PUBLIC_KEY and
+# VAPID_SUBJECT added in the Cloudflare dashboard) when deploying. Values
+# defined under [vars] below still override them.
+keep_vars = true
 
 # Import schema.sql as a text module (used by the auto-init in src/db.ts).
 [[rules]]
 type = "Text"
 globs = ["**/*.sql"]
+fallthrough = false
 
 # Serve the React SPA (webapp/) as static assets with SPA fallback, while
 # API routes always hit the worker. Build with: npm run build -w webapp
@@ -15,22 +20,26 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*", "/oauth/*", "/open/v1/*"]
 
-# The D1 database is auto-initialized on first request (see src/db.ts).
-# Create it with:  npx wrangler d1 create nodetick-db
-# then paste the returned database_id below.
+# The D1 database schema is auto-initialized on first request (see src/db.ts).
+# No database_id needed: on deploy, Wrangler reuses the D1 database already
+# bound to this Worker, else the account's database named "nodetick-db", and
+# only creates "nodetick-db" if neither exists. Local dev uses a local SQLite
+# file under .wrangler/ and never touches the remote database.
 [[d1_databases]]
 binding = "DB"
 database_name = "nodetick-db"
-database_id = "b271ddb8-b249-43f1-951d-5a153269fde6"
 
 [vars]
-# Public Web Push configuration. Keep VAPID_PRIVATE_KEY in a Wrangler secret.
-VAPID_PUBLIC_KEY = "BJNoI3gXjfbwenoiq-5TMNaFgTEycdIqnjHK9KH2hUzpAz_inYlIv2Y6dj0Ih32Cb2bLq9otTAlAaYWxjSGZ_Tg"
-VAPID_SUBJECT = "mailto:oyyfcy@outlook.com"
+# Optional Web Push configuration: set these here or as variables in the
+# Cloudflare dashboard (kept across deploys, see keep_vars above). Keep
+# VAPID_PRIVATE_KEY in a Wrangler secret. Generate a key pair with:
+#   npm run generate:vapid -w worker
+# VAPID_PUBLIC_KEY = "replace-with-your-public-vapid-key"
+# VAPID_SUBJECT = "mailto:admin@example.com"
 
 [triggers]
 crons = ["* * * * *"]
 
-# Secrets (set with `npx wrangler secret put ...`):
+# Secrets (set with `npx wrangler secret put <NAME> -c worker/wrangler.toml`):
 #   SESSION_SECRET - random 32+ char string used to sign CSRF tokens
 #   VAPID_PRIVATE_KEY - private half of the Web Push VAPID key pair

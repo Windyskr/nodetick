@@ -15,7 +15,7 @@
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "node tests/e2e/run-all.mjs",
     "dev": "npm run dev -w worker",
-    "deploy": "npm run deploy -w worker",
+    "deploy": "npm run build -w webapp && npm run deploy -w worker",
     "type-check": "npm run type-check --workspaces --if-present"
   },
   "engines": {
