@@ -148,9 +148,7 @@ function TimerDial({ mode, elapsed, totalSeconds, active }: { mode: FocusMode; e
     return (
       <svg
         aria-hidden="true"
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-        width="376"
-        height="376"
+        className="absolute left-1/2 top-1/2 h-[104.44%] w-[104.44%] -translate-x-1/2 -translate-y-1/2"
         viewBox="0 0 376 376"
       >
         {Array.from({ length: 60 }, (_, index) => {
@@ -162,7 +160,7 @@ function TimerDial({ mode, elapsed, totalSeconds, active }: { mode: FocusMode; e
               y1="4"
               x2="188"
               y2="22"
-              stroke={index < activeTicks ? '#4772fa' : 'rgba(20, 20, 20, 0.1)'}
+              style={index < activeTicks ? { stroke: 'var(--color-tt)' } : { stroke: 'var(--color-ink)', strokeOpacity: 0.1 }}
               strokeWidth="2.5"
               transform={`rotate(${angle} 188 188)`}
             />
@@ -176,14 +174,12 @@ function TimerDial({ mode, elapsed, totalSeconds, active }: { mode: FocusMode; e
   return (
     <svg
       aria-hidden="true"
-      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-      width="360"
-      height="360"
+      className="absolute inset-0 h-full w-full"
       viewBox="0 0 400 400"
     >
-      <circle stroke="rgba(25, 25, 25, 0.1)" cx="200" cy="200" r="196" strokeWidth="8" fill="none" />
+      <circle style={{ stroke: 'var(--color-ink)', strokeOpacity: 0.1 }} cx="200" cy="200" r="196" strokeWidth="8" fill="none" />
       <circle
-        stroke="#4772fa"
+        style={{ stroke: 'var(--color-tt)' }}
         transform="rotate(-90 200 200)"
         cx="200"
         cy="200"
@@ -200,7 +196,7 @@ function TimerDial({ mode, elapsed, totalSeconds, active }: { mode: FocusMode; e
 
 function TimerFace({ mode, elapsed, totalSeconds, displaySeconds, active }: { mode: FocusMode; elapsed: number; totalSeconds: number; displaySeconds: number; active: boolean }) {
   return (
-    <div className="relative mt-[88px] mb-[100px] h-[360px] w-[360px] shrink-0">
+    <div className="relative mt-[clamp(16px,8vh,88px)] mb-[clamp(16px,9vh,100px)] h-[min(360px,42vh)] w-[min(360px,42vh)] shrink-0">
       <TimerDial mode={mode} elapsed={elapsed} totalSeconds={totalSeconds} active={active} />
       <div className="absolute left-1/2 top-1/2 z-[4] -translate-x-1/2 -translate-y-1/2 text-[54px] font-normal leading-[65px] tabular-nums tracking-[-0.02em] text-ink">
         {fmtClock(displaySeconds)}
@@ -548,7 +544,7 @@ export default function FocusPage() {
         <main className="relative flex min-h-0 flex-1 flex-col items-center overflow-hidden">
           {!active && (
             <>
-              <div className="mt-32">
+              <div className="mt-[clamp(24px,12vh,128px)]">
                 <TaskPicker
                   selectedTask={selectedTask}
                   tasks={selectableTasks}
@@ -564,7 +560,7 @@ export default function FocusPage() {
               <button
                 type="button"
                 onClick={beginFreshSession}
-                className="absolute top-[717px] left-1/2 flex h-12 w-[158px] -translate-x-1/2 items-center justify-center rounded-full bg-tt text-[15px] text-white shadow-[0_4px_14px_rgba(71,114,250,0.22)] transition-colors hover:bg-tt-hover"
+                className="flex h-12 w-[158px] shrink-0 items-center justify-center rounded-full bg-tt text-[15px] text-white shadow-[0_4px_14px_rgba(71,114,250,0.22)] transition-colors hover:bg-tt-hover"
               >
                 <Play size={17} fill="currentColor" className="mr-2" />
                 {t('startTitle')}
@@ -574,7 +570,7 @@ export default function FocusPage() {
 
           {active && (
             <div className="flex w-full flex-1 flex-col items-center">
-              <div className="mt-32">
+              <div className="mt-[clamp(24px,12vh,128px)]">
                 <TaskPicker
                   selectedTask={selectedTask}
                   tasks={selectableTasks}
@@ -587,20 +583,21 @@ export default function FocusPage() {
                 />
               </div>
               <TimerFace mode={mode} elapsed={elapsed} totalSeconds={pomodoroSeconds} displaySeconds={displaySeconds} active={active} />
-              {sessionState === 'paused' && <div className="absolute top-[700px] text-[13px] text-ink-3">{t('focusPaused')}</div>}
               {sessionState === 'running' && (
                 <button
                   type="button"
                   onClick={pauseSession}
                   disabled={saving}
-                  className="absolute top-[717px] left-1/2 flex h-12 w-[158px] -translate-x-1/2 items-center justify-center rounded-full border border-tt bg-white text-[15px] text-tt transition-colors hover:bg-tt-light disabled:opacity-60"
+                  className="flex h-12 w-[158px] shrink-0 items-center justify-center rounded-full border border-tt bg-white text-[15px] text-tt transition-colors hover:bg-tt-light disabled:opacity-60"
                 >
                   <Pause size={17} fill="currentColor" className="mr-2" />
                   {t('pauseTitle')}
                 </button>
               )}
               {sessionState === 'paused' && (
-                <div className="absolute top-[717px] left-1/2 flex -translate-x-1/2 flex-col gap-4">
+                <div className="relative flex shrink-0 flex-col items-center gap-4">
+                  {/* Sits in the ring's bottom margin, as before, so the two buttons still fit ~800px windows. */}
+                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[13px] text-ink-3">{t('focusPaused')}</div>
                   <button
                     type="button"
                     onClick={resumeSession}
