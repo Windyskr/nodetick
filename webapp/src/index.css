@@ -117,3 +117,12 @@ textarea:focus,
 button:focus {
   outline: none;
 }
+
+/* Keyboard users still need to see where focus is (mouse clicks don't
+   trigger :focus-visible on buttons, so this adds no rings for them). */
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid var(--color-tt);
+  outline-offset: -2px;
+}

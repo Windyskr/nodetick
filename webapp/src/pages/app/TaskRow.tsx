@@ -107,18 +107,18 @@ export function TaskRow({
       <button
         type="button"
         aria-pressed={checked}
-        aria-label={t('batchComplete')}
+        aria-label={t('selectForBatch')}
         onClick={(e) => {
           e.stopPropagation();
           toggleSelect(task.id);
         }}
         className={`shrink-0 text-ink-3 transition-opacity hover:text-tt ${
-          checked ? 'text-tt opacity-100' : 'opacity-0 group-hover:opacity-100'
+          checked ? 'text-tt opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
         }`}
       >
         {checked ? <CheckSquare size={15} className="text-tt" /> : <Square size={15} />}
       </button>
-      <RoundCheck checked={done} priority={task.priority} onClick={() => void toggleComplete(task)} />
+      <RoundCheck checked={done} priority={task.priority} title={t('markComplete')} onClick={() => void toggleComplete(task)} />
       <div className="min-w-0 flex-1">
         <span className={`block truncate text-[14px] ${done || abandoned ? 'text-ink-3 line-through' : 'text-ink'}`}>
           {task.title || <span className="text-ink-3">{t('untitled')}</span>}
@@ -178,7 +178,7 @@ export function TaskRow({
           <button
             type="button"
             title={t('restore')}
-            className="text-ink-3 opacity-0 transition-opacity hover:text-tt group-hover:opacity-100"
+            className="text-ink-3 opacity-0 transition-opacity hover:text-tt group-hover:opacity-100 group-focus-within:opacity-100"
             onClick={(e) => {
               e.stopPropagation();
               void restoreTask(task.id);
@@ -189,7 +189,7 @@ export function TaskRow({
           <button
             type="button"
             title={t('deleteForever')}
-            className="text-ink-3 opacity-0 transition-opacity hover:text-p-high group-hover:opacity-100"
+            className="text-ink-3 opacity-0 transition-opacity hover:text-p-high group-hover:opacity-100 group-focus-within:opacity-100"
             onClick={(e) => {
               e.stopPropagation();
               void purgeTask(task.id);
@@ -203,7 +203,7 @@ export function TaskRow({
           <button
             type="button"
             title={t('restore')}
-            className="text-ink-3 opacity-0 transition-opacity hover:text-tt group-hover:opacity-100"
+            className="text-ink-3 opacity-0 transition-opacity hover:text-tt group-hover:opacity-100 group-focus-within:opacity-100"
             onClick={(e) => {
               e.stopPropagation();
               void restoreAbandoned(task.id);
@@ -214,7 +214,7 @@ export function TaskRow({
           <button
             type="button"
             title={t('delete')}
-            className="text-ink-3 opacity-0 transition-opacity hover:text-p-high group-hover:opacity-100"
+            className="text-ink-3 opacity-0 transition-opacity hover:text-p-high group-hover:opacity-100 group-focus-within:opacity-100"
             onClick={(e) => {
               e.stopPropagation();
               void trashTask(task);
@@ -236,7 +236,7 @@ export function TaskRow({
                   e.stopPropagation();
                   toggle();
                 }}
-                className="text-ink-3 opacity-0 transition-opacity hover:text-tt group-hover:opacity-100"
+                className="text-ink-3 opacity-0 transition-opacity hover:text-tt group-hover:opacity-100 group-focus-within:opacity-100"
               >
                 <Calendar size={14} />
               </button>
@@ -266,7 +266,9 @@ export function TaskRow({
                   setMenuView('main');
                   toggle();
                 }}
-                className="text-ink-3 opacity-0 transition-opacity hover:text-ink group-hover:opacity-100"
+                title={t('more')}
+                aria-label={t('more')}
+                className="text-ink-3 opacity-0 transition-opacity hover:text-ink group-hover:opacity-100 group-focus-within:opacity-100"
               >
                 <MoreHorizontal size={15} />
               </button>
