@@ -152,7 +152,7 @@ export const api = {
   // --- Tags ---
   listTags: () => get<Tag[]>('/open/v1/tag'),
   upsertTag: (name: string, label: string) => post<Tag>('/open/v1/tag', { name, label }),
-  updateTag: (oldName: string, patch: { name?: string; label?: string; color?: string | null }) =>
+  updateTag: (oldName: string, patch: { name?: string; label?: string; color?: string | null; parentId?: string | null }) =>
     post<Tag>(`/open/v1/tag/${encodeURIComponent(oldName)}`, patch),
   deleteTag: (name: string) => del<void>(`/open/v1/tag/${encodeURIComponent(name)}`),
 

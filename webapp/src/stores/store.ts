@@ -139,7 +139,7 @@ interface AppState {
   addFilter: (input: Omit<TaskFilter, 'id' | 'sortOrder' | 'createdTime' | 'modifiedTime'> & { sortOrder?: number }) => Promise<TaskFilter>;
   updateFilter: (id: string, patch: Partial<TaskFilter>) => Promise<void>;
   deleteFilter: (id: string) => Promise<void>;
-  updateTag: (name: string, patch: { name?: string; label?: string; color?: string | null }) => Promise<void>;
+  updateTag: (name: string, patch: { name?: string; label?: string; color?: string | null; parentId?: string | null }) => Promise<void>;
   deleteTag: (name: string) => Promise<void>;
 }
 
@@ -610,7 +610,8 @@ export const useStore = create<AppState>((set, getState) => ({
         ? list
         : list.map((t) => (hasTag(t, oldName) ? { ...t, tags: t.tags.map((x) => (tagKey(x) === oldName ? tag.name : x)) } : t));
     set((s) => ({
-      tags: s.tags.map((item) => (tagKey(item.name) === oldName ? tag : item)),
+      // Sub-tags follow a renamed parent (the server rewrites them too).
+      tags: s.tags.map((item) => (tagKey(item.name) === oldName ? tag : item.parentId === oldName ? { ...item, parentId: tag.name } : item)),
       tasks: rewrite(s.tasks),
       completed: rewrite(s.completed),
       abandoned: rewrite(s.abandoned),
@@ -624,7 +625,8 @@ export const useStore = create<AppState>((set, getState) => ({
     const strip = (list: Task[]) =>
       list.map((t) => (hasTag(t, oldName) ? { ...t, tags: t.tags.filter((x) => tagKey(x) !== oldName) } : t));
     set((s) => ({
-      tags: s.tags.filter((item) => tagKey(item.name) !== oldName),
+      // Its sub-tags become top-level tags.
+      tags: s.tags.filter((item) => tagKey(item.name) !== oldName).map((item) => (item.parentId === oldName ? { ...item, parentId: null } : item)),
       tasks: strip(s.tasks),
       completed: strip(s.completed),
       abandoned: strip(s.abandoned),

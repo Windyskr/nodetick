@@ -55,7 +55,7 @@ import TimelineBoard from './TimelineBoard';
 import ProjectSettingsDialog from './ProjectSettingsDialog';
 import BatchBar from './BatchBar';
 import { isSubmitEnter } from '../../lib/keys';
-import { hasTag, tagKey } from '../../lib/tags';
+import { hasTagOrSubTag, tagKey } from '../../lib/tags';
 import { PRIORITY_LEVELS, priorityLabel } from '../../components/RoundCheck';
 import { useEscape } from '../../lib/useEscape';
 
@@ -150,7 +150,7 @@ export default function TasksPage() {
     if (isAbandoned) return abandoned;
     if (savedFilter) return tasks;
     if (project) return tasks.filter((t) => t.projectId === project.id);
-    if (tagName) return tasks.filter((t) => hasTag(t, tagName));
+    if (tagName) return tasks.filter((t) => hasTagOrSubTag(t, tagName, tags));
     if (scope === 'inbox') return tasks.filter((t) => t.projectId === INBOX_ID);
     if (scope === 'overdue')
       return tasks.filter((t) => {
@@ -170,7 +170,7 @@ export default function TasksPage() {
         return day !== null && day <= addDays(todayStr(), 7);
       });
     return tasks;
-  }, [isTrash, isCompleted, isAbandoned, savedFilter, project, tagName, scope, tasks, completed, abandoned, trash]);
+  }, [isTrash, isCompleted, isAbandoned, savedFilter, project, tagName, tags, scope, tasks, completed, abandoned, trash]);
 
   const visible = useMemo(
     () => savedFilter ? filterSavedTasks(scopedTasks, savedFilter) : filterTasks(scopedTasks, filters),
@@ -182,7 +182,7 @@ export default function TasksPage() {
     // A filter that asks for "won't do" lists those tasks with the completed ones.
     if (savedFilter) return filterSavedTasks(savedFilter.statuses.includes(-1) ? [...completed, ...abandoned] : completed, savedFilter);
     if (project) return filterTasks(completed.filter((t) => t.projectId === project.id), filters);
-    if (tagName) return filterTasks(completed.filter((t) => hasTag(t, tagName)), filters);
+    if (tagName) return filterTasks(completed.filter((t) => hasTagOrSubTag(t, tagName, tags)), filters);
     if (scope === 'inbox') return filterTasks(completed.filter((t) => t.projectId === INBOX_ID), filters);
     if (scope === 'tomorrow') {
       return filterTasks(completed.filter((t) => dayOf(t.dueDate) === addDays(todayStr(), 1)), filters);
@@ -200,7 +200,7 @@ export default function TasksPage() {
       }), filters);
     }
     return filterTasks(completed, filters);
-  }, [isTrash, isCompleted, isAbandoned, savedFilter, project, tagName, scope, completed, abandoned, filters]);
+  }, [isTrash, isCompleted, isAbandoned, savedFilter, project, tagName, tags, scope, completed, abandoned, filters]);
 
   // ---- render: kanban board ----
   if (project && project.viewMode === 'kanban') {

@@ -32,6 +32,7 @@ import FilterEditor from '../../components/FilterEditor';
 import ProjectSettingsDialog from './ProjectSettingsDialog';
 import type { Project } from '../../lib/types';
 import { isSubmitEnter } from '../../lib/keys';
+import { tagTree } from '../../lib/tags';
 
 const EMOJI_RE = /^\p{Extended_Pictographic}/u;
 
@@ -74,6 +75,7 @@ export default function Sidebar() {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [collapsedLists, setCollapsedLists] = useState(false);
   const [collapsedTags, setCollapsedTags] = useState(false);
+  const [collapsedTagGroups, setCollapsedTagGroups] = useState<string[]>([]);
   const [collapsedFilters, setCollapsedFilters] = useState(false);
   const [filterEditorOpen, setFilterEditorOpen] = useState(false);
   const [editingFilter, setEditingFilter] = useState<(typeof filters)[number] | undefined>();
@@ -396,17 +398,33 @@ export default function Sidebar() {
                 {t('tagsEmpty')}
               </div>
             )}
-            {tags.map((t) => (
-              <TagItem
-                key={t.name}
-                label={t.label}
-                color={t.color}
-                active={location.pathname === `/app/tasks/tag-${t.name}`}
-                onNavigate={() => navigate(`/app/tasks/tag-${t.name}`)}
-                onUpdate={(patch) => void updateTag(t.name, patch)}
-                onDelete={() => void deleteTag(t.name)}
-              />
-            ))}          </div>
+            {tagTree(tags).map(({ tag, children }) => {
+              const item = (entry: typeof tag, depth: number, kids: typeof children) => (
+                <TagItem
+                  key={entry.name}
+                  label={entry.label}
+                  color={entry.color}
+                  depth={depth}
+                  childCount={kids.length}
+                  collapsed={collapsedTagGroups.includes(entry.name)}
+                  onToggle={() => setCollapsedTagGroups((names) => (names.includes(entry.name) ? names.filter((name) => name !== entry.name) : [...names, entry.name]))}
+                  parentId={entry.parentId}
+                  // One level deep: only top-level tags can be parents, and a tag with sub-tags can't move under another.
+                  parentOptions={kids.length ? [] : tags.filter((other) => !other.parentId && other.name !== entry.name)}
+                  active={location.pathname === `/app/tasks/tag-${entry.name}`}
+                  onNavigate={() => navigate(`/app/tasks/tag-${entry.name}`)}
+                  onUpdate={(patch) => void updateTag(entry.name, patch)}
+                  onDelete={() => void deleteTag(entry.name)}
+                />
+              );
+              return (
+                <div key={tag.name}>
+                  {item(tag, 0, children)}
+                  {!collapsedTagGroups.includes(tag.name) && children.map((child) => item(child, 1, []))}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -460,6 +478,12 @@ const TAG_COLORS = ['#F18181', '#F3AE4E', '#F7CE50', '#A9D27F', '#6AD2CA', '#477
 function TagItem({
   label,
   color,
+  depth,
+  childCount,
+  collapsed,
+  onToggle,
+  parentId,
+  parentOptions,
   active,
   onNavigate,
   onUpdate,
@@ -467,9 +491,17 @@ function TagItem({
 }: {
   label: string;
   color: string | null;
+  /** 1 for a sub-tag. */
+  depth: number;
+  childCount: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  parentId: string | null;
+  /** Tags this one may move under. */
+  parentOptions: { name: string; label: string }[];
   active: boolean;
   onNavigate: () => void;
-  onUpdate: (patch: { name?: string; label?: string; color?: string | null }) => void;
+  onUpdate: (patch: { name?: string; label?: string; color?: string | null; parentId?: string | null }) => void;
   onDelete: () => void;
 }) {
   const t = useT();
@@ -507,12 +539,27 @@ function TagItem({
       tabIndex={0}
       onClick={onNavigate}
       onKeyDown={(e) => e.key === 'Enter' && onNavigate()}
-      className={`group mx-2 flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-[7px] text-[14px] transition-colors ${
+      className={`group mx-2 flex cursor-pointer items-center gap-2.5 rounded-md py-[7px] pr-2.5 text-[14px] transition-colors ${depth ? 'pl-8' : 'pl-2.5'} ${
         active ? 'bg-selected font-medium text-ink' : 'text-ink-2 hover:bg-hover'
       }`}
     >
       <IconTag size={17} className="shrink-0" style={{ color: color ?? '#999' }} />
       <span className="flex-1 truncate">{label}</span>
+      {childCount > 0 && (
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          title={t(collapsed ? 'tagShowSubTags' : 'tagHideSubTags')}
+          aria-label={t(collapsed ? 'tagShowSubTags' : 'tagHideSubTags')}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+          className="shrink-0 text-ink-3 hover:text-ink"
+        >
+          {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+        </button>
+      )}
       <Popover
         align="right"
         panelClass="w-[200px]"
@@ -555,6 +602,30 @@ function TagItem({
                 />
               ))}
             </div>
+            {(parentOptions.length > 0 || parentId) && (
+              <div className="border-t border-line pt-1" onClick={(e) => e.stopPropagation()}>
+                <div className="px-3 pb-1 pt-1 text-[11px] font-medium text-ink-3">{t('tagParent')}</div>
+                <div className="max-h-40 overflow-y-auto">
+                  <MenuItem
+                    label={`${parentId ? '' : '✓ '}${t('tagNoParent')}`}
+                    onClick={() => {
+                      close();
+                      if (parentId) onUpdate({ parentId: null });
+                    }}
+                  />
+                  {parentOptions.map((option) => (
+                    <MenuItem
+                      key={option.name}
+                      label={`${parentId === option.name ? '✓ ' : ''}${option.label}`}
+                      onClick={() => {
+                        close();
+                        if (parentId !== option.name) onUpdate({ parentId: option.name });
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
             <MenuItem
               label={t('deleteTag')}
               danger

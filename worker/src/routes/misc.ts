@@ -420,6 +420,23 @@ misc.post('/tag', async (c) => {
 });
 
 /**
+ * Why `name` can't sit under `parent`, or null: the parent must exist, be a
+ * top-level tag and not be the tag itself, and a tag with sub-tags can't
+ * become a sub-tag.
+ */
+async function tagNestingError(db: D1Database, userId: string, name: string, parent: string): Promise<string | null> {
+  if (parent === name) return 'a tag cannot be its own parent';
+  const [parentRow, children] = await db.batch<{ parent_id: string | null; n?: number }>([
+    db.prepare('SELECT parent_id FROM tags WHERE user_id = ? AND name = ?').bind(userId, parent),
+    db.prepare('SELECT COUNT(*) AS n FROM tags WHERE user_id = ? AND parent_id = ?').bind(userId, name),
+  ]);
+  if (!parentRow.results.length) return 'parent tag not found';
+  if (parentRow.results[0].parent_id) return 'tags nest one level deep: the parent is a sub-tag';
+  if (Number(children.results[0]?.n ?? 0) > 0) return 'tags nest one level deep: this tag has sub-tags';
+  return null;
+}
+
+/**
  * Rename/relabel/recolor an existing tag. Renaming also rewrites the tag
  * inside every task's tags array so filters and tag pages stay consistent.
  */
@@ -447,12 +464,27 @@ misc.post('/tag/:tagName', async (c) => {
   const color = b.color == null || b.color === '' ? null : String(b.color);
   if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) return c.json({ error: 'color must be a hex color' }, 400);
   const sortOrder = finiteNumber(b.sortOrder);
+  // Nesting (NodeTick extension, like TickTick's `parent`): parentId names the
+  // parent tag; null or '' makes the tag top-level. One level deep, as in TickTick.
+  let parent: string | null | undefined;
+  if (Object.hasOwn(b, 'parentId')) {
+    if (b.parentId != null && typeof b.parentId !== 'string') return c.json({ error: 'parentId must be a tag name' }, 400);
+    parent = b.parentId ? b.parentId.trim().toLowerCase() : null;
+    if (parent) {
+      const nestingError = await tagNestingError(c.env.DB, userId, oldName, parent);
+      if (nestingError) return c.json({ error: nestingError }, 400);
+    }
+  }
 
-  await c.env.DB.prepare(
-    'UPDATE tags SET name = ?, label = ?, color = COALESCE(?, color), sort_order = COALESCE(?, sort_order) WHERE id = ? AND user_id = ?',
-  )
-    .bind(rawName, label, color, sortOrder, existing.id, userId)
-    .run();
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `UPDATE tags SET name = ?, label = ?, color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
+         parent_id = CASE WHEN ? THEN ? ELSE parent_id END
+       WHERE id = ? AND user_id = ?`,
+    ).bind(rawName, label, color, sortOrder, parent !== undefined ? 1 : 0, parent ?? null, existing.id, userId),
+    // Sub-tags follow a renamed parent.
+    c.env.DB.prepare('UPDATE tags SET parent_id = ? WHERE user_id = ? AND parent_id = ?').bind(rawName, userId, oldName),
+  ]);
 
   if (rawName !== oldName) {
     // Rewrite the tag in every task that references it.
@@ -483,9 +515,11 @@ misc.post('/tag/:tagName', async (c) => {
 misc.delete('/tag/:tagName', async (c) => {
   const userId = c.get('userId');
   const name = c.req.param('tagName').trim().toLowerCase();
-  const res = await c.env.DB.prepare('DELETE FROM tags WHERE user_id = ? AND name = ?')
-    .bind(userId, name)
-    .run();
+  const [res] = await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM tags WHERE user_id = ? AND name = ?').bind(userId, name),
+    // Its sub-tags become top-level tags.
+    c.env.DB.prepare('UPDATE tags SET parent_id = NULL WHERE user_id = ? AND parent_id = ?').bind(userId, name),
+  ]);
   if (!res.meta.changes) return c.json({ error: 'tag not found' }, 404);
   const rows = await c.env.DB.prepare(
     'SELECT id, tags FROM tasks WHERE user_id = ? AND tags IS NOT NULL',

@@ -17,7 +17,7 @@ What [NodeWarden](https://github.com/shuaiplus/nodewarden) is to Bitwarden, Node
 
 ## Features
 
-- **Tasks**: smart lists (All / Today / Tomorrow / Next 7 Days / Inbox), lists and groups, tags, filters; list / Kanban / timeline views (the timeline lists undated tasks underneath; click one to give it a date); Kanban columns can be renamed, deleted and quick-added to; pinning and bulk actions; Completed, Abandoned and Trash (soft delete; restore or delete permanently)
+- **Tasks**: smart lists (All / Today / Tomorrow / Next 7 Days / Inbox), lists and groups, tags (one level of sub-tags; a parent tag's page also lists its sub-tags' tasks), filters; list / Kanban / timeline views (the timeline lists undated tasks underneath; click one to give it a date); Kanban columns can be renamed, deleted and quick-added to; pinning and bulk actions; Completed, Abandoned and Trash (soft delete; restore or delete permanently)
 - **Search**: every word has to match the title, description, a subtask or a tag (`#tag` matches tags only); hits are highlighted, with the description or subtask they came from; multi-select filters for list, tag, date (today / tomorrow / this week / next 7 days / this month / overdue / no date / custom), priority, type (task / note) and status (open / completed / won't do); recent searches; save the keywords and filters as a filter in one step
 - **Calendar**: Year / Month / Week / Day / Schedule / 3-day / 2-week views and a mini month calendar; drag to reschedule, or click the `+` in a cell to create a task on that date
 - **Eisenhower Matrix**: sorts tasks into four quadrants by priority
@@ -327,7 +327,7 @@ The base path is `{server}/open/v1`, and the endpoints follow the [TickTick Open
 | Method | Path | Description |
 | --- | --- | --- |
 | GET / POST | `/tag` | List tags / create a tag |
-| POST / DELETE | `/tag/{tagName}` | Update (rename, color, order) / delete a tag ★ |
+| POST / DELETE | `/tag/{tagName}` | Update (rename, color, order, parent tag `parentId`) / delete a tag (its sub-tags become top-level) ★ |
 | GET / POST | `/habit` | List habits / create a habit |
 | GET / POST | `/habit/{habitId}` | Get / update a habit |
 | POST | `/habit/{habitId}/checkin` | Check in (upsert by date) |
