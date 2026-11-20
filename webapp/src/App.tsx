@@ -37,6 +37,7 @@ const TokensPage = lazyPage(() => import('./pages/app/TokensPage'));
 const AdminPage = lazyPage(() => import('./pages/app/AdminPage'));
 const SearchPage = lazyPage(() => import('./pages/app/SearchPage'));
 const SummaryPage = lazyPage(() => import('./pages/app/SummaryPage'));
+const StatsPage = lazyPage(() => import('./pages/app/StatsPage'));
 
 export default function App() {
   return (
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="matrix" element={<MatrixPage />} />
           <Route path="search" element={<SearchPage />} />
           <Route path="summary" element={<SummaryPage />} />
+          <Route path="stats" element={<StatsPage />} />
           <Route path="habit" element={<HabitPage />} />
           <Route path="focus" element={<FocusPage />} />
           <Route path="countdown" element={<CountdownPage />} />

@@ -26,6 +26,7 @@ test.describe('loading and empty states', () => {
       ['/app/countdown', /还没有/],
       ['/app/search', '搜索标题、描述、子任务和标签。多个关键词用空格分开，#标签 只匹配标签。'],
       ['/app/summary', '当前筛选条件下没有符合条件的任务。'],
+      ['/app/stats', '还没有完成的任务。完成任务后，这里会显示你的进度。'],
     ];
     for (const [path, text] of pages) {
       await page.goto(path);

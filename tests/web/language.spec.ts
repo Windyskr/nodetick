@@ -1,9 +1,9 @@
 import { test, expect } from './fixtures';
 
-const PAGES = ['/app/tasks/inbox', '/app/tasks/all', '/app/calendar', '/app/matrix', '/app/search', '/app/summary', '/app/habit', '/app/focus', '/app/countdown', '/app/tokens', '/app/admin'];
+const PAGES = ['/app/tasks/inbox', '/app/tasks/all', '/app/calendar', '/app/matrix', '/app/search', '/app/summary', '/app/habit', '/app/focus', '/app/countdown', '/app/tokens', '/app/admin', '/app/stats'];
 
 /** Words that may stay in Latin script in the Chinese UI. */
-const ALLOWED_IN_ZH = new Set(['NodeTick', 'API', 'JSON', 'iCal', 'ICS', 'Microsoft', 'To', 'Do', 'Web', 'Push', 'CLI', 'OAuth', 'URL', 'ID', 'AM', 'PM', 'Google', 'Apple', 'Outlook', 'Bearer', 'Token', 'ntk', 'npm']);
+const ALLOWED_IN_ZH = new Set(['NodeTick', 'API', 'JSON', 'iCal', 'ICS', 'Microsoft', 'To', 'Do', 'Web', 'Push', 'CLI', 'OAuth', 'URL', 'ID', 'AM', 'PM', 'Google', 'Apple', 'Outlook', 'Bearer', 'Token', 'ntk', 'npm', 'TickTick']);
 
 /**
  * Text a user reads: visible text nodes plus titles, labels and placeholders.

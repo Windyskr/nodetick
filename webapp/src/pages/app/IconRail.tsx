@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { KeyRound, Languages, Lock, LogOut, Palette, Settings2, Users } from 'lucide-react';
+import { BarChart3, KeyRound, Languages, Lock, LogOut, Palette, Settings2, Users } from 'lucide-react';
 import { Popover } from '../../components/Popover';
 import { useI18n, useT } from '../../i18n';
 import { useStore } from '../../stores/store';
@@ -132,6 +132,16 @@ export default function IconRail() {
               }}
             >
               <Settings2 size={14} /> {t('settings')}
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-hover"
+              onClick={() => {
+                close();
+                navigate('/app/stats');
+              }}
+            >
+              <BarChart3 size={14} /> {t('statsTitle')}
             </button>
             <button
               type="button"

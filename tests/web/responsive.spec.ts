@@ -18,7 +18,7 @@ test.describe('phone-sized screens', () => {
     await expect(page.getByRole('heading', { name: '收集箱' })).toBeVisible();
   });
 
-  for (const path of ['/app/tasks/inbox', '/app/calendar', '/app/matrix', '/app/search', '/app/summary', '/app/habit', '/app/focus', '/app/countdown', '/app/tokens']) {
+  for (const path of ['/app/tasks/inbox', '/app/calendar', '/app/matrix', '/app/search', '/app/summary', '/app/habit', '/app/focus', '/app/countdown', '/app/tokens', '/app/stats']) {
     test(`${path} fits the screen width`, async ({ page }) => {
       await page.goto(path);
       await page.waitForLoadState('networkidle');
