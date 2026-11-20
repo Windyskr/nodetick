@@ -13,8 +13,10 @@ import {
   Tag as TagIcon,
 } from 'lucide-react';
 import { useStore } from '../../stores/store';
-import { useI18n, useT, type Lang } from '../../i18n';
+import { useI18n, useT, useTF, type Lang } from '../../i18n';
 import { allDayDate } from '../../lib/date';
+import { describeRepeat } from '../../lib/repeat';
+import { localDateTime, scheduleLabel } from '../../components/taskSchedule';
 import { findQuickDateToken, parseQuickAdd, type QuickDateToken } from '../../lib/quickParse';
 import { projectDisplayName } from '../../lib/project';
 import type { Project, Tag } from '../../lib/types';
@@ -40,14 +42,24 @@ interface QueuedTask {
   schedule: TaskSchedule;
   kind: 'TASK' | 'NOTE';
   recognizeBareDates: boolean;
-  recognizedDueDate?: string;
+  /** What the input showed as recognized when the task was submitted. */
+  recognized?: Pick<QuickDateToken, 'dueDate' | 'time' | 'repeat'>;
 }
 
 function sameDateToken(left: QuickDateToken, right: QuickDateToken): boolean {
   return left.text === right.text
     && left.start === right.start
     && left.end === right.end
-    && left.dueDate === right.dueDate;
+    && left.dueDate === right.dueDate
+    && left.time === right.time
+    && left.repeat === right.repeat;
+}
+
+/** The schedule a recognized phrase stands for: a timed or all-day due date, maybe repeating. */
+function tokenSchedule(token: Pick<QuickDateToken, 'dueDate' | 'time' | 'repeat'>): Pick<TaskSchedule, 'dueDate' | 'isAllDay' | 'repeatFlag'> | null {
+  const dueDate = token.time ? localDateTime(token.dueDate, token.time) : allDayDate(token.dueDate);
+  if (!dueDate) return null;
+  return { dueDate, isAllDay: !token.time, repeatFlag: token.repeat ?? null };
 }
 
 function getInlineDate(raw: string, recognized: QuickDateToken | null, lang: Lang): QuickDateToken | null {
@@ -77,6 +89,7 @@ export function QuickAdd({ projectId, placeholder, defaultDueDate = null }: {
   const tags = useStore((state) => state.tags);
   const lang = useI18n((state) => state.lang);
   const t = useT();
+  const f = useTF();
   const inputRef = useRef<HTMLInputElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const queue = useRef<QueuedTask[]>([]);
@@ -154,6 +167,13 @@ export function QuickAdd({ projectId, placeholder, defaultDueDate = null }: {
   };
 
   const inlineDate = getInlineDate(rawText, recognizedDate, lang);
+  const inlineSchedule = inlineDate ? tokenSchedule(inlineDate) : null;
+  // How the phrase was read, e.g. "11月21日 15:00 · 每周一".
+  const inlinePreview = inlineSchedule
+    ? [scheduleLabel(null, inlineSchedule.dueDate, inlineSchedule.isAllDay, lang), inlineSchedule.repeatFlag ? describeRepeat(inlineSchedule.repeatFlag, lang, f) : '']
+      .filter(Boolean)
+      .join(' · ')
+    : '';
 
   const drain = async () => {
     if (draining.current) return;
@@ -164,9 +184,12 @@ export function QuickAdd({ projectId, placeholder, defaultDueDate = null }: {
         const parsed = parseQuickAdd(item.raw, item.lang, { recognizeBareDates: item.recognizeBareDates });
         if (!parsed.title) continue;
         const parsedTags = uniqueTags([...item.tags, ...parsed.tags]);
-        const dueDate = parsed.dueDate ?? item.recognizedDueDate;
-        const taskSchedule = dueDate
-          ? { ...item.schedule, startDate: null, dueDate: allDayDate(dueDate), isAllDay: true }
+        const recognized = parsed.dueDate ? { dueDate: parsed.dueDate, time: parsed.time, repeat: parsed.repeat } : item.recognized;
+        const fromText = recognized ? tokenSchedule(recognized) : null;
+        // A typed phrase wins over the date menu; a repeat picked in the menu
+        // stays unless the phrase names its own.
+        const taskSchedule = fromText
+          ? { ...item.schedule, startDate: null, ...fromText, repeatFlag: fromText.repeatFlag ?? item.schedule.repeatFlag ?? null }
           : item.schedule;
         const hasSchedule = taskSchedule.startDate != null || taskSchedule.dueDate != null;
         await createTask({
@@ -201,7 +224,9 @@ export function QuickAdd({ projectId, placeholder, defaultDueDate = null }: {
       schedule,
       kind,
       recognizeBareDates: smartParsing && ignoredDateRef.current == null,
-      recognizedDueDate: recognizedDateRef.current?.dueDate,
+      recognized: recognizedDateRef.current
+        ? { dueDate: recognizedDateRef.current.dueDate, time: recognizedDateRef.current.time, repeat: recognizedDateRef.current.repeat }
+        : undefined,
     });
     if (inputRef.current) inputRef.current.value = '';
     rawValue.current = '';
@@ -309,6 +334,11 @@ export function QuickAdd({ projectId, placeholder, defaultDueDate = null }: {
         />
       </div>
 
+      {inlinePreview && (
+        <span data-quick-date-preview className="max-w-[45%] shrink-0 truncate rounded bg-tt-light px-1.5 py-0.5 text-[12px] text-tt" title={inlinePreview}>
+          {inlinePreview}
+        </span>
+      )}
       <div className="pointer-events-none flex shrink-0 items-center gap-0.5 text-ink-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
         <Popover
           align="right"

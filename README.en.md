@@ -40,12 +40,15 @@ The screenshots show the Chinese UI with demo tasks and habits. The app follows 
 
 ### Quick add and everyday actions
 
-Type tags, dates and priorities straight into the quick-add box. A recognized date is highlighted in blue; clicking it, or pressing Backspace at its edge, only cancels the recognition and keeps the text. Tasks added in Today, Tomorrow or Next 7 Days go to the Inbox with that date preset; a date typed in the input takes precedence.
+Type tags, dates, times, repeats and priorities straight into the quick-add box. A recognized date phrase is highlighted in blue, with how it was read shown beside the box (such as "Nov 21 15:00 · Weekly on Monday"); clicking it, or pressing Backspace at its edge, only cancels the recognition and keeps the text. Tasks added in Today, Tomorrow or Next 7 Days go to the Inbox with that date preset; a date typed in the input takes precedence.
 
 | Input | Effect |
 | --- | --- |
 | `#tag` | Add a tag |
-| `today` `tomorrow` `next week` `friday` `fri` `9/5` (month/day; an optional `~` prefix is allowed) | Set the date; a month and day that have already passed roll over to next year. The Chinese UI uses `今天` `明天` `后天` `下周` `周五` `9月5日` instead |
+| `today` `tomorrow` `friday` `next friday` `this sunday` `in 3 days` `in 2 weeks` `dec 31` `31st december` `9/5` (an optional `~` prefix is allowed) | Set the date; a month and day that have already passed roll over to next year; "next friday" is the Friday of next week |
+| `3pm` `tomorrow at 3pm` `3pm tomorrow` `10:30` `noon` `tonight 8pm` | Set a time, making it a timed task; a time alone is today, or tomorrow once it has passed |
+| `every day` `every weekday` `every monday and thursday` `every other monday` `monthly` `every 3 days` (a time may follow, as in `every weekday at 9am`) | Set a repeat rule; the date is the first occurrence |
+| Chinese UI | `明天下午3点` `周五` `3天后` `下个月5号` `9月5日` `每周一早上9点` `每月15号` `每个工作日` |
 | `!3` `!high` `!高` | High priority (`!2` / `!medium` for medium, `!1` / `!low` for low, `!0` / `!none` for none) |
 
 In the task list you can also:

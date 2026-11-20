@@ -12,7 +12,10 @@ describe('describeRepeat', () => {
     expect(zh(null)).toBe('不重复');
     expect(zh('RRULE:FREQ=DAILY')).toBe('每天');
     expect(zh('RRULE:FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR')).toBe('每个工作日');
-    expect(zh('RRULE:FREQ=WEEKLY;BYDAY=MO,WE')).toBe('每周');
+    expect(zh('RRULE:FREQ=WEEKLY;BYDAY=MO,WE')).toBe('每周一、三');
+    expect(en('RRULE:FREQ=WEEKLY;BYDAY=SU,MO,WE')).toBe('Weekly on Mon, Wed, Sun');
+    expect(zh('RRULE:FREQ=MONTHLY;BYMONTHDAY=15')).toBe('每月15日');
+    expect(en('RRULE:FREQ=MONTHLY;BYMONTHDAY=15')).toBe('Monthly on day 15');
     expect(zh('RRULE:FREQ=MONTHLY')).toBe('每月');
     expect(en('RRULE:FREQ=YEARLY')).toBe('Yearly');
     expect(en('RRULE:FREQ=HOURLY')).toBe('Set');
@@ -21,7 +24,8 @@ describe('describeRepeat', () => {
 
   it('names intervals', () => {
     expect(zh('RRULE:FREQ=DAILY;INTERVAL=3')).toBe('每3天');
-    expect(en('RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO')).toBe('Every 2 weeks');
+    expect(en('RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO')).toBe('Every 2 weeks on Mon');
+    expect(zh('RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=FR')).toBe('每2周的周五');
     expect(zh('RRULE:FREQ=MONTHLY;INTERVAL=6')).toBe('每6个月');
     expect(en('RRULE:FREQ=YEARLY;INTERVAL=2')).toBe('Every 2 years');
   });

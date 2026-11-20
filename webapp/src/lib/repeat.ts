@@ -25,6 +25,8 @@ const WEEKDAY_NAMES: Record<Lang, string[]> = {
   en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
   zh: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'],
 };
+/** Weekday names after 周 (Sunday first): 周一 → 一. */
+const WEEKDAY_SHORT_ZH = ['日', '一', '二', '三', '四', '五', '六'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const ints = (value: string | undefined) =>
@@ -83,11 +85,21 @@ export function describeRepeat(flag: string | null | undefined, lang: Lang, t: T
     const weekdays = parts.byDay.map((d) => d.weekday).sort().join(',') === '1,2,3,4,5';
     label = weekdays ? t('repeatWeekdays') : n > 1 ? t('repeatEveryDays', n) : t('repeatDaily');
   } else if (parts.freq === 'WEEKLY') {
-    label = n > 1 ? t('repeatEveryWeeks', n) : t('repeatWeekly');
+    const period = n > 1 ? t('repeatEveryWeeks', n) : t('repeatWeekly');
+    // Plain weekdays (no "2nd Tuesday"), Monday first: "每周一、三", "Weekly on Mon, Wed".
+    const days = parts.byDay.every((d) => d.nth == null)
+      ? [1, 2, 3, 4, 5, 6, 0].filter((day) => parts.byDay.some((d) => d.weekday === day))
+      : [];
+    label = days.length
+      ? lang === 'zh'
+        ? `${period}${n > 1 ? '的周' : ''}${days.map((day) => WEEKDAY_SHORT_ZH[day]).join('、')}`
+        : t('repeatOnWeekdays', period, days.map((day) => WEEKDAY_NAMES.en[day].slice(0, 3)).join(', '))
+      : period;
   } else if (parts.freq === 'MONTHLY') {
     const period = n > 1 ? t('repeatEveryMonths', n) : t('repeatMonthly');
     if (nth) label = t('repeatOnDay', period, ordinal(nth.nth, lang), WEEKDAY_NAMES[lang][nth.weekday]);
     else if (!parts.byDay.length && parts.byMonthDay.join(',') === '-1') label = t('repeatLastDay', period);
+    else if (!parts.byDay.length && parts.byMonthDay.length === 1 && parts.byMonthDay[0] > 0) label = t('repeatOnMonthDay', period, parts.byMonthDay[0]);
     else label = period;
   } else if (parts.freq === 'YEARLY') {
     const period = n > 1 ? t('repeatEveryYears', n) : t('repeatYearly');
