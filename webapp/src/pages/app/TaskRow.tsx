@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlignLeft, Ban, Bell, Calendar, CheckSquare, MoreHorizontal, Pin, PinOff, Repeat, RotateCcw, Square, Timer, Trash2 } from 'lucide-react';
+import { AlignLeft, Ban, Bell, Calendar, CheckSquare, MoreHorizontal, Pin, PinOff, Repeat, RotateCcw, Square, StickyNote, Timer, Trash2 } from 'lucide-react';
 import type { Task } from '../../lib/types';
 import { useStore } from '../../stores/store';
 import { useFocus } from '../../stores/focus';
@@ -49,6 +49,7 @@ export function TaskRow({
   canDrag = false,
   highlight,
   snippet,
+  layout = 'row',
 }: {
   task: Task;
   showProject?: boolean;
@@ -61,6 +62,8 @@ export function TaskRow({
   highlight?: string[];
   /** Extra line under the title (search: where the match was found). */
   snippet?: ReactNode;
+  /** `card`: the title wraps on its own line with the details under it (Kanban board). */
+  layout?: 'row' | 'card';
 }) {
   const { selectTask, selectedTaskId, toggleComplete, trashTask, restoreTask, purgeTask, saveTask, duplicateTask, moveTask, showToast, toggleSelect, selectedIds, reorderTasks, abandonTask, restoreAbandoned } =
     useStore();
@@ -76,124 +79,42 @@ export function TaskRow({
   const badge = showProject ? projectBadge(task.projectId, t) : null;
   const subtasks = task.items.length;
 
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      draggable={canDrag}
-      onDragStart={(e) => {
-        e.dataTransfer.setData('text/plain', task.id);
-        e.dataTransfer.effectAllowed = 'move';
-      }}
-      onDragOver={(e) => {
-        if (!canDrag) return;
-        e.preventDefault();
-        const rect = e.currentTarget.getBoundingClientRect();
-        setDropPos(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
-      }}
-      onDragLeave={() => setDropPos(null)}
-      onDrop={(e) => {
-        e.preventDefault();
-        const pos = dropPos;
-        setDropPos(null);
-        const draggedId = e.dataTransfer.getData('text/plain');
-        if (!draggedId || draggedId === task.id) return;
-        void reorderTasks(draggedId, task.id, siblings, pos === 'after' ? 'after' : 'before');
-      }}
-      onDragEnd={() => setDropPos(null)}
+  const isNote = task.kind === 'NOTE';
+  const doneCount = task.items.filter((i) => i.status === 2).length;
+  const titleText = task.title
+    ? highlight?.length
+      ? highlightParts(task.title, highlight).map((part, index) => part.hit
+        ? <mark key={index} className="rounded-[2px] bg-tt-light px-px text-tt">{part.text}</mark>
+        : part.text)
+      : task.title
+    : <span className="text-ink-3">{t('untitled')}</span>;
+  const selectBox = (
+    <button
+      type="button"
+      aria-pressed={checked}
+      aria-label={t('selectForBatch')}
       onClick={(e) => {
-        // Ctrl/Cmd-click multi-selects, plain click opens the detail panel.
-        if (e.ctrlKey || e.metaKey) {
-          toggleSelect(task.id);
-          return;
-        }
-        selectTask(task.id);
+        e.stopPropagation();
+        toggleSelect(task.id);
       }}
-      onKeyDown={(e) => e.key === 'Enter' && selectTask(task.id)}
-      className={`group relative flex cursor-pointer items-center gap-3 border-b border-line/70 px-5 py-[9px] transition-colors ${
-        selected || checked ? 'bg-selected' : 'hover:bg-hover'
-      } ${dropPos ? 'ring-1 ring-tt/50' : ''}`}
+      className={`shrink-0 text-ink-3 transition-opacity hover:text-tt ${
+        checked ? 'text-tt opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+      }`}
     >
-      {dropPos === 'before' && <span className="absolute -top-px left-4 right-4 h-0.5 rounded bg-tt" />}
-      {dropPos === 'after' && <span className="absolute -bottom-px left-4 right-4 h-0.5 rounded bg-tt" />}
-      <button
-        type="button"
-        aria-pressed={checked}
-        aria-label={t('selectForBatch')}
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleSelect(task.id);
-        }}
-        className={`shrink-0 text-ink-3 transition-opacity hover:text-tt ${
-          checked ? 'text-tt opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
-        }`}
-      >
-        {checked ? <CheckSquare size={15} className="text-tt" /> : <Square size={15} />}
-      </button>
-      {/* Trashed tasks can't be completed (the API answers 404); restore first. */}
-      <RoundCheck checked={done} priority={task.priority} title={task.deletedTime ? undefined : t('markComplete')} onClick={task.deletedTime ? undefined : () => void toggleComplete(task)} />
-      <div className="min-w-0 flex-1">
-        <span className={`block truncate text-[14px] ${done || abandoned ? 'text-ink-3 line-through' : 'text-ink'}`}>
-          {task.title
-            ? highlight?.length
-              ? highlightParts(task.title, highlight).map((part, index) => part.hit
-                ? <mark key={index} className="rounded-[2px] bg-tt-light px-px text-tt">{part.text}</mark>
-                : part.text)
-              : task.title
-            : <span className="text-ink-3">{t('untitled')}</span>}
-        </span>
-        {snippet}
-        {showDetails && (
-          <div className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-[11px] text-ink-3">
-            {/* The description's first line, as text (search rows show their own excerpt). */}
-            {(task.content || task.desc) && <span className="truncate">{(!snippet && descriptionPreview(task.content || task.desc)) || t('hasDescription')}</span>}
-            {task.tags.slice(0, 3).map((tag) => (
-              <span key={tag} className="shrink-0">#{tag}</span>
-            ))}
-            {subtasks > 0 && (
-              <span className="inline-flex shrink-0 items-center gap-0.5">
-                <CheckSquare size={12} />
-                {task.items.filter((i) => i.status === 2).length}/{subtasks}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-      {/* inline indicators */}
-      <span className="hidden shrink-0 items-center gap-1.5 text-ink-3 group-hover:hidden sm:flex">
-        {task.pinned && (
-          <span title={t('pinned')}><Pin size={12} /></span>
-        )}
-        {task.reminders.length > 0 && (
-          <span title={t('reminder')}><Bell size={12} /></span>
-        )}
-        {task.repeatFlag && (
-          <span title={t('repeat')}><Repeat size={12} /></span>
-        )}
-        {(task.content || task.desc) && (
-          <span title={t('hasDescription')}><AlignLeft size={12} /></span>
-        )}
-      </span>
-      {subtasks > 0 && !done && !showDetails && (
-        <span className="inline-flex shrink-0 items-center gap-0.5 text-[12px] text-ink-3">
-          <CheckSquare size={12} />
-          {task.items.filter((i) => i.status === 2).length}/{subtasks}
-        </span>
-      )}
-      {badge && (
-        <span className="hidden items-center gap-1 text-[12px] text-ink-3 sm:flex">
-          {badge.emoji ? (
-            <span className="text-[12px] leading-none">{badge.emoji}</span>
-          ) : (
-            <span className="inline-block h-2 w-2 rounded-[2px]" style={{ background: badge.color }} />
-          )}
-          <span className="max-w-[120px] truncate">
-            {badge.emoji ? badge.name.slice(badge.emoji.length).trim() : badge.name}
-          </span>
-        </span>
-      )}
-      <DateChip task={task} />
-
+      {checked ? <CheckSquare size={15} className="text-tt" /> : <Square size={15} />}
+    </button>
+  );
+  // Notes can't be completed: a note icon stands where the check would be.
+  const check = isNote ? (
+    <span title={t('filterKind_note')} className="flex h-[18px] w-[18px] shrink-0 items-center justify-center text-ink-3">
+      <StickyNote size={15} />
+    </span>
+  ) : (
+    // Trashed tasks can't be completed (the API answers 404); restore first.
+    <RoundCheck checked={done} priority={task.priority} title={task.deletedTime ? undefined : t('markComplete')} onClick={task.deletedTime ? undefined : () => void toggleComplete(task)} />
+  );
+  const actions = (
+    <>
       {task.deletedTime ? (
         <span className="flex w-10 shrink-0 gap-1">
           <button
@@ -374,6 +295,152 @@ export function TaskRow({
           </Popover>
         </span>
       )}
+    </>
+  );
+
+  // The attributes both layouts share: click to open, Ctrl/Cmd-click to multi-select, drag to reorder.
+  const shared = {
+    role: 'button' as const,
+    tabIndex: 0,
+    draggable: canDrag,
+    onDragStart: (e: DragEvent<HTMLDivElement>) => {
+      e.dataTransfer.setData('text/plain', task.id);
+      e.dataTransfer.effectAllowed = 'move';
+    },
+    onDragOver: (e: DragEvent<HTMLDivElement>) => {
+      if (!canDrag) return;
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      setDropPos(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
+    },
+    onDragLeave: () => setDropPos(null),
+    onDrop: (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const pos = dropPos;
+      setDropPos(null);
+      const draggedId = e.dataTransfer.getData('text/plain');
+      if (!draggedId || draggedId === task.id) return;
+      void reorderTasks(draggedId, task.id, siblings, pos === 'after' ? 'after' : 'before');
+    },
+    onDragEnd: () => setDropPos(null),
+    onClick: (e: MouseEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        toggleSelect(task.id);
+        return;
+      }
+      selectTask(task.id);
+    },
+    onKeyDown: (e: KeyboardEvent) => e.key === 'Enter' && selectTask(task.id),
+  };
+  const dropLine = (
+    <>
+      {dropPos === 'before' && <span className="absolute -top-px left-4 right-4 h-0.5 rounded bg-tt" />}
+      {dropPos === 'after' && <span className="absolute -bottom-px left-4 right-4 h-0.5 rounded bg-tt" />}
+    </>
+  );
+
+  if (layout === 'card') {
+    const meta = [
+      (task.dueDate || task.startDate) && <DateChip key="date" task={task} />,
+      task.pinned && <span key="pin" title={t('pinned')}><Pin size={12} /></span>,
+      task.reminders.length > 0 && <span key="bell" title={t('reminder')}><Bell size={12} /></span>,
+      task.repeatFlag && <span key="repeat" title={t('repeat')}><Repeat size={12} /></span>,
+      (task.content || task.desc) && <span key="desc" title={t('hasDescription')}><AlignLeft size={12} /></span>,
+      subtasks > 0 && (
+        <span key="items" className="inline-flex items-center gap-0.5 text-[11.5px]">
+          <CheckSquare size={12} />
+          {doneCount}/{subtasks}
+        </span>
+      ),
+      ...task.tags.slice(0, 3).map((tag) => <span key={`tag:${tag}`} className="max-w-[96px] truncate text-[11.5px]">#{tag}</span>),
+    ].filter(Boolean);
+    return (
+      <div
+        {...shared}
+        className={`group relative cursor-pointer rounded-lg px-3 py-2.5 transition-colors ${selected || checked ? 'bg-selected' : 'hover:bg-hover'} ${dropPos ? 'ring-1 ring-tt/50' : ''}`}
+      >
+        {dropLine}
+        <div className="flex items-start gap-2">
+          <span className="mt-px">{check}</span>
+          <div className="min-w-0 flex-1">
+            <span className={`line-clamp-3 break-words text-[13.5px] leading-[1.45] ${done || abandoned ? 'text-ink-3 line-through' : 'text-ink'}`}>
+              {titleText}
+            </span>
+            {snippet}
+            {meta.length > 0 && <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-ink-3">{meta}</div>}
+          </div>
+          {actions}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      {...shared}
+      className={`group relative flex cursor-pointer items-center gap-3 border-b border-line/70 px-5 py-[9px] transition-colors ${
+        selected || checked ? 'bg-selected' : 'hover:bg-hover'
+      } ${dropPos ? 'ring-1 ring-tt/50' : ''}`}
+    >
+      {dropLine}
+      {selectBox}
+      {check}
+      <div className="min-w-0 flex-1">
+        <span className={`block truncate text-[14px] ${done || abandoned ? 'text-ink-3 line-through' : 'text-ink'}`}>
+          {titleText}
+        </span>
+        {snippet}
+        {showDetails && (
+          <div className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-[11px] text-ink-3">
+            {/* The description's first line, as text (search rows show their own excerpt). */}
+            {(task.content || task.desc) && <span className="truncate">{(!snippet && descriptionPreview(task.content || task.desc)) || t('hasDescription')}</span>}
+            {task.tags.slice(0, 3).map((tag) => (
+              <span key={tag} className="shrink-0">#{tag}</span>
+            ))}
+            {subtasks > 0 && (
+              <span className="inline-flex shrink-0 items-center gap-0.5">
+                <CheckSquare size={12} />
+                {task.items.filter((i) => i.status === 2).length}/{subtasks}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      {/* inline indicators */}
+      <span className="hidden shrink-0 items-center gap-1.5 text-ink-3 group-hover:hidden sm:flex">
+        {task.pinned && (
+          <span title={t('pinned')}><Pin size={12} /></span>
+        )}
+        {task.reminders.length > 0 && (
+          <span title={t('reminder')}><Bell size={12} /></span>
+        )}
+        {task.repeatFlag && (
+          <span title={t('repeat')}><Repeat size={12} /></span>
+        )}
+        {(task.content || task.desc) && (
+          <span title={t('hasDescription')}><AlignLeft size={12} /></span>
+        )}
+      </span>
+      {subtasks > 0 && !done && !showDetails && (
+        <span className="inline-flex shrink-0 items-center gap-0.5 text-[12px] text-ink-3">
+          <CheckSquare size={12} />
+          {task.items.filter((i) => i.status === 2).length}/{subtasks}
+        </span>
+      )}
+      {badge && (
+        <span className="hidden items-center gap-1 text-[12px] text-ink-3 sm:flex">
+          {badge.emoji ? (
+            <span className="text-[12px] leading-none">{badge.emoji}</span>
+          ) : (
+            <span className="inline-block h-2 w-2 rounded-[2px]" style={{ background: badge.color }} />
+          )}
+          <span className="max-w-[120px] truncate">
+            {badge.emoji ? badge.name.slice(badge.emoji.length).trim() : badge.name}
+          </span>
+        </span>
+      )}
+      <DateChip task={task} />
+      {actions}
     </div>
   );
 }

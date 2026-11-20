@@ -168,10 +168,7 @@ export default function KanbanBoard({
             }}
             className="mt-2 rounded-lg bg-white shadow-[0_1px_4px_rgba(0,0,0,0.06)]"
           >
-            {/* board cards reuse the row chrome without the bottom border */}
-            <div className="[&>div]:border-b-0">
-              <TaskRow task={t} showProject={false} />
-            </div>
+            <TaskRow task={t} showProject={false} layout="card" />
           </div>
         ))}
         {addingIn === columnId ? (
