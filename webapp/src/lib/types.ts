@@ -90,7 +90,10 @@ export interface Tag {
   parentId: string | null;
 }
 
-export type FilterDateMode = 'any' | 'today' | 'tomorrow' | 'week' | 'overdue' | 'custom';
+export type FilterDateMode = 'any' | 'today' | 'tomorrow' | 'week' | 'next7' | 'month' | 'overdue' | 'nodate' | 'custom';
+
+/** Task types a filter can pick: notes are kind NOTE, everything else is a task. */
+export type FilterKind = 'task' | 'note';
 
 export interface TaskFilter {
   id: string;
@@ -103,6 +106,9 @@ export interface TaskFilter {
   tags: string[];
   priorities: number[];
   statuses: number[];
+  /** Search words that must all match (title, description, subtasks, tags); always ANDed. */
+  keywords: string;
+  kinds: FilterKind[];
   sortOrder: number;
   createdTime: string | null;
   modifiedTime: string | null;

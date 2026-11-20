@@ -179,7 +179,8 @@ export default function TasksPage() {
 
   const completedInScope = useMemo(() => {
     if (isTrash || isCompleted || isAbandoned) return [];
-    if (savedFilter) return filterSavedTasks(completed, savedFilter);
+    // A filter that asks for "won't do" lists those tasks with the completed ones.
+    if (savedFilter) return filterSavedTasks(savedFilter.statuses.includes(-1) ? [...completed, ...abandoned] : completed, savedFilter);
     if (project) return filterTasks(completed.filter((t) => t.projectId === project.id), filters);
     if (tagName) return filterTasks(completed.filter((t) => hasTag(t, tagName)), filters);
     if (scope === 'inbox') return filterTasks(completed.filter((t) => t.projectId === INBOX_ID), filters);
@@ -199,7 +200,7 @@ export default function TasksPage() {
       }), filters);
     }
     return filterTasks(completed, filters);
-  }, [isTrash, isCompleted, isAbandoned, savedFilter, project, tagName, scope, completed, filters]);
+  }, [isTrash, isCompleted, isAbandoned, savedFilter, project, tagName, scope, completed, abandoned, filters]);
 
   // ---- render: kanban board ----
   if (project && project.viewMode === 'kanban') {

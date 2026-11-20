@@ -5,6 +5,7 @@ import { addDays, dayOf, todayStr } from '../lib/date';
 import { useT } from '../i18n';
 import { PRIORITY_LEVELS, priorityLabel } from './RoundCheck';
 import { hasTag } from '../lib/tags';
+import { matchTask, searchTerms } from '../lib/search';
 
 export type FilterDate = 'any' | 'today' | 'week' | 'overdue';
 
@@ -56,39 +57,64 @@ function weekBounds(today: string): [string, string] {
   return [startDay, addDays(startDay, 6)];
 }
 
-function savedDateMatch(task: Task, filter: TaskFilter, today: string): boolean {
+function monthBounds(today: string): [string, string] {
+  const [year, month] = today.split('-').map(Number);
+  const last = new Date(year, month, 0).getDate();
+  const prefix = today.slice(0, 7);
+  return [`${prefix}-01`, `${prefix}-${String(last).padStart(2, '0')}`];
+}
+
+/** The conditions of a saved filter (or of a live search, which saves as one). */
+export type FilterConditions = Pick<
+  TaskFilter,
+  'logic' | 'dateMode' | 'dateStart' | 'dateEnd' | 'projectIds' | 'tags' | 'priorities' | 'statuses' | 'keywords' | 'kinds'
+>;
+
+export function savedDateMatch(task: Task, filter: Pick<TaskFilter, 'dateMode' | 'dateStart' | 'dateEnd'>, today: string): boolean {
   if (filter.dateMode === 'any') return true;
   const range = taskDays(task);
+  if (filter.dateMode === 'nodate') return !range.start && !range.end;
   if (!range.start || !range.end) return false;
-  if (filter.dateMode === 'overdue') return range.end < today;
-  if (filter.dateMode === 'today') return range.start <= today && range.end >= today;
+  const overlaps = (start: string, end: string) => range.start! <= end && range.end! >= start;
+  if (filter.dateMode === 'overdue') return range.end < today && task.status === 0;
+  if (filter.dateMode === 'today') return overlaps(today, today);
   if (filter.dateMode === 'tomorrow') {
     const tomorrow = addDays(today, 1);
-    return range.start <= tomorrow && range.end >= tomorrow;
+    return overlaps(tomorrow, tomorrow);
   }
-  if (filter.dateMode === 'week') {
-    const [start, end] = weekBounds(today);
-    return range.start <= end && range.end >= start;
-  }
+  if (filter.dateMode === 'week') return overlaps(...weekBounds(today));
+  if (filter.dateMode === 'next7') return overlaps(today, addDays(today, 6));
+  if (filter.dateMode === 'month') return overlaps(...monthBounds(today));
   const start = filter.dateStart ?? filter.dateEnd;
   const end = filter.dateEnd ?? filter.dateStart;
   if (!start || !end) return true;
-  return range.start <= end && range.end >= start;
+  return overlaps(start, end);
 }
 
-/** Match a persisted TickTick-style smart-list definition. */
-export function matchesSavedFilter(task: Task, filter: TaskFilter, today = todayStr()): boolean {
+/** Notes are kind NOTE; plain and checklist tasks count as tasks. */
+export function taskKindOf(task: Pick<Task, 'kind'>): 'task' | 'note' {
+  return task.kind === 'NOTE' ? 'note' : 'task';
+}
+
+/**
+ * Match a persisted TickTick-style smart-list definition. Keywords always
+ * have to match; the other conditions combine with the filter's logic.
+ */
+export function matchesSavedFilter(task: Task, filter: FilterConditions, today = todayStr()): boolean {
+  const terms = searchTerms(filter.keywords ?? '');
+  if (terms.length && !matchTask(task, terms)) return false;
   const checks: boolean[] = [];
   if (filter.projectIds.length) checks.push(filter.projectIds.includes(task.projectId));
   if (filter.tags.length) checks.push(filter.tags.some((tag) => hasTag(task, tag)));
   if (filter.priorities.length) checks.push(filter.priorities.includes(task.priority));
   if (filter.statuses.length) checks.push(filter.statuses.includes(task.status));
+  if (filter.kinds?.length) checks.push(filter.kinds.includes(taskKindOf(task)));
   if (filter.dateMode !== 'any') checks.push(savedDateMatch(task, filter, today));
   if (!checks.length) return true;
   return filter.logic === 'or' ? checks.some(Boolean) : checks.every(Boolean);
 }
 
-export function filterSavedTasks(tasks: Task[], filter: TaskFilter): Task[] {
+export function filterSavedTasks(tasks: Task[], filter: FilterConditions): Task[] {
   return tasks.filter((task) => matchesSavedFilter(task, filter));
 }
 

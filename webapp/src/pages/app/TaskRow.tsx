@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { AlignLeft, Ban, Bell, Calendar, CheckSquare, MoreHorizontal, Pin, PinOff, Repeat, RotateCcw, Square, Trash2 } from 'lucide-react';
 import type { Task } from '../../lib/types';
 import { useStore } from '../../stores/store';
@@ -8,6 +8,7 @@ import { ScheduleMenu } from '../../components/ScheduleMenu';
 import { MenuItem, Popover } from '../../components/Popover';
 import { useT, type Key } from '../../i18n';
 import { projectDisplayName } from '../../lib/project';
+import { highlightParts } from '../../lib/search';
 
 const EMOJI_RE = /^\p{Extended_Pictographic}/u;
 
@@ -43,6 +44,8 @@ export function TaskRow({
   showDetails = false,
   siblings,
   canDrag = false,
+  highlight,
+  snippet,
 }: {
   task: Task;
   showProject?: boolean;
@@ -51,6 +54,10 @@ export function TaskRow({
   siblings?: string[];
   /** Dragging is only offered in custom-sort views, like TickTick. */
   canDrag?: boolean;
+  /** Search terms to mark in the title. */
+  highlight?: string[];
+  /** Extra line under the title (search: where the match was found). */
+  snippet?: ReactNode;
 }) {
   const { selectTask, selectedTaskId, toggleComplete, trashTask, restoreTask, purgeTask, saveTask, duplicateTask, moveTask, showToast, toggleSelect, selectedIds, reorderTasks, abandonTask, restoreAbandoned } =
     useStore();
@@ -122,8 +129,15 @@ export function TaskRow({
       <RoundCheck checked={done} priority={task.priority} title={task.deletedTime ? undefined : t('markComplete')} onClick={task.deletedTime ? undefined : () => void toggleComplete(task)} />
       <div className="min-w-0 flex-1">
         <span className={`block truncate text-[14px] ${done || abandoned ? 'text-ink-3 line-through' : 'text-ink'}`}>
-          {task.title || <span className="text-ink-3">{t('untitled')}</span>}
+          {task.title
+            ? highlight?.length
+              ? highlightParts(task.title, highlight).map((part, index) => part.hit
+                ? <mark key={index} className="rounded-[2px] bg-tt-light px-px text-tt">{part.text}</mark>
+                : part.text)
+              : task.title
+            : <span className="text-ink-3">{t('untitled')}</span>}
         </span>
+        {snippet}
         {showDetails && (
           <div className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-[11px] text-ink-3">
             {(task.content || task.desc) && <span className="truncate">{t('hasDescription')}</span>}

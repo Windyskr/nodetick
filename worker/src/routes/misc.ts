@@ -184,15 +184,23 @@ function invalidNumericArray(value: unknown, maxItems: number): boolean {
   );
 }
 
+export const FILTER_DATE_MODES = ['any', 'today', 'tomorrow', 'week', 'next7', 'month', 'overdue', 'nodate', 'custom'] as const;
+export const FILTER_KINDS = ['task', 'note'] as const;
+const MAX_FILTER_KEYWORDS = 200;
+
 type FilterValue = {
   logic: 'and' | 'or';
-  dateMode: 'any' | 'today' | 'tomorrow' | 'week' | 'overdue' | 'custom';
+  dateMode: typeof FILTER_DATE_MODES[number];
   dateStart: string | null;
   dateEnd: string | null;
   projectIds: string[];
   tags: string[];
   priorities: number[];
   statuses: number[];
+  /** NodeTick extension: search words that must all match, saved from the search page. */
+  keywords: string;
+  /** NodeTick extension: 'task' and/or 'note' (kind NOTE); empty matches both. */
+  kinds: string[];
 };
 
 function validFilterDate(value: unknown): boolean {
@@ -205,8 +213,14 @@ function validFilterDate(value: unknown): boolean {
 
 function normalizeFilter(value: Record<string, unknown>): { value?: FilterValue; error?: string } {
   const dateMode = String(value.dateMode ?? 'any');
-  if (!['any', 'today', 'tomorrow', 'week', 'overdue', 'custom'].includes(dateMode)) {
+  if (!(FILTER_DATE_MODES as readonly string[]).includes(dateMode)) {
     return { error: 'dateMode is invalid' };
+  }
+  if (value.keywords != null && (typeof value.keywords !== 'string' || value.keywords.length > MAX_FILTER_KEYWORDS)) {
+    return { error: `keywords must be a string of at most ${MAX_FILTER_KEYWORDS} characters` };
+  }
+  if (value.kinds != null && (!Array.isArray(value.kinds) || value.kinds.some((kind) => !(FILTER_KINDS as readonly unknown[]).includes(kind)))) {
+    return { error: `kinds must only contain ${FILTER_KINDS.join(', ')}` };
   }
   if (!validFilterDate(value.dateStart) || !validFilterDate(value.dateEnd)) {
     return { error: 'dateStart/dateEnd must be YYYY-MM-DD dates' };
@@ -235,6 +249,8 @@ function normalizeFilter(value: Record<string, unknown>): { value?: FilterValue;
       tags: Array.isArray(value.tags) ? value.tags.map(String) : [],
       priorities: Array.isArray(value.priorities) ? value.priorities.map(Number) : [],
       statuses: Array.isArray(value.statuses) ? value.statuses.map(Number) : [],
+      keywords: typeof value.keywords === 'string' ? value.keywords.trim() : '',
+      kinds: Array.isArray(value.kinds) ? [...new Set(value.kinds.map(String))] : [],
     },
   };
 }

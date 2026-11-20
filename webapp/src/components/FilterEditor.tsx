@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
-import type { Project, Tag, TaskFilter, FilterDateMode } from '../lib/types';
+import type { Project, Tag, TaskFilter, FilterDateMode, FilterKind } from '../lib/types';
 import { useT, type Key } from '../i18n';
 import { projectDisplayName } from '../lib/project';
 import { isSubmitEnter } from '../lib/keys';
@@ -9,15 +9,20 @@ import { useEscape } from '../lib/useEscape';
 
 type FilterInput = Omit<TaskFilter, 'id' | 'sortOrder' | 'createdTime' | 'modifiedTime'> & { sortOrder?: number };
 
-const DATE_OPTIONS: FilterDateMode[] = ['any', 'today', 'tomorrow', 'week', 'overdue', 'custom'];
-const DATE_LABEL_KEYS: Record<FilterDateMode, Key> = {
+export const DATE_OPTIONS: FilterDateMode[] = ['any', 'today', 'tomorrow', 'week', 'next7', 'month', 'overdue', 'nodate', 'custom'];
+export const DATE_LABEL_KEYS: Record<FilterDateMode, Key> = {
   any: 'filterDate_any',
   today: 'filterDate_today',
   tomorrow: 'filterDate_tomorrow',
   week: 'filterDate_week',
+  next7: 'filterDate_next7',
+  month: 'filterDate_month',
   overdue: 'filterDate_overdue',
+  nodate: 'filterDate_nodate',
   custom: 'filterDate_custom',
 };
+export const KIND_OPTIONS: FilterKind[] = ['task', 'note'];
+export const KIND_LABEL_KEYS: Record<FilterKind, Key> = { task: 'filterKind_task', note: 'filterKind_note' };
 
 export default function FilterEditor({
   projects,
@@ -44,6 +49,8 @@ export default function FilterEditor({
   const [tagsSelected, setTagsSelected] = useState<string[]>(initialFilter?.tags ?? []);
   const [priorities, setPriorities] = useState<number[]>(initialFilter?.priorities ?? []);
   const [statuses, setStatuses] = useState<number[]>(initialFilter?.statuses ?? []);
+  const [keywords, setKeywords] = useState(initialFilter?.keywords ?? '');
+  const [kinds, setKinds] = useState<FilterKind[]>(initialFilter?.kinds ?? []);
   const [saving, setSaving] = useState(false);
 
   const toggle = <T,>(value: T, values: T[], setValues: (next: T[]) => void) => {
@@ -65,6 +72,8 @@ export default function FilterEditor({
         tags: tagsSelected,
         priorities,
         statuses,
+        keywords: keywords.trim(),
+        kinds,
       });
       onClose();
     } finally {
@@ -164,7 +173,27 @@ export default function FilterEditor({
               <Chip active={statuses.length === 0} label={t('filterAnyStatus')} onClick={() => setStatuses([])} />
               <Chip active={statuses.includes(0)} label={t('filterIncomplete')} onClick={() => toggle(0, statuses, setStatuses)} />
               <Chip active={statuses.includes(2)} label={t('filterCompleted')} onClick={() => toggle(2, statuses, setStatuses)} />
+              <Chip active={statuses.includes(-1)} label={t('filterAbandoned')} onClick={() => toggle(-1, statuses, setStatuses)} />
             </div>
+          </FilterField>
+
+          <FilterField label={t('filterKind')}>
+            <div className="flex flex-wrap gap-1.5">
+              <Chip active={kinds.length === 0} label={t('filterAnyKind')} onClick={() => setKinds([])} />
+              {KIND_OPTIONS.map((kind) => (
+                <Chip key={kind} active={kinds.includes(kind)} label={t(KIND_LABEL_KEYS[kind])} onClick={() => toggle(kind, kinds, setKinds)} />
+              ))}
+            </div>
+          </FilterField>
+
+          <FilterField label={t('filterKeywords')}>
+            <input
+              value={keywords}
+              maxLength={200}
+              onChange={(e) => setKeywords(e.target.value)}
+              placeholder={t('filterKeywordsPh')}
+              className="w-full rounded-md border border-line px-3 py-1.5 text-[13px] placeholder:text-ink-3 focus:border-tt"
+            />
           </FilterField>
 
           <div className="mt-5 flex justify-end gap-2 border-t border-line pt-4">

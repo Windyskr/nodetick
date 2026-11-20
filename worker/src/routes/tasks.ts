@@ -411,11 +411,18 @@ tasks.post('/task/search', async (c) => {
   const projectIds = Array.isArray(b.projectIds) ? b.projectIds.map(String) : null;
   const tagFilter = Array.isArray(b.tags) ? b.tags.map(tagKey) : null;
 
+  // Every whitespace-separated word must appear somewhere: title, content,
+  // desc, a checklist item or a tag (the webapp's search does the same).
+  const terms = [...new Set(keywords.split(/\s+/).filter((term) => term && term !== '#'))].slice(0, 32);
   const out = rows.results
     .filter((r) => {
-      if (!keywords) return true;
-      const hay = [r.title, r.content, r.task_desc].filter(Boolean).join(' ').toLowerCase();
-      return hay.includes(keywords);
+      if (!terms.length) return true;
+      const items = parseJsonArray<{ title?: unknown }>(r.items as string).map((item) => String(item?.title ?? ''));
+      const tags = parseJsonArray<string>(r.tags as string).map(tagKey);
+      const hay = [r.title, r.content, r.task_desc, ...items].filter(Boolean).join('\n').toLowerCase();
+      return terms.every((term) => term.startsWith('#')
+        ? tags.some((tag) => tag.startsWith(term.slice(1)))
+        : hay.includes(term) || tags.some((tag) => tag.includes(term)));
     })
     .filter((r) => !projectIds || projectIds.includes(String(r.project_id)))
     .filter((r) => {

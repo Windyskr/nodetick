@@ -17,7 +17,8 @@ What [NodeWarden](https://github.com/shuaiplus/nodewarden) is to Bitwarden, Node
 
 ## Features
 
-- **Tasks**: smart lists (All / Today / Tomorrow / Next 7 Days / Inbox), lists and groups, tags, filters; list / Kanban / timeline views (the timeline lists undated tasks underneath; click one to give it a date); Kanban columns can be renamed, deleted and quick-added to; pinning and bulk actions; full-text search; Completed, Abandoned and Trash (soft delete; restore or delete permanently)
+- **Tasks**: smart lists (All / Today / Tomorrow / Next 7 Days / Inbox), lists and groups, tags, filters; list / Kanban / timeline views (the timeline lists undated tasks underneath; click one to give it a date); Kanban columns can be renamed, deleted and quick-added to; pinning and bulk actions; Completed, Abandoned and Trash (soft delete; restore or delete permanently)
+- **Search**: every word has to match the title, description, a subtask or a tag (`#tag` matches tags only); hits are highlighted, with the description or subtask they came from; multi-select filters for list, tag, date (today / tomorrow / this week / next 7 days / this month / overdue / no date / custom), priority, type (task / note) and status (open / completed / won't do); recent searches; save the keywords and filters as a filter in one step
 - **Calendar**: Year / Month / Week / Day / Schedule / 3-day / 2-week views and a mini month calendar; drag to reschedule, or click the `+` in a cell to create a task on that date
 - **Eisenhower Matrix**: sorts tasks into four quadrants by priority
 - **Habits**: a 7-day check-in strip and streaks
@@ -275,7 +276,7 @@ The base path is `{server}/open/v1`, and the endpoints follow the [TickTick Open
 | POST | `/task/move` | Move tasks between projects |
 | POST | `/task/completed` | Query completed tasks |
 | POST | `/task/filter` | Filter tasks by criteria |
-| POST | `/task/search` | Full-text search |
+| POST | `/task/search` | Full-text search: every word must appear in the title, description, a subtask or a tag; `#name` matches tags only |
 | GET | `/project/{projectId}/task/{taskId}/comments` | List comments |
 | POST | `/project/{projectId}/task/{taskId}/comment` | Add a comment |
 | DELETE | `/project/{projectId}/task/{taskId}/comment/{commentId}` | Delete a comment |
@@ -322,7 +323,7 @@ The base path is `{server}/open/v1`, and the endpoints follow the [TickTick Open
 | GET | `/countdown` | List countdowns |
 | POST | `/countdown` | Create a countdown ★ |
 | POST / DELETE | `/countdown/{countdownId}` | Update / delete a countdown ★ |
-| GET / POST | `/filter` | List filters / create a filter ★ |
+| GET / POST | `/filter` | List filters / create a filter (lists, tags, date, priority and status, plus `keywords` and `kinds`) ★ |
 | POST / DELETE | `/filter/{filterId}` | Update / delete a filter ★ |
 
 </details>
@@ -425,7 +426,7 @@ To debug push notifications, also add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` an
 
 - [ ] Focus: add a stopwatch mode, fuller cumulative stats and a complete record history.
 - [ ] Countdowns: round out reminders, repeats, notes, styles, archiving and display settings to match TickTick's own Countdown feature more closely.
-- [ ] Search: filter by list, tag, date, priority, type and status, and save a search as a filter.
+- [x] Search: filter by list, tag, date, priority, type and status, and save a search as a filter.
 - [ ] Summary: persist summaries and wire up templates, saving, copying and sharing.
 - [ ] Habits: custom repeat rules, editing, multiple numeric check-ins and historical stats.
 - [ ] Upgrade task descriptions to a rich-text editor with `/` quick insert, closer to TickTick's editor.
