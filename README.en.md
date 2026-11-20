@@ -27,7 +27,7 @@ What [NodeWarden](https://github.com/shuaiplus/nodewarden) is to Bitwarden, Node
 - **Statistics**: the **Statistics** page in the avatar menu shows, for the last 7 days / 30 days / 12 weeks / 12 months, completed tasks (compared with the previous period), the completion rate of tasks due, the on-time rate and what is overdue now; a completion trend, a year of completions as a calendar heat map, and breakdowns by list, tag, priority, weekday and time of day; narrow it to one list, and switch any chart to a table
 - **Summary**: turns a period's tasks into an editable Markdown document for daily, weekly or yearly reports. Pick today / tomorrow / yesterday / this, next or last week / this or last month / this or last year or a custom range, and filter by list, status (completed / in progress / incomplete / won't do), priority and tag; group by status, list, completion date, task date, tag or priority; each line can show the status, progress, completion date, task date, parent task, tags, focus time, list and details (description and subtasks); optionally add the next period's tasks. Save the settings as templates and switch in one click; edits to the document are saved as you type, follow you to other devices, and can be regenerated from the tasks at any time. Copy it (formatting survives pasting into documents), save it as a PDF, an image or a note in a list, email it, or use the system share sheet on phones
 - **Notifications**: Web Push reminders for tasks, habits and countdowns; switched on per device, so turning them off on one device leaves the others alone; push text follows each device's UI language (Chinese / English); per-category switches, a reminder time for all-day items, a daily digest (one push a day with today's tasks and the overdue count) and test notifications; clicking a notification opens the task (requires [enabling browser notifications](#enable-browser-notifications-optional) first)
-- **Account & data**: change your password; admins add and delete users and reset passwords on the **User management** page; JSON backup and restore; import lists, folders, Kanban columns and tasks from a TickTick backup (see [Migrating from TickTick](#migrating-from-ticktick)); import lists and tasks from Microsoft To Do (requires [setting up a Microsoft app](#enable-the-microsoft-to-do-import-optional) first); a calendar subscription link (ICS, works with Google Calendar, Apple Calendar and others); API token management
+- **Account & data**: change your password; admins add and delete users and reset passwords on the **User management** page; JSON backup and restore; import lists, folders, Kanban columns and tasks from a TickTick backup (see [Migrating from TickTick](#migrating-from-ticktick)); import lists and tasks from Microsoft To Do (uses a shared Microsoft app by default; see [Microsoft To Do import](#microsoft-to-do-import)); a calendar subscription link (ICS, works with Google Calendar, Apple Calendar and others); API token management
 - **General**: keyboard shortcuts (`N` adds a task, `/` searches, `G` plus a letter jumps to Today, Calendar, Habits and other views; press `?` for the full list); Chinese and English UI (follows the browser language; switch it from the avatar menu); Blue / Violet / Green / Dark themes; hide the feature modules and smart lists you don't use in Settings; on phones and other narrow screens, the task sidebar moves into a drawer and task details open full-screen
 
 | Calendar | Eisenhower Matrix |
@@ -190,24 +190,23 @@ pnpm --filter worker exec wrangler secret put VAPID_PRIVATE_KEY
 
 Never write the private key into a file or commit it to the repository. Once everything is configured, a Cron Trigger scans for due reminders every minute and pushes them to subscribed browsers via Web Push.
 
-### Enable the Microsoft To Do import (optional)
+### Microsoft To Do import
 
 Microsoft To Do has no export, so the import reads lists and tasks through Microsoft Graph, which needs a Microsoft Entra app registration. Sign-in uses the device code flow: the web app shows a code that the user enters on Microsoft's sign-in page. The flow needs no redirect URI, so one app registration can serve any number of NodeTick deployments.
 
-**1. Register an app**
+By default NodeTick uses a shared app registered by the project maintainer (client ID `3d591cb1-29ed-41a5-8cda-9384dd283e11`), so the import works without any setup. Tokens only pass through your own deployment; the app owner never gets them and cannot see your data. The app has no verified publisher, so the consent page marks it as unverified; personal accounts can consent themselves, while work or school accounts from other organizations may need their admin's approval. The shared app may be disabled at any time (for example if it gets abused); the import then fails, and you can switch to your own app as described below. To turn the import off, set `MS_TODO_CLIENT_ID` to `off`.
+
+**Use your own app (optional)**
 
 1. Sign in to the [Azure portal](https://portal.azure.com) or the [Microsoft Entra admin center](https://entra.microsoft.com) and go to **App registrations** → **New registration**. Since June 2024, new apps must be registered in a directory (tenant). With only a personal account (outlook.com and the like) and no directory, the Entra admin center says the account does not exist in the tenant, and the Azure portal's App registrations page says that creating applications outside of a directory has been deprecated. In that case, first [sign up for a free Azure account](https://azure.microsoft.com/pricing/purchase-options/azure-account) with that account (phone and card verification; nothing is charged unless you upgrade to pay-as-you-go). It comes with a default directory; then register the app in the Azure portal. The directory and the app registration do not depend on the subscription and keep working after the free credit ends.
 2. Pick any name (such as `NodeTick`); under **Supported account types** choose the option covering any Entra ID tenant plus personal Microsoft accounts (**Accounts in any organizational directory and personal Microsoft accounts** in the older UI); leave the redirect URI empty.
 3. Under **Authentication**, set **Allow public client flows** to **Yes** and save. In the newer **Authentication (Preview)** page, it is a toggle on the **Settings** tab.
-4. Under **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**, select `Tasks.Read`. Personal accounts can consent to it themselves when signing in. The app has no verified publisher, so work or school accounts from other organizations may need their organization's admin to approve it.
+4. Under **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**, select `Tasks.Read`. Without a verified publisher, the same accounts can consent themselves as with the shared app.
+5. Copy the **Application (client) ID** from the app's overview page and add it as the variable `MS_TODO_CLIENT_ID` in the Cloudflare dashboard, or put it under `[vars]` in `worker/wrangler.toml` and run `pnpm run deploy` again. A client ID is not a secret.
 
-**2. Set the client ID**
+With either the shared app or your own, for personal accounts only, set `MS_TODO_TENANT` to `consumers` (the app's account types must include personal accounts); for work or school accounts only, set it to `organizations` or a tenant ID. Some organizations block device code sign-in.
 
-Copy the **Application (client) ID** from the app's overview page and add it as the variable `MS_TODO_CLIENT_ID` in the Cloudflare dashboard, or put it under `[vars]` in `worker/wrangler.toml` and run `pnpm run deploy` again. A client ID is not a secret.
-
-For personal accounts only, set `MS_TODO_TENANT` to `consumers` (the app's account types must include personal accounts); for work or school accounts only, set it to `organizations` or a tenant ID. Some organizations block device code sign-in.
-
-**3. Import**
+**Import**
 
 On the web app's **API tokens** page (`/app/tokens`), click **Import from Microsoft To Do** under **Backup & restore**, sign in, and pick the lists to import. What gets imported:
 
@@ -225,7 +224,7 @@ On the web app's **API tokens** page (`/app/tokens`), click **Import from Micros
 | `VAPID_PUBLIC_KEY` | Variable | No | Web Push public key |
 | `VAPID_SUBJECT` | Variable | No | Contact for the push sender (`mailto:` or `https:`) |
 | `VAPID_PRIVATE_KEY` | Secret | No | Web Push private key |
-| `MS_TODO_CLIENT_ID` | Variable | No | Client ID of a Microsoft Entra app; turns on the Microsoft To Do import |
+| `MS_TODO_CLIENT_ID` | Variable | No | Client ID of the Entra app for the Microsoft To Do import; unset uses the shared app, `off` turns the import off |
 | `MS_TODO_TENANT` | Variable | No | Tenant for Microsoft sign-in: `common` (default), `consumers`, `organizations` or a tenant ID |
 
 Variables added in the Worker's settings in the Cloudflare dashboard take effect immediately and are kept on later deploys (`wrangler.toml` enables `keep_vars`). Variables under `[vars]` in `worker/wrangler.toml` take effect on the next deploy and override dashboard variables of the same name. Set secrets with `pnpm --filter worker exec wrangler secret put <NAME>`.
@@ -413,7 +412,7 @@ Session endpoints used by the web app, authenticated by cookie:
 | GET / POST | `/api/export`, `/api/import` | Download a backup / import a backup |
 | GET | `/api/export/calendar.ics` | Download an ICS calendar file |
 | GET / POST | `/api/feed`, `/api/feed/regenerate` | Show / regenerate the calendar subscription link (the old link stops working immediately) |
-| GET | `/api/import/microsoft/config` | Whether the server has a Microsoft app configured |
+| GET | `/api/import/microsoft/config` | Whether the Microsoft To Do import is turned on |
 | POST | `/api/import/microsoft/device`, `/api/import/microsoft/token` | Start a device code sign-in / poll for its result (relayed to Microsoft) |
 | POST | `/api/import/microsoft/tasks` | Import a batch of one list's tasks (Graph format, up to 200 per request; already imported tasks are skipped) |
 | POST | `/api/import/ticktick/tasks` | Import a batch of one list's tasks from a TickTick backup (the browser parses the CSV; up to 200 per request; already imported tasks are skipped) |
@@ -435,7 +434,7 @@ OAuth (client id `nodetick-cli`):
 - **Passwords** use PBKDF2-SHA-256 with 100,000 iterations (the maximum the Cloudflare runtime allows) and a separate 16-byte random salt per password. Each hash records its iteration count, so changing the parameters later doesn't affect existing users.
 - **Accounts**: the first user to register is the admin. Public registration then closes, and only the admin can add new accounts.
 - **Calendar subscription links** carry a 128-bit random secret and can only read dated tasks. Regenerate the link at any time and the old one stops working immediately.
-- **The Microsoft To Do import** only asks for the read-only `Tasks.Read` permission. The Worker only relays the device code sign-in; Microsoft's access token lives in browser memory and is never stored in the database. For this, the web app's CSP additionally allows only `https://graph.microsoft.com`.
+- **The Microsoft To Do import** only asks for the read-only `Tasks.Read` permission. Sign-in uses the maintainer's shared app by default, but tokens never reach the maintainer. The Worker only relays the device code sign-in; Microsoft's access token lives in browser memory and is never stored in the database. For this, the web app's CSP additionally allows only `https://graph.microsoft.com`.
 - **Session cookies** are HttpOnly, Secure and SameSite=Lax; write requests to `/api/*` must also be same-origin (Origin / Referer is checked). The OAuth consent form uses a signed CSRF token.
 - **Brute-force protection**: 10 failed logins in a row from the same IP or for the same account lock it for 2 minutes, and failed attempts get a fixed response delay to blunt timing probes; each IP can try to register at most 5 times per 15 minutes. Logins, registrations and lockouts are written to an audit log.
 - **Security headers**: every response carries CSP, `X-Frame-Options: DENY` and other security headers; request bodies are capped at 1 MB.

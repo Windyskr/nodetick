@@ -9,7 +9,8 @@ import { importMicrosoftTodoChunk, MsTodoImportError } from '../services/mstodo.
  * behind the same-origin check of the session routes).
  *
  * Sign-in uses the OAuth device code flow: it needs no redirect URI, so one
- * Entra app registration serves every NodeTick deployment. The worker relays
+ * Entra app registration serves every NodeTick deployment (by default the
+ * shared app below). The worker relays
  * the two sign-in calls to Microsoft and hands the access token (read-only
  * To Do scope) to the browser, which reads Graph directly and posts the
  * lists back to /tasks in chunks.
@@ -23,11 +24,20 @@ const AUTHORITY = 'https://login.microsoftonline.com';
 const SCOPE = 'Tasks.Read';
 const DEVICE_CODE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
 const MAX_DEVICE_CODE = 4096;
-const NOT_CONFIGURED = 'Microsoft To Do import is not configured on this server (MS_TODO_CLIENT_ID).';
+const NOT_CONFIGURED = 'Microsoft To Do import is turned off on this server (MS_TODO_CLIENT_ID is set to off).';
 
+/**
+ * The maintainer's shared Entra app (any Entra tenant plus personal accounts,
+ * public client flows on, delegated Tasks.Read), used when MS_TODO_CLIENT_ID
+ * is unset. It may be disabled at any time, so a deployment can set its own.
+ */
+export const SHARED_MS_TODO_CLIENT_ID = '3d591cb1-29ed-41a5-8cda-9384dd283e11';
+
+/** The app to sign in with: MS_TODO_CLIENT_ID, the shared app when unset, none when "off". */
 function microsoftApp(env: Env): { clientId: string; endpoint: string } | null {
-  const clientId = env.MS_TODO_CLIENT_ID?.trim();
-  if (!clientId) return null;
+  const setting = env.MS_TODO_CLIENT_ID?.trim();
+  if (setting?.toLowerCase() === 'off') return null;
+  const clientId = setting || SHARED_MS_TODO_CLIENT_ID;
   const tenant = env.MS_TODO_TENANT?.trim() || 'common';
   return { clientId, endpoint: `${AUTHORITY}/${encodeURIComponent(tenant)}/oauth2/v2.0` };
 }

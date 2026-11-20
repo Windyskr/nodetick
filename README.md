@@ -27,7 +27,7 @@
 - **统计**：头像菜单里的「统计」页按近 7 天 / 30 天 / 12 周 / 12 个月统计完成任务数（与上期对比）、到期任务完成率、准时完成率和当前逾期；完成趋势柱状图、过去一年的完成日历，以及按清单、标签、优先级、星期和时段的分布；可只看一个清单，每张图都能切换成表格
 - **摘要**：把一段时间内的任务汇总成可编辑的 Markdown 文档，适合写日报、周报和年终总结。时间可选今天 / 明天 / 昨天 / 本周 / 下周 / 上周 / 本月 / 上月 / 今年 / 去年或自定义，并可按清单、状态（已完成 / 进行中 / 未完成 / 已放弃）、优先级和标签筛选；按完成状态、清单、完成时间、任务时间、标签或优先级分组；每行可显示状态、进度、完成时间、任务时间、主任务、标签、专注时长、所属清单和详细内容（描述与子任务）；可附上下一周期的任务。设置可保存为模板，一键切换；在文档里的修改会自动保存，换设备也在，随时可按任务重新生成。可复制（粘贴到文档时保留格式）、保存为 PDF、图片或清单里的笔记、发送邮件，手机上还可以用系统分享
 - **通知**：通过 Web Push 推送任务、习惯和纪念日提醒；每台设备单独开关，在一台设备上关闭不影响其他设备；推送文案跟随该设备的界面语言（中 / 英）；支持分类开关、全天事项提醒时间、每日提醒（每天定时推送今天的任务和已过期数量）和测试通知，点击通知直达对应任务（需先[开启浏览器通知](#开启浏览器通知可选)）
-- **账号与数据**：修改密码；管理员在「用户管理」页添加、删除用户和重置密码；JSON 备份与恢复；从 TickTick 备份导入清单、文件夹、看板列和任务（见[从 TickTick 迁移](#从-ticktick-迁移)）；从 Microsoft To Do 导入清单和任务（需先[配置 Microsoft 应用](#开启-microsoft-to-do-导入可选)）；日历订阅链接（ICS，可添加到 Google 日历、Apple 日历等）；API 令牌管理
+- **账号与数据**：修改密码；管理员在「用户管理」页添加、删除用户和重置密码；JSON 备份与恢复；从 TickTick 备份导入清单、文件夹、看板列和任务（见[从 TickTick 迁移](#从-ticktick-迁移)）；从 Microsoft To Do 导入清单和任务（默认用共享的 Microsoft 应用，见[Microsoft To Do 导入](#microsoft-to-do-导入)）；日历订阅链接（ICS，可添加到 Google 日历、Apple 日历等）；API 令牌管理
 - **通用**：中英双语（跟随浏览器语言，可在头像菜单切换）；快捷键（`N` 添加任务、`/` 搜索、`G` 加字母跳转到今天 / 日历 / 习惯等视图，按 `?` 查看全部）；蓝 / 紫 / 绿 / 深色主题；可在设置里隐藏不用的功能模块和智能清单；手机等窄屏上，任务页的侧栏收进抽屉，任务详情全屏打开
 
 | 日历 | 四象限 |
@@ -190,24 +190,23 @@ pnpm --filter worker exec wrangler secret put VAPID_PRIVATE_KEY
 
 私钥不要写进任何文件或提交到仓库。配置完成后，Cron Trigger 每分钟扫描一次到期的提醒，通过 Web Push 推送到已订阅的浏览器。
 
-### 开启 Microsoft To Do 导入（可选）
+### Microsoft To Do 导入
 
 Microsoft To Do 没有导出功能，导入通过 Microsoft Graph 读取清单和任务，需要一个 Microsoft Entra 应用注册。登录用设备码方式：网页上显示一个代码，用户到微软的登录页输入。这种方式不需要回调地址，所以一个应用注册可以给多个 NodeTick 部署共用。
 
-**1. 注册应用**
+默认用项目维护者注册的共享应用（客户端 ID `3d591cb1-29ed-41a5-8cda-9384dd283e11`），不用配置就能导入。令牌只经过你自己的部署，应用所有者拿不到，也看不到你的数据。这个应用没做发布者验证，同意页会标「未验证」；个人账号可以自己同意，其他组织的工作或学校账号可能要管理员批准。共享应用随时可能停用（比如被滥用时），停用后导入会报错，到时按下面的步骤换成自己的应用。不想提供这个功能的，把 `MS_TODO_CLIENT_ID` 设为 `off`。
+
+**换成自己的应用（可选）**
 
 1. 登录 [Azure 门户](https://portal.azure.com)或 [Microsoft Entra 管理中心](https://entra.microsoft.com)，进入「应用注册」→「新注册」。2024 年 6 月起新应用必须注册在目录（租户）里。只有个人账号（outlook.com 等）、没有目录时，Entra 管理中心会提示账号不在租户中，Azure 门户的应用注册页会提示「在目录外部创建应用程序的功能已被弃用」。这时先用这个账号[开通 Azure 免费账户](https://azure.microsoft.com/pricing/purchase-options/azure-account)（要验证手机和银行卡，不升级为即用即付就不扣费），会自带一个默认目录，然后在 Azure 门户里注册。目录和应用注册不依赖订阅，免费额度到期后照常可用。
 2. 名称随意（如 `NodeTick`）；「受支持的帐户类型」选「任何 Entra ID 租户 + 个人 Microsoft 帐户」（旧版界面叫「任何组织目录中的帐户和个人 Microsoft 帐户」）；重定向 URI 留空。
 3. 在「身份验证」里把「允许公共客户端流」设为「是」并保存。新版界面叫「Authentication (Preview)」，这一项是「设置」标签里的开关。
-4. 在「API 权限」→「添加权限」→「Microsoft Graph」→「委托的权限」里勾选 `Tasks.Read`。个人账号登录时可以自己同意这个权限。应用没做发布者验证，其他组织的工作或学校账号可能要该组织的管理员批准。
+4. 在「API 权限」→「添加权限」→「Microsoft Graph」→「委托的权限」里勾选 `Tasks.Read`。没做发布者验证的话，谁能自己同意和共享应用一样。
+5. 复制应用概述页的「应用程序(客户端) ID」，在 Cloudflare 控制台添加变量 `MS_TODO_CLIENT_ID`，或写进 `worker/wrangler.toml` 的 `[vars]` 后重新 `pnpm run deploy`。client ID 不是密钥，可以公开。
 
-**2. 填入 client ID**
+不管用共享应用还是自己的应用，只用个人账号时，可以把 `MS_TODO_TENANT` 设为 `consumers`（应用的帐户类型要包含个人帐户）；只用工作或学校账号时，设为 `organizations` 或租户 ID。部分组织禁止设备码登录。
 
-复制应用概述页的「应用程序(客户端) ID」，在 Cloudflare 控制台添加变量 `MS_TODO_CLIENT_ID`，或写进 `worker/wrangler.toml` 的 `[vars]` 后重新 `pnpm run deploy`。client ID 不是密钥，可以公开。
-
-只用个人账号时，可以把 `MS_TODO_TENANT` 设为 `consumers`（应用的帐户类型要包含个人帐户）；只用工作或学校账号时，设为 `organizations` 或租户 ID。部分组织禁止设备码登录。
-
-**3. 导入**
+**导入**
 
 在网页应用的「API 令牌」页（`/app/tokens`），点「备份与恢复」里的「从 Microsoft To Do 导入」，登录后勾选要导入的清单。导入规则：
 
@@ -225,7 +224,7 @@ Microsoft To Do 没有导出功能，导入通过 Microsoft Graph 读取清单�
 | `VAPID_PUBLIC_KEY` | 变量 | 否 | Web Push 公钥 |
 | `VAPID_SUBJECT` | 变量 | 否 | 推送发送者的联系方式（`mailto:` 或 `https:`） |
 | `VAPID_PRIVATE_KEY` | Secret | 否 | Web Push 私钥 |
-| `MS_TODO_CLIENT_ID` | 变量 | 否 | Microsoft Entra 应用的客户端 ID，设置后开启 Microsoft To Do 导入 |
+| `MS_TODO_CLIENT_ID` | 变量 | 否 | Microsoft To Do 导入用的 Entra 应用客户端 ID；不设时用共享应用，设为 `off` 关闭导入 |
 | `MS_TODO_TENANT` | 变量 | 否 | Microsoft 登录的租户：`common`（默认）、`consumers`、`organizations` 或租户 ID |
 
 变量可以在 Cloudflare 控制台的 Worker 设置里添加，立即生效，之后部署也会保留（`wrangler.toml` 开启了 `keep_vars`）；也可以写进 `worker/wrangler.toml` 的 `[vars]`，重新部署后生效，并覆盖控制台里的同名变量。Secret 用 `pnpm --filter worker exec wrangler secret put <名称>` 设置。
@@ -413,7 +412,7 @@ nodetick backup import ./my-backup.json   # 按 id 合并导入，不删除现�
 | GET / POST | `/api/export`、`/api/import` | 下载备份 / 导入备份 |
 | GET | `/api/export/calendar.ics` | 下载 ICS 日历文件 |
 | GET / POST | `/api/feed`、`/api/feed/regenerate` | 查看 / 重新生成日历订阅链接（旧链接立即失效） |
-| GET | `/api/import/microsoft/config` | 服务器是否配置了 Microsoft 应用 |
+| GET | `/api/import/microsoft/config` | 服务器是否开启了 Microsoft To Do 导入 |
 | POST | `/api/import/microsoft/device`、`/api/import/microsoft/token` | 开始设备码登录 / 轮询登录结果（转发给 Microsoft） |
 | POST | `/api/import/microsoft/tasks` | 导入一个清单的一批任务（Graph 格式，每次最多 200 个，已导入的跳过） |
 | POST | `/api/import/ticktick/tasks` | 导入 TickTick 备份中一个清单的一批任务（浏览器解析 CSV 后提交，每次最多 200 个，已导入的跳过） |
@@ -435,7 +434,7 @@ OAuth（client id 为 `nodetick-cli`）：
 - **密码**使用 PBKDF2-SHA-256（10 万次迭代，是 Cloudflare 运行时允许的上限），每个密码有独立的 16 字节随机盐；哈希里记录了迭代次数，以后调整参数不影响已有用户。
 - **账号**：第一个注册的用户是管理员，之后公开注册关闭，新账号只能由管理员添加。
 - **日历订阅链接**带 128 位随机密钥，只能读取有日期的任务；可随时重新生成，旧链接立即失效。
-- **Microsoft To Do 导入**只申请只读的 `Tasks.Read` 权限。Worker 只在登录时转发设备码请求，Microsoft 的访问令牌只保存在浏览器内存里，不写入数据库；网页的 CSP 为此只额外放行 `https://graph.microsoft.com`。
+- **Microsoft To Do 导入**只申请只读的 `Tasks.Read` 权限。默认登录用项目维护者注册的共享应用，但令牌不会经过维护者。Worker 只在登录时转发设备码请求，Microsoft 的访问令牌只保存在浏览器内存里，不写入数据库；网页的 CSP 为此只额外放行 `https://graph.microsoft.com`。
 - **会话 Cookie** 设置了 HttpOnly、Secure、SameSite=Lax；`/api/*` 的写请求还要求同源（校验 Origin / Referer）。OAuth 授权确认表单使用签名 CSRF 令牌。
 - **防暴力破解**：同一 IP 或同一账号连续登录失败 10 次锁定 2 分钟，失败响应固定延时以抑制时序探测；每个 IP 每 15 分钟最多尝试注册 5 次。登录、注册和锁定事件写入审计日志。
 - **防护头**：所有响应带 CSP、`X-Frame-Options: DENY` 等安全头，请求体上限 1 MB。

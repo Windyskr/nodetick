@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createExecutionContext, env, reset, SELF } from 'cloudflare:test';
 import worker from '../src/index.js';
 import { resetSchemaCheck } from '../src/db.js';
+import { SHARED_MS_TODO_CLIENT_ID } from '../src/routes/msTodoImport.js';
 import {
   dateOnly,
   htmlToText,
@@ -368,12 +369,22 @@ describe('Microsoft sign-in relay', () => {
     return calls;
   }
 
-  it('reports whether the server has a Microsoft app', async () => {
+  it('uses the shared app unless the server sets its own or turns the import off', async () => {
     const cookie = await signIn();
-    expect(await (await SELF.fetch(`${HOST}/api/import/microsoft/config`, { headers: { Cookie: cookie } })).json()).toEqual({ configured: false });
-    expect(await (await call('/api/import/microsoft/config', cookie)).json()).toEqual({ configured: true });
-    expect((await SELF.fetch(`${HOST}/api/import/microsoft/device`, post({}, { Cookie: cookie }))).status).toBe(503);
+    expect(await (await SELF.fetch(`${HOST}/api/import/microsoft/config`, { headers: { Cookie: cookie } })).json()).toEqual({ configured: true });
     expect((await SELF.fetch(`${HOST}/api/import/microsoft/config`)).status).toBe(401);
+
+    const answer: [number, Record<string, unknown>] = [200, { device_code: 'D', user_code: 'U', verification_uri: 'https://www.microsoft.com/link', expires_in: 900, interval: 5 }];
+    const calls = microsoftAnswers(answer, answer);
+    await call('/api/import/microsoft/device', cookie, {}, env);
+    await call('/api/import/microsoft/device', cookie, {});
+    expect(calls.map((c) => c.body.get('client_id'))).toEqual([SHARED_MS_TODO_CLIENT_ID, 'client-123']);
+
+    const off = { ...env, MS_TODO_CLIENT_ID: ' Off ' };
+    expect(await (await call('/api/import/microsoft/config', cookie, undefined, off)).json()).toEqual({ configured: false });
+    expect((await call('/api/import/microsoft/device', cookie, {}, off)).status).toBe(503);
+    expect((await call('/api/import/microsoft/token', cookie, { deviceCode: 'D' }, off)).status).toBe(503);
+    expect(calls).toHaveLength(2);
   });
 
   it('starts a device code sign-in', async () => {

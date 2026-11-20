@@ -10,7 +10,8 @@ export interface Env {
   VAPID_SUBJECT?: string;
   /**
    * Application (client) ID of a Microsoft Entra app with public client flows
-   * enabled. Turns on the Microsoft To Do import (device code sign-in).
+   * enabled, for the Microsoft To Do import (device code sign-in). Unset means
+   * the maintainer's shared app; "off" turns the import off.
    */
   MS_TODO_CLIENT_ID?: string;
   /** Entra authority for that sign-in: common (default), consumers, organizations or a tenant id. */
