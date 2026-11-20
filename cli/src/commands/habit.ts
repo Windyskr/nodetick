@@ -55,6 +55,25 @@ async function listHabitsCmd(options: { json?: boolean }) {
   }
 }
 
+async function listHabitSectionsCmd(options: { json?: boolean }) {
+  const api = await getApi();
+  const sections = await api.listHabitSections();
+  if (options.json) {
+    console.log(formatJson(sections));
+    return;
+  }
+  for (const s of sections) {
+    console.log(`  ${chalk.dim(String(s.id))} ${String(s.name)}`);
+  }
+  console.log(chalk.dim('  Any other section id (TickTick uses -1) means Others.'));
+}
+
+async function deleteHabitCmd(habitId: string) {
+  const api = await getApi();
+  await api.deleteHabit(habitId);
+  console.log(chalk.green('Habit deleted'));
+}
+
 async function createHabitCmd(options: Options & { json?: boolean }) {
   const api = await getApi();
   const habit = await api.createHabit(habitFields(options));
@@ -136,6 +155,18 @@ export function registerHabitCommand(program: Command) {
     .description('List all habits')
     .option('--json', 'Output as JSON')
     .action(listHabitsCmd);
+
+  const section = habit.command('section').description('Habit sections');
+  section
+    .command('list')
+    .description('List habit sections')
+    .option('--json', 'Output as JSON')
+    .action(listHabitSectionsCmd);
+
+  habit
+    .command('delete <habitId>')
+    .description('Delete a habit with its check-ins and logs (NodeTick extension; archive with --status 1 instead to keep them)')
+    .action(deleteHabitCmd);
 
   habit
     .command('create')

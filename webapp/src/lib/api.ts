@@ -4,6 +4,8 @@ import type {
   Countdown,
   Focus,
   Habit,
+  HabitCheckinEntry,
+  HabitEntryResult,
   HabitRecord,
   HabitYear,
   Me,
@@ -167,17 +169,28 @@ export const api = {
   listHabits: () => get<Habit[]>('/open/v1/habit'),
   createHabit: (input: Record<string, unknown>) => post<Habit>('/open/v1/habit', input),
   updateHabit: (id: string, patch: Record<string, unknown>) => post<Habit>(`/open/v1/habit/${id}`, patch),
-  deleteHabit: (id: string) => post<Habit>(`/open/v1/habit/${id}`, { status: 2 }),
+  /** Archive is status 1 (TickTick), restore is 0; delete removes the habit with its check-ins and logs. */
+  setHabitStatus: (id: string, status: number) => post<Habit>(`/open/v1/habit/${id}`, { status }),
+  deleteHabit: (id: string) => del<void>(`/open/v1/habit/${id}`),
   checkin: (habitId: string, stamp: number, value: number, options: { goal?: number; status?: number } = {}) =>
     post<HabitYear>(`/open/v1/habit/${habitId}/checkin`, { stamp, value, ...options }),
   listCheckins: (habitIds: string[], from: number, to: number) =>
     get<HabitYear[]>(
       `/open/v1/habit/checkins?habitIds=${habitIds.join(',')}&from=${from}&to=${to}`,
     ),
+  addCheckinEntry: (habitId: string, stamp: number, value: number, options: { time?: string; goal?: number } = {}) =>
+    post<HabitEntryResult>(`/open/v1/habit/${habitId}/checkin/entry`, { stamp, value, ...options }),
+  updateCheckinEntry: (habitId: string, entryId: string, patch: { value?: number; time?: string }) =>
+    post<HabitEntryResult>(`/open/v1/habit/${habitId}/checkin/entry/${entryId}`, patch),
+  deleteCheckinEntry: (habitId: string, entryId: string) =>
+    del<HabitEntryResult>(`/open/v1/habit/${habitId}/checkin/entry/${entryId}`),
+  listCheckinEntries: (habitId: string, from: number, to: number) =>
+    get<HabitCheckinEntry[]>(`/open/v1/habit/${habitId}/checkin/entries?from=${from}&to=${to}`),
   listHabitRecords: (habitId: string, from: number, to: number) =>
     get<HabitRecord[]>(`/open/v1/habit/${habitId}/records?from=${from}&to=${to}`),
   addHabitRecord: (habitId: string, stamp: number, content: string, emoji: number) =>
     post<HabitRecord>(`/open/v1/habit/${habitId}/record`, { stamp, content, emoji }),
+  deleteHabitRecord: (habitId: string, stamp: number) => del<void>(`/open/v1/habit/${habitId}/record/${stamp}`),
 
   // --- Focus ---
   listFocus: (from: string, to: string, type = 0) =>

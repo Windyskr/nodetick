@@ -131,6 +131,7 @@ export interface Habit {
   sectionId: string | null;
   style: number | null;
   etag: string;
+  createdTime?: string | null;
 }
 
 export interface CheckinRow {
@@ -145,6 +146,20 @@ export interface HabitYear {
   habitId: string;
   year: number;
   checkins: CheckinRow[];
+}
+
+/** One itemized check-in of a count habit's day (NodeTick extension). */
+export interface HabitCheckinEntry {
+  id: string;
+  habitId: string;
+  stamp: number;
+  value: number;
+  time: string | null;
+}
+
+/** What the check-in entry endpoints answer: the year's check-ins plus the day's entries. */
+export interface HabitEntryResult extends HabitYear {
+  entries: HabitCheckinEntry[];
 }
 
 export interface HabitRecord {

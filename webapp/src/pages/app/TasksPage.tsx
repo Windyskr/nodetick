@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlignLeft,
   CalendarClock,
@@ -28,15 +28,15 @@ import {
   bucketLabel,
   bucketOf,
   dayOf,
-  stampOf,
-  stampToday,
   smartListDefaultDue,
   todayStr,
   weekdayShort,
 } from '../../lib/date';
-import type { Habit, HabitYear, Project, Tag, Task } from '../../lib/types';
+import type { Project, Tag, Task } from '../../lib/types';
 import { projectDisplayName } from '../../lib/project';
-import { api, yearRange } from '../../lib/api';
+import { formatAmount, isDueOn, metOn, progressOn } from '../../lib/habits';
+import { habitContext, useHabitStore } from '../../stores/habits';
+import { CheckinCircle, HabitAvatar, useHabitCheckin, useHabitUnit, usePeriodLabel } from './HabitCheckin';
 import { TaskRow } from './TaskRow';
 import { TaskGroup } from './TaskGroup';
 import { QuickAdd } from './QuickAdd';
@@ -442,74 +442,78 @@ function habitSmartListsEnabled(): boolean {
   }
 }
 
+/**
+ * Today's habits in the Today and Next 7 Days lists: only the active habits
+ * due today (start date, duration and rule; a flexible rule while its week or
+ * month still needs days). The check circle checks in the way the habit's
+ * target and record mode ask for.
+ */
 function SmartHabitGroup() {
-  const [habits, setHabits] = useState<Habit[]>([]);
-  const [years, setYears] = useState<Map<string, HabitYear>>(new Map());
+  const habits = useHabitStore((s) => s.habits);
+  const checkins = useHabitStore((s) => s.checkins);
+  const loaded = useHabitStore((s) => s.loaded);
+  const checkin = useHabitCheckin();
+  const unitOf = useHabitUnit();
+  const periodLabel = usePeriodLabel();
+  const navigate = useNavigate();
   const t = useT();
-  const stamp = stampToday();
   const day = todayStr();
 
   useEffect(() => {
-    let live = true;
-    void (async () => {
-      const list = (await api.listHabits()).filter((habit) => habit.status !== 2);
-      const checkins = list.length
-        ? await api.listCheckins(list.map((habit) => habit.id), ...yearRange(stamp))
-        : [];
-      if (live) {
-        setHabits(list);
-        setYears(new Map(checkins.map((item) => [item.habitId, item])));
-      }
-    })();
-    return () => { live = false; };
-  }, [stamp]);
+    void useHabitStore.getState().load().catch(() => undefined);
+  }, [day]);
 
-  const done = (habit: Habit) => {
-    const row = years.get(habit.id)?.checkins.find((item) => item.stamp === stampOf(day));
-    return (row?.value ?? 0) >= Math.max(1, row?.goal ?? habit.goal ?? 1);
-  };
-  const ordered = [...habits];
+  const due = habits
+    .filter((habit) => habit.status === 0)
+    .map((habit) => ({ habit, ctx: habitContext(habit, checkins[habit.id]) }))
+    .filter(({ ctx }) => isDueOn(ctx, day));
   try {
     if (localStorage.getItem('ntk_habits_group_status') === '1') {
-      ordered.sort((a, b) => Number(done(a)) - Number(done(b)));
+      due.sort((a, b) => Number(metOn(a.ctx, day)) - Number(metOn(b.ctx, day)));
     }
   } catch {
     // Keep the server order when storage is unavailable.
   }
-  if (!ordered.length) return null;
+  if (!loaded || !due.length) return checkin.ui;
 
   return (
-    <TaskGroup label={t('habitTitle')} count={ordered.length}>
-      {ordered.map((habit) => {
-        const checked = done(habit);
-        const color = habit.color ?? '#97e38b';
-        return (
-          <div key={habit.id} className="flex h-10 items-center px-5 hover:bg-hover">
-            <button
-              type="button"
-              aria-label={`${habit.name} ${checked ? 'checked' : ''}`}
-              aria-pressed={checked}
-              onClick={async () => {
-                const goal = Math.max(1, habit.goal ?? 1);
-                const next = await api.checkin(habit.id, stamp, checked ? 0 : goal, {
-                  goal,
-                  status: checked ? 0 : 2,
-                });
-                setYears((current) => new Map(current).set(habit.id, next));
-              }}
-              className="mr-3 flex h-[18px] w-[18px] items-center justify-center rounded-full border-2"
-              style={{ borderColor: color, backgroundColor: checked ? color : 'transparent', color: 'white' }}
-            >
-              {checked && <Check size={12} strokeWidth={2.8} />}
-            </button>
-            <span className={`min-w-0 flex-1 truncate text-[14px] ${checked ? 'text-ink-3 line-through' : 'text-ink'}`}>
-              {habit.name}
-            </span>
-            <span className="ml-3 text-[12px] text-ink-3">{t('habitTitle')}</span>
-          </div>
-        );
-      })}
-    </TaskGroup>
+    <>
+      <TaskGroup label={t('habitTitle')} count={due.length}>
+        {due.map(({ habit, ctx }) => {
+          const { value, goal, met } = progressOn(ctx, day);
+          const count = ctx.rule.target === 'count';
+          const period = periodLabel(habit, checkins[habit.id], day);
+          const detail = [count ? `${formatAmount(value)}/${formatAmount(goal)} ${unitOf(habit)}` : null, period].filter(Boolean).join(' · ');
+          return (
+            <div key={habit.id} className="group flex h-10 items-center px-5 hover:bg-hover">
+              <button
+                type="button"
+                title={met ? t('habitCheckedIn') : t('habitCheckIn')}
+                aria-label={`${habit.name} · ${met ? t('habitCheckedIn') : t('habitCheckIn')}`}
+                aria-pressed={met}
+                disabled={checkin.busyKey === `${habit.id}:${day}`}
+                onClick={() => void checkin.act(habit, day, { quick: true })}
+                className="mr-3 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full"
+              >
+                <CheckinCircle state={met ? 'done' : value > 0 ? 'partial' : 'today'} ratio={value / goal} size={18} />
+              </button>
+              <HabitAvatar habit={habit} size={20} />
+              <button
+                type="button"
+                onClick={() => navigate(`/app/habit?habit=${encodeURIComponent(habit.id)}`)}
+                className={`ml-2 min-w-0 flex-1 truncate text-left text-[14px] ${met ? 'text-ink-3 line-through' : 'text-ink'}`}
+                title={t('habitOpenDetails')}
+              >
+                {habit.name}
+              </button>
+              {detail && <span className="ml-3 shrink-0 text-[12px] text-ink-3">{detail}</span>}
+              <span className="ml-3 shrink-0 text-[12px] text-ink-3">{t('habitTitle')}</span>
+            </div>
+          );
+        })}
+      </TaskGroup>
+      {checkin.ui}
+    </>
   );
 }
 

@@ -164,6 +164,8 @@ CREATE TABLE IF NOT EXISTS habits (
   etag INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_habits_user_order ON habits(user_id, sort_order, created_at);
+CREATE INDEX IF NOT EXISTS idx_habits_reminders ON habits(user_id) WHERE reminders IS NOT NULL AND reminders != '[]' AND status = 0;
 
 CREATE TABLE IF NOT EXISTS habit_checkins (
   id TEXT PRIMARY KEY,
@@ -179,6 +181,17 @@ CREATE TABLE IF NOT EXISTS habit_checkins (
   UNIQUE(habit_id, stamp)
 );
 CREATE INDEX IF NOT EXISTS idx_checkins_habit ON habit_checkins(habit_id, stamp);
+
+CREATE TABLE IF NOT EXISTS habit_checkin_entries (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  habit_id TEXT NOT NULL,
+  stamp INTEGER NOT NULL,
+  value REAL NOT NULL DEFAULT 0,
+  time TEXT,
+  created_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_checkin_entries_habit ON habit_checkin_entries(habit_id, stamp);
 
 CREATE TABLE IF NOT EXISTS habit_records (
   id TEXT PRIMARY KEY,

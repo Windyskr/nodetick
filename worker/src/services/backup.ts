@@ -29,7 +29,7 @@ export class BackupImportError extends Error {
 export async function exportBackup(env: Env, userId: string): Promise<BackupDocument> {
   const all = async (table: string, order: string) =>
     (await env.DB.prepare(`SELECT * FROM ${table} WHERE user_id = ? ORDER BY ${order}`).bind(userId).all()).results;
-  const [projects, groups, tags, filters, tasks, habits, checkins, habitRecords, focus, countdowns] = await Promise.all([
+  const [projects, groups, tags, filters, tasks, habits, checkins, checkinEntries, habitRecords, focus, countdowns] = await Promise.all([
     all('projects', 'sort_order'),
     all('project_groups', 'sort_order'),
     all('tags', 'sort_order'),
@@ -38,6 +38,9 @@ export async function exportBackup(env: Env, userId: string): Promise<BackupDocu
     all('habits', 'sort_order'),
     env.DB.prepare(
       'SELECT c.* FROM habit_checkins c JOIN habits h ON h.id = c.habit_id WHERE c.user_id = ?',
+    ).bind(userId).all().then((r) => r.results),
+    env.DB.prepare(
+      'SELECT e.* FROM habit_checkin_entries e JOIN habits h ON h.id = e.habit_id WHERE e.user_id = ?',
     ).bind(userId).all().then((r) => r.results),
     env.DB.prepare(
       'SELECT r.* FROM habit_records r JOIN habits h ON h.id = r.habit_id WHERE r.user_id = ?',
@@ -56,6 +59,7 @@ export async function exportBackup(env: Env, userId: string): Promise<BackupDocu
     tasks,
     habits,
     habitCheckins: checkins,
+    habitCheckinEntries: checkinEntries,
     habitRecords,
     focusRecords: focus,
     countdowns,
@@ -97,7 +101,7 @@ export async function importBackup(
     // (id, user_id) and cannot collide across users.
     const guards: string[] = [];
     if (table !== 'projects') guards.push(`NOT EXISTS (SELECT 1 FROM ${table} WHERE id = ? AND user_id != ?)`);
-    const habitScoped = table === 'habit_checkins' || table === 'habit_records';
+    const habitScoped = table === 'habit_checkins' || table === 'habit_checkin_entries' || table === 'habit_records';
     if (habitScoped) guards.push('EXISTS (SELECT 1 FROM habits WHERE id = ? AND user_id = ?)');
     for (const raw of rows) {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
@@ -134,6 +138,7 @@ export async function importBackup(
       'repeat_rule', 'reminders', 'section_id', 'style', 'etag', 'created_at'],
   );
   upsert('habit_checkins', doc.habitCheckins, ['id', 'habit_id', 'stamp', 'value', 'goal', 'status', 'time', 'op_time', 'created_at']);
+  upsert('habit_checkin_entries', doc.habitCheckinEntries, ['id', 'habit_id', 'stamp', 'value', 'time', 'created_at']);
   upsert('habit_records', doc.habitRecords, ['id', 'habit_id', 'stamp', 'content', 'emoji', 'op_time', 'created_at']);
   upsert('focus_records', doc.focusRecords, ['id', 'type', 'task_id', 'note', 'start_time', 'end_time', 'duration', 'pause_duration', 'relation', 'status', 'etag', 'created_at']);
   // Backups from before note…show_in_calendar existed import with the column

@@ -7,6 +7,7 @@ import type { Env } from '../env.js';
 import { ensureSchema } from '../db.js';
 import { lunarYearlyFallsOn, solarToLunar } from '../lunar.js';
 import { daysInMonth, genId, parseJsonArray } from '../util.js';
+import { goalMet, isPlannedDay, needsCheckin, parseHabitSchedule, periodOf, type HabitSchedule } from './habitSchedule.js';
 
 /** Languages a push subscription can receive (the device's UI language). */
 export type PushLang = 'zh' | 'en';
@@ -56,7 +57,7 @@ interface Candidate extends NotificationPayload {
   dedupeKey: string;
 }
 
-type SettingRow = {
+export type SettingRow = {
   user_id: string;
   enabled: number;
   task_enabled: number;
@@ -314,34 +315,58 @@ async function taskCandidates(db: D1Database, setting: SettingRow, now: number):
   return out;
 }
 
-async function habitCandidates(db: D1Database, setting: SettingRow, now: number): Promise<Candidate[]> {
+/** Habit reminders due at `now` for one user (exported for tests). */
+export async function habitCandidates(db: D1Database, setting: SettingRow, now: number): Promise<Candidate[]> {
   if (!setting.habit_enabled) return [];
   const today = localDay(new Date(now), validTimeZone(setting.timezone));
-  const stamp = dayStamp(today);
+  // Runs every minute: the partial index holds only active (not archived or
+  // deleted) habits with reminders, and check-ins are read only in the few
+  // minutes a reminder is due (D1 bills rows read).
   const rows = await db.prepare(
-    `SELECT h.id, h.name, h.reminders FROM habits h
-     WHERE h.user_id = ? AND h.status = 0 AND h.reminders IS NOT NULL
-       AND NOT EXISTS (
-         SELECT 1 FROM habit_checkins c WHERE c.user_id = h.user_id AND c.habit_id = h.id
-           AND c.stamp = ? AND c.status = 2
-       )`,
-  ).bind(setting.user_id, stamp).all<Record<string, unknown>>();
-  const out: Candidate[] = [];
+    `SELECT id, name, encouragement, goal, repeat_rule, reminders FROM habits INDEXED BY idx_habits_reminders
+     WHERE user_id = ? AND reminders IS NOT NULL AND reminders != '[]' AND status = 0`,
+  ).bind(setting.user_id).all<Record<string, unknown>>();
+  const due: { row: Record<string, unknown>; schedule: HabitSchedule; reminder: string; scheduledAt: number }[] = [];
   for (const row of rows.results) {
+    const schedule = parseHabitSchedule(row.repeat_rule as string | null);
+    // Unscheduled days, days before the start and after the run stay quiet.
+    if (!isPlannedDay(schedule, today)) continue;
     for (const reminder of parseJsonArray<string>(String(row.reminders ?? '[]'))) {
-      const match = /^(\d{2}):(\d{2})$/.exec(reminder);
-      if (!match) continue;
+      if (!/^\d{2}:\d{2}$/.test(reminder)) continue;
       const scheduledAt = zonedTimestamp(today, reminder, setting.timezone);
-      if (scheduledAt == null || !dueNow(scheduledAt, now)) continue;
-      const id = String(row.id);
-      out.push({
-        userId: setting.user_id, scheduledAt,
-        dedupeKey: `habit:${id}:${today}:${reminder}`,
-        sourceType: 'habit', sourceId: id, tag: `habit-${id}-${today}`,
-        title: String(row.name), body: NOTIFICATION_TEXT.habitPending, url: '/app/habit',
-        sound: setting.sound_enabled ? 'on' : 'off',
-      });
+      if (scheduledAt != null && dueNow(scheduledAt, now)) due.push({ row, schedule, reminder, scheduledAt });
     }
+  }
+  if (!due.length) return [];
+  // Today's check-in decides a fixed rule; a flexible one also needs its week or month so far.
+  const ids = [...new Set(due.map((item) => String(item.row.id)))];
+  const from = due.reduce((first, item) => {
+    const start = periodOf(item.schedule, today).start;
+    return start < first ? start : first;
+  }, today);
+  const checkins = await db.prepare(
+    `SELECT habit_id, stamp, value, goal, status FROM habit_checkins
+     WHERE habit_id IN (SELECT value FROM json_each(?)) AND user_id = ? AND stamp BETWEEN ? AND ?`,
+  ).bind(JSON.stringify(ids), setting.user_id, dayStamp(from), dayStamp(today)).all<Record<string, unknown>>();
+  const out: Candidate[] = [];
+  for (const { row, schedule, reminder, scheduledAt } of due) {
+    const id = String(row.id);
+    const metDays = new Set<string>();
+    for (const checkin of checkins.results) {
+      if (String(checkin.habit_id) !== id || !goalMet(checkin, row.goal)) continue;
+      const stamp = String(checkin.stamp);
+      metDays.add(`${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}`);
+    }
+    if (!needsCheckin(schedule, today, metDays)) continue;
+    const encouragement = typeof row.encouragement === 'string' ? row.encouragement.trim() : '';
+    out.push({
+      userId: setting.user_id, scheduledAt,
+      dedupeKey: `habit:${id}:${today}:${reminder}`,
+      sourceType: 'habit', sourceId: id, tag: `habit-${id}-${today}`,
+      // The habit's own encouragement, as TickTick shows it; app copy otherwise.
+      title: String(row.name), body: encouragement || NOTIFICATION_TEXT.habitPending, url: '/app/habit',
+      sound: setting.sound_enabled ? 'on' : 'off',
+    });
   }
   return out;
 }

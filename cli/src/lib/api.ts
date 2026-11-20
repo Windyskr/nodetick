@@ -255,6 +255,15 @@ export class NodeTickApi {
     return this.request('/habit');
   }
 
+  async listHabitSections(): Promise<Record<string, unknown>[]> {
+    return this.request('/habit/sections');
+  }
+
+  /** NodeTick extension: removes the habit with its check-ins and logs. */
+  async deleteHabit(habitId: string): Promise<void> {
+    await this.request(`/habit/${encodeURIComponent(habitId)}`, { method: 'DELETE' });
+  }
+
   async createHabit(input: unknown): Promise<Record<string, unknown>> {
     return this.request('/habit', {
       method: 'POST',

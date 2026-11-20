@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { Env, Vars } from '../env.js';
 import {
   serializeCheckin,
+  serializeCheckinEntry,
   serializeCountdown,
   serializeFocus,
   serializeFilter,
@@ -26,6 +27,9 @@ const MAX_CHECKIN_RANGE_DAYS = 366;
 const MAX_REMINDERS = 100;
 const MAX_REMINDER_LENGTH = 512;
 const MAX_HABIT_RECORD_CONTENT = 8192;
+/** One check-in entry's amount, and how many entries one habit day may hold. */
+const MAX_CHECKIN_ENTRY_VALUE = 1_000_000;
+const MAX_CHECKIN_ENTRIES_PER_DAY = 100;
 const MAX_FOCUS_NOTE = 64 * 1024;
 const MAX_FOCUS_RESULTS = 5000;
 const MAX_RELATION_TYPES = 32;
@@ -214,6 +218,20 @@ function stringFieldError(b: Record<string, unknown>, keys: readonly string[]): 
 }
 
 const HABIT_STRING_FIELDS = ['name', 'iconRes', 'color', 'encouragement', 'type', 'unit', 'repeatRule', 'sectionId'] as const;
+
+/** Length caps for the habit string fields other than the name. */
+const HABIT_FIELD_LIMITS: Readonly<Record<string, number>> = {
+  iconRes: 128, color: 32, encouragement: 512, type: 32, unit: 64, repeatRule: 2048, sectionId: 64,
+};
+
+function habitFieldError(b: Record<string, unknown>): string | null {
+  const stringError = stringFieldError(b, HABIT_STRING_FIELDS);
+  if (stringError) return stringError;
+  for (const [key, max] of Object.entries(HABIT_FIELD_LIMITS)) {
+    if (typeof b[key] === 'string' && (b[key] as string).length > max) return `${key} must be at most ${max} characters`;
+  }
+  return null;
+}
 
 function invalidNumericArray(value: unknown, maxItems: number): boolean {
   return Array.isArray(value) && (
@@ -550,6 +568,15 @@ misc.get('/habit', async (c) => {
   return c.json(rows.results.map(serializeHabit));
 });
 
+/**
+ * TickTick's habit sections (ticktick-cli `habit section list`). NodeTick has
+ * the three built-in sections and no custom ones; a habit with any other
+ * sectionId (TickTick uses "-1") belongs to "Others".
+ */
+const HABIT_SECTIONS = ['_morning', '_afternoon', '_night'].map((id, sortOrder) => ({ id, name: id, sortOrder }));
+
+misc.get('/habit/sections', (c) => c.json(HABIT_SECTIONS));
+
 misc.get('/habit/checkins', async (c) => {
   const userId = c.get('userId');
   const habitIds = (c.req.query('habitIds') ?? '')
@@ -586,11 +613,6 @@ misc.get('/habit/checkins', async (c) => {
 misc.get('/habit/:habitId/records', async (c) => {
   const userId = c.get('userId');
   const habitId = c.req.param('habitId');
-  const habit = await c.env.DB.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?')
-    .bind(habitId, userId)
-    .first();
-  if (!habit) return c.json({ error: 'habit not found' }, 404);
-
   const from = validStamp(c.req.query('from'));
   const to = validStamp(c.req.query('to'));
   if (from == null || to == null) {
@@ -599,12 +621,36 @@ misc.get('/habit/:habitId/records', async (c) => {
   if (to < from || stampDay(to) - stampDay(from) > MAX_CHECKIN_RANGE_DAYS) {
     return c.json({ error: `record range must not exceed ${MAX_CHECKIN_RANGE_DAYS} days` }, 400);
   }
-  const rows = await c.env.DB.prepare(
-    'SELECT * FROM habit_records WHERE habit_id = ? AND user_id = ? AND stamp BETWEEN ? AND ? ORDER BY stamp ASC',
-  )
-    .bind(habitId, userId, from, to)
-    .all();
+  const [habit, rows] = await c.env.DB.batch<Record<string, unknown>>([
+    c.env.DB.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?').bind(habitId, userId),
+    c.env.DB.prepare(
+      'SELECT * FROM habit_records WHERE habit_id = ? AND user_id = ? AND stamp BETWEEN ? AND ? ORDER BY stamp ASC',
+    ).bind(habitId, userId, from, to),
+  ]);
+  if (!habit.results.length) return c.json({ error: 'habit not found' }, 404);
   return c.json(rows.results.map(serializeHabitRecord));
+});
+
+/** NodeTick extension: a habit's itemized check-ins in a date range (at most 366 days). */
+misc.get('/habit/:habitId/checkin/entries', async (c) => {
+  const userId = c.get('userId');
+  const habitId = c.req.param('habitId');
+  const from = validStamp(c.req.query('from'));
+  const to = validStamp(c.req.query('to'));
+  if (from == null || to == null) {
+    return c.json({ error: 'from and to are required (YYYYMMDD stamps)' }, 400);
+  }
+  if (to < from || stampDay(to) - stampDay(from) > MAX_CHECKIN_RANGE_DAYS) {
+    return c.json({ error: `entry range must not exceed ${MAX_CHECKIN_RANGE_DAYS} days` }, 400);
+  }
+  const [habit, rows] = await c.env.DB.batch<Record<string, unknown>>([
+    c.env.DB.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?').bind(habitId, userId),
+    c.env.DB.prepare(
+      'SELECT * FROM habit_checkin_entries WHERE habit_id = ? AND user_id = ? AND stamp BETWEEN ? AND ? ORDER BY stamp ASC, created_at ASC, id ASC',
+    ).bind(habitId, userId, from, to),
+  ]);
+  if (!habit.results.length) return c.json({ error: 'habit not found' }, 404);
+  return c.json(rows.results.map(serializeCheckinEntry));
 });
 
 misc.get('/habit/:habitId', async (c) => {
@@ -619,8 +665,8 @@ misc.get('/habit/:habitId', async (c) => {
 misc.post('/habit', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
-  const stringError = stringFieldError(b, HABIT_STRING_FIELDS);
-  if (stringError) return c.json({ error: stringError }, 400);
+  const fieldError = habitFieldError(b);
+  if (fieldError) return c.json({ error: fieldError }, 400);
   const name = String(b.name ?? '').trim();
   if (!name || name.length > MAX_HABIT_NAME) return c.json({ error: `name is required (max ${MAX_HABIT_NAME} chars)` }, 400);
   if (invalidStringArray(b.reminders, MAX_REMINDERS, MAX_REMINDER_LENGTH)) {
@@ -629,15 +675,15 @@ misc.post('/habit', async (c) => {
   if ([b.sortOrder, b.status, b.goal, b.step, b.style].some(invalidFiniteNumber)) {
     return c.json({ error: 'numeric habit fields must be finite numbers' }, 400);
   }
-  const id = genId();
-  await c.env.DB.prepare(
+  const row = await c.env.DB.prepare(
     `INSERT INTO habits
       (id, user_id, name, icon_res, color, sort_order, status, encouragement, type, goal, step,
        unit, repeat_rule, reminders, section_id, style, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     RETURNING *`,
   )
     .bind(
-      id,
+      genId(),
       userId,
       name,
       b.iconRes != null ? String(b.iconRes) : null,
@@ -655,9 +701,6 @@ misc.post('/habit', async (c) => {
       finiteNumber(b.style),
       Date.now(),
     )
-    .run();
-  const row = await c.env.DB.prepare('SELECT * FROM habits WHERE id = ? AND user_id = ?')
-    .bind(id, userId)
     .first();
   return c.json(serializeHabit(row!));
 });
@@ -665,8 +708,8 @@ misc.post('/habit', async (c) => {
 misc.post('/habit/:habitId', async (c) => {
   const userId = c.get('userId');
   const b = await readJsonObject(c.req);
-  const stringError = stringFieldError(b, HABIT_STRING_FIELDS);
-  if (stringError) return c.json({ error: stringError }, 400);
+  const fieldError = habitFieldError(b);
+  if (fieldError) return c.json({ error: fieldError }, 400);
   if (b.name != null && (!String(b.name).trim() || String(b.name).trim().length > MAX_HABIT_NAME)) {
     return c.json({ error: `name must be 1-${MAX_HABIT_NAME} chars` }, 400);
   }
@@ -676,7 +719,7 @@ misc.post('/habit/:habitId', async (c) => {
   if ([b.sortOrder, b.status, b.goal, b.step, b.style].some(invalidFiniteNumber)) {
     return c.json({ error: 'numeric habit fields must be finite numbers' }, 400);
   }
-  const res = await c.env.DB.prepare(
+  const row = await c.env.DB.prepare(
     `UPDATE habits SET
        name = COALESCE(?, name), icon_res = COALESCE(?, icon_res), color = COALESCE(?, color),
        sort_order = COALESCE(?, sort_order), status = COALESCE(?, status),
@@ -684,7 +727,8 @@ misc.post('/habit/:habitId', async (c) => {
        goal = COALESCE(?, goal), step = COALESCE(?, step), unit = COALESCE(?, unit),
        repeat_rule = COALESCE(?, repeat_rule), reminders = COALESCE(?, reminders),
        section_id = COALESCE(?, section_id), style = COALESCE(?, style), etag = etag + 1
-     WHERE id = ? AND user_id = ?`,
+     WHERE id = ? AND user_id = ?
+     RETURNING *`,
   )
     .bind(
       b.name != null ? String(b.name) : null,
@@ -704,13 +748,37 @@ misc.post('/habit/:habitId', async (c) => {
       c.req.param('habitId'),
       userId,
     )
-    .run();
-  if (!res.meta.changes) return c.json({ error: 'habit not found' }, 404);
-  const row = await c.env.DB.prepare('SELECT * FROM habits WHERE id = ? AND user_id = ?')
-    .bind(c.req.param('habitId'), userId)
     .first();
-  return c.json(serializeHabit(row!));
+  if (!row) return c.json({ error: 'habit not found' }, 404);
+  return c.json(serializeHabit(row));
 });
+
+/**
+ * NodeTick extension: delete a habit for good, with its check-ins, check-in
+ * entries and logs. (Archiving is TickTick's `status: 1` via the update.)
+ */
+misc.delete('/habit/:habitId', async (c) => {
+  const userId = c.get('userId');
+  const habitId = c.req.param('habitId');
+  const results = await c.env.DB.batch<Record<string, unknown>>([
+    c.env.DB.prepare('DELETE FROM habit_checkin_entries WHERE habit_id = ? AND user_id = ?').bind(habitId, userId),
+    c.env.DB.prepare('DELETE FROM habit_checkins WHERE habit_id = ? AND user_id = ?').bind(habitId, userId),
+    c.env.DB.prepare('DELETE FROM habit_records WHERE habit_id = ? AND user_id = ?').bind(habitId, userId),
+    c.env.DB.prepare('DELETE FROM habits WHERE id = ? AND user_id = ? RETURNING id').bind(habitId, userId),
+  ]);
+  if (!results[3].results.length) return c.json({ error: 'habit not found' }, 404);
+  return c.body(null, 200);
+});
+
+/**
+ * Check-in status from the day's value and goal (the row's own goal, else the
+ * habit's; 1 when unset or not positive): 2 once the goal is met, else 0.
+ * The entry endpoints change the value in SQL, so they set it there too.
+ */
+const CHECKIN_STATUS_SQL = `status = CASE WHEN COALESCE(value, 0) >= IIF(
+    COALESCE(goal, (SELECT h.goal FROM habits h WHERE h.id = habit_checkins.habit_id), 1) > 0,
+    COALESCE(goal, (SELECT h.goal FROM habits h WHERE h.id = habit_checkins.habit_id), 1), 1) - 1e-9
+  THEN 2 ELSE 0 END`;
 
 misc.post('/habit/:habitId/checkin', async (c) => {
   const userId = c.get('userId');
@@ -729,9 +797,11 @@ misc.post('/habit/:habitId/checkin', async (c) => {
   }
 
   // One round trip: the habit check, the upsert (which only runs for the
-  // user's own habit) and the year's check-ins go out as one batch.
+  // user's own habit) and the year's check-ins go out as one batch. An
+  // explicit day value replaces the day's itemized check-in entries, so the
+  // entries never claim more than the day's total.
   const year = Math.floor(stamp / 10000);
-  const [habit, , checkins] = await c.env.DB.batch<Record<string, unknown>>([
+  const [habit, , , checkins] = await c.env.DB.batch<Record<string, unknown>>([
     c.env.DB.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?').bind(habitId, userId),
     c.env.DB.prepare(
     `INSERT INTO habit_checkins (id, user_id, habit_id, stamp, value, goal, status, time, op_time, created_at)
@@ -757,6 +827,8 @@ misc.post('/habit/:habitId/checkin', async (c) => {
       habitId,
       userId,
     ),
+    c.env.DB.prepare('DELETE FROM habit_checkin_entries WHERE habit_id = ? AND user_id = ? AND stamp = ?')
+      .bind(habitId, userId, stamp),
     c.env.DB.prepare(
       'SELECT * FROM habit_checkins WHERE habit_id = ? AND user_id = ? AND stamp BETWEEN ? AND ? ORDER BY stamp ASC',
     ).bind(habitId, userId, year * 10000 + 101, year * 10000 + 1231),
@@ -765,14 +837,165 @@ misc.post('/habit/:habitId/checkin', async (c) => {
   return c.json({ habitId, year, checkins: checkins.results.map(serializeCheckin) });
 });
 
+// --- Check-in entries (NodeTick extension) ---
+// A count habit's day can hold several check-ins (amount + time). Each entry
+// endpoint changes the entry and the day's total in habit_checkins in one
+// batch (one round trip, one transaction), so concurrent check-ins never lose
+// an increment and TickTick clients keep reading the day's total. They answer
+// with the year's check-ins (like POST /checkin) plus the day's entries.
+
+function checkinEntryValue(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_CHECKIN_ENTRY_VALUE ? value : null;
+}
+
+const ENTRY_ERROR = `value must be a number above 0 and at most ${MAX_CHECKIN_ENTRY_VALUE}; time must be an ISO 8601 date-time`;
+
+function entryResponse(
+  habitId: string,
+  stamp: number,
+  checkins: D1Result<Record<string, unknown>>,
+  entries: D1Result<Record<string, unknown>>,
+) {
+  return {
+    habitId,
+    year: Math.floor(stamp / 10000),
+    checkins: checkins.results.map(serializeCheckin),
+    entries: entries.results.map(serializeCheckinEntry),
+  };
+}
+
+/** One of this entry's columns (or an expression over them), for the user's habit. */
+const entryLookup = (column: string) =>
+  `(SELECT ${column} FROM habit_checkin_entries WHERE id = ? AND user_id = ? AND habit_id = ?)`;
+
+/** Add an entry: `{ stamp, value, time?, goal? }`; the day's total grows by `value`. */
+misc.post('/habit/:habitId/checkin/entry', async (c) => {
+  const userId = c.get('userId');
+  const habitId = c.req.param('habitId');
+  const b = await readJsonObject(c.req);
+  const stamp = validStamp(b.stamp);
+  if (stamp == null) return c.json({ error: 'stamp must be YYYYMMDD' }, 400);
+  const value = checkinEntryValue(b.value);
+  if (value == null || (b.time != null && !validFocusDate(b.time))) return c.json({ error: ENTRY_ERROR }, 400);
+  if (b.goal != null && (typeof b.goal !== 'number' || !Number.isFinite(b.goal) || b.goal <= 0)) {
+    return c.json({ error: 'goal must be a positive number' }, 400);
+  }
+  const goal = typeof b.goal === 'number' ? b.goal : null;
+  const entryId = genId();
+  const time = typeof b.time === 'string' ? b.time : nowIso();
+  const year = Math.floor(stamp / 10000);
+  const db = c.env.DB;
+  const [habit, inserted, , , checkins, entries] = await db.batch<Record<string, unknown>>([
+    db.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?').bind(habitId, userId),
+    db.prepare(
+      `INSERT INTO habit_checkin_entries (id, user_id, habit_id, stamp, value, time, created_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?
+       WHERE EXISTS (SELECT 1 FROM habits WHERE id = ? AND user_id = ?)
+         AND (SELECT COUNT(*) FROM habit_checkin_entries WHERE habit_id = ? AND stamp = ?) < ?
+       RETURNING id`,
+    ).bind(entryId, userId, habitId, stamp, value, time, Date.now(), habitId, userId, habitId, stamp, MAX_CHECKIN_ENTRIES_PER_DAY),
+    // Runs only when the entry went in. A new day starts at the habit's goal.
+    db.prepare(
+      `INSERT INTO habit_checkins (id, user_id, habit_id, stamp, value, goal, status, time, op_time, created_at)
+       SELECT ?, ?, ?, ?, ?, COALESCE(?, (SELECT goal FROM habits WHERE id = ? AND user_id = ?)), 0, ?, ?, ?
+       WHERE EXISTS (SELECT 1 FROM habit_checkin_entries WHERE id = ? AND user_id = ?)
+       ON CONFLICT(habit_id, stamp) DO UPDATE SET
+         value = ROUND(COALESCE(habit_checkins.value, 0) + excluded.value, 6),
+         goal = COALESCE(?, habit_checkins.goal, excluded.goal),
+         op_time = excluded.op_time`,
+    ).bind(genId(), userId, habitId, stamp, value, goal, habitId, userId, time, nowIso(), Date.now(), entryId, userId, goal),
+    db.prepare(`UPDATE habit_checkins SET ${CHECKIN_STATUS_SQL} WHERE habit_id = ? AND user_id = ? AND stamp = ?`)
+      .bind(habitId, userId, stamp),
+    db.prepare('SELECT * FROM habit_checkins WHERE habit_id = ? AND user_id = ? AND stamp BETWEEN ? AND ? ORDER BY stamp ASC')
+      .bind(habitId, userId, year * 10000 + 101, year * 10000 + 1231),
+    db.prepare('SELECT * FROM habit_checkin_entries WHERE habit_id = ? AND user_id = ? AND stamp = ? ORDER BY created_at ASC, id ASC')
+      .bind(habitId, userId, stamp),
+  ]);
+  if (!habit.results.length) return c.json({ error: 'habit not found' }, 404);
+  if (!inserted.results.length) {
+    return c.json({ error: `a day holds at most ${MAX_CHECKIN_ENTRIES_PER_DAY} check-in entries` }, 409);
+  }
+  return c.json(entryResponse(habitId, stamp, checkins, entries));
+});
+
+/** Edit an entry's amount and/or time: `{ value?, time? }`; the day's total follows the amount. */
+misc.post('/habit/:habitId/checkin/entry/:entryId', async (c) => {
+  const userId = c.get('userId');
+  const habitId = c.req.param('habitId');
+  const entryId = c.req.param('entryId');
+  const b = await readJsonObject(c.req);
+  const value = b.value == null ? null : checkinEntryValue(b.value);
+  if ((b.value != null && value == null) || (b.time != null && !validFocusDate(b.time)) || (b.value == null && b.time == null)) {
+    return c.json({ error: ENTRY_ERROR }, 400);
+  }
+  const time = typeof b.time === 'string' ? b.time : null;
+  const db = c.env.DB;
+  const key = [entryId, userId, habitId];
+  const results = await db.batch<Record<string, unknown>>([
+    db.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?').bind(habitId, userId),
+    // Before the entry changes: shift the day's total by (new - old); a no-op without a new value.
+    db.prepare(
+      `UPDATE habit_checkins SET
+         value = MAX(0, ROUND(COALESCE(value, 0) + ? - COALESCE(${entryLookup('value')}, ?), 6)), op_time = ?
+       WHERE ? IS NOT NULL AND habit_id = ? AND user_id = ? AND stamp = ${entryLookup('stamp')}`,
+    ).bind(value, ...key, value, nowIso(), value, habitId, userId, ...key),
+    db.prepare(
+      'UPDATE habit_checkin_entries SET value = COALESCE(?, value), time = COALESCE(?, time) WHERE id = ? AND user_id = ? AND habit_id = ? RETURNING stamp',
+    ).bind(value, time, ...key),
+    db.prepare(`UPDATE habit_checkins SET ${CHECKIN_STATUS_SQL} WHERE habit_id = ? AND user_id = ? AND stamp = ${entryLookup('stamp')}`)
+      .bind(habitId, userId, ...key),
+    db.prepare(
+      `SELECT * FROM habit_checkins WHERE habit_id = ? AND user_id = ?
+         AND stamp BETWEEN ${entryLookup('stamp / 10000 * 10000 + 101')} AND ${entryLookup('stamp / 10000 * 10000 + 1231')}
+       ORDER BY stamp ASC`,
+    ).bind(habitId, userId, ...key, ...key),
+    db.prepare(
+      `SELECT * FROM habit_checkin_entries WHERE habit_id = ? AND user_id = ? AND stamp = ${entryLookup('stamp')}
+       ORDER BY created_at ASC, id ASC`,
+    ).bind(habitId, userId, ...key),
+  ]);
+  const [habit, , updated, , checkins, entries] = results;
+  if (!habit.results.length) return c.json({ error: 'habit not found' }, 404);
+  if (!updated.results.length) return c.json({ error: 'check-in entry not found' }, 404);
+  return c.json(entryResponse(habitId, Number(updated.results[0].stamp), checkins, entries));
+});
+
+/** Remove an entry (undo); the day's total drops by its amount. */
+misc.delete('/habit/:habitId/checkin/entry/:entryId', async (c) => {
+  const userId = c.get('userId');
+  const habitId = c.req.param('habitId');
+  const entryId = c.req.param('entryId');
+  const db = c.env.DB;
+  const key = [entryId, userId, habitId];
+  // The entry goes last: until then the other statements find its day through it.
+  const [habit, , , checkins, entries, deleted] = await db.batch<Record<string, unknown>>([
+    db.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?').bind(habitId, userId),
+    db.prepare(
+      `UPDATE habit_checkins SET
+         value = MAX(0, ROUND(COALESCE(value, 0) - COALESCE(${entryLookup('value')}, 0), 6)), op_time = ?
+       WHERE habit_id = ? AND user_id = ? AND stamp = ${entryLookup('stamp')}`,
+    ).bind(...key, nowIso(), habitId, userId, ...key),
+    db.prepare(`UPDATE habit_checkins SET ${CHECKIN_STATUS_SQL} WHERE habit_id = ? AND user_id = ? AND stamp = ${entryLookup('stamp')}`)
+      .bind(habitId, userId, ...key),
+    db.prepare(
+      `SELECT * FROM habit_checkins WHERE habit_id = ? AND user_id = ?
+         AND stamp BETWEEN ${entryLookup('stamp / 10000 * 10000 + 101')} AND ${entryLookup('stamp / 10000 * 10000 + 1231')}
+       ORDER BY stamp ASC`,
+    ).bind(habitId, userId, ...key, ...key),
+    db.prepare(
+      `SELECT * FROM habit_checkin_entries WHERE habit_id = ? AND user_id = ? AND stamp = ${entryLookup('stamp')} AND id != ?
+       ORDER BY created_at ASC, id ASC`,
+    ).bind(habitId, userId, ...key, entryId),
+    db.prepare('DELETE FROM habit_checkin_entries WHERE id = ? AND user_id = ? AND habit_id = ? RETURNING stamp').bind(...key),
+  ]);
+  if (!habit.results.length) return c.json({ error: 'habit not found' }, 404);
+  if (!deleted.results.length) return c.json({ error: 'check-in entry not found' }, 404);
+  return c.json(entryResponse(habitId, Number(deleted.results[0].stamp), checkins, entries));
+});
+
 misc.post('/habit/:habitId/record', async (c) => {
   const userId = c.get('userId');
   const habitId = c.req.param('habitId');
-  const habit = await c.env.DB.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?')
-    .bind(habitId, userId)
-    .first();
-  if (!habit) return c.json({ error: 'habit not found' }, 404);
-
   const b = await readJsonObject(c.req);
   const stamp = validStamp(b.stamp);
   if (stamp == null || typeof b.content !== 'string' || b.content.length > MAX_HABIT_RECORD_CONTENT) {
@@ -783,23 +1006,32 @@ misc.post('/habit/:habitId/record', async (c) => {
     return c.json({ error: 'emoji must be an integer between 0 and 100' }, 400);
   }
 
-  await c.env.DB.prepare(
+  // One round trip: the upsert only runs for the user's own habit.
+  const row = await c.env.DB.prepare(
     `INSERT INTO habit_records (id, user_id, habit_id, stamp, content, emoji, op_time, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM habits WHERE id = ? AND user_id = ?)
      ON CONFLICT(habit_id, stamp) DO UPDATE SET
        content = excluded.content,
        emoji = excluded.emoji,
-       op_time = excluded.op_time`,
+       op_time = excluded.op_time
+     RETURNING *`,
   )
-    .bind(genId(), userId, habitId, stamp, b.content, emoji, nowIso(), Date.now())
-    .run();
-
-  const row = await c.env.DB.prepare(
-    'SELECT * FROM habit_records WHERE habit_id = ? AND user_id = ? AND stamp = ?',
-  )
-    .bind(habitId, userId, stamp)
+    .bind(genId(), userId, habitId, stamp, b.content, emoji, nowIso(), Date.now(), habitId, userId)
     .first();
-  return c.json(serializeHabitRecord(row!));
+  if (!row) return c.json({ error: 'habit not found' }, 404);
+  return c.json(serializeHabitRecord(row));
+});
+
+/** NodeTick extension: delete one day's check-in log. */
+misc.delete('/habit/:habitId/record/:stamp', async (c) => {
+  const userId = c.get('userId');
+  const stamp = validStamp(c.req.param('stamp'));
+  if (stamp == null) return c.json({ error: 'stamp must be YYYYMMDD' }, 400);
+  const res = await c.env.DB.prepare('DELETE FROM habit_records WHERE habit_id = ? AND user_id = ? AND stamp = ?')
+    .bind(c.req.param('habitId'), userId, stamp)
+    .run();
+  if (!res.meta.changes) return c.json({ error: 'habit record not found' }, 404);
+  return c.body(null, 200);
 });
 
 // --- Focus records ---

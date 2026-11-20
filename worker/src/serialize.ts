@@ -133,6 +133,7 @@ export function serializeHabit(r: Row) {
     sectionId: str(r.section_id),
     style: r.style == null ? null : Number(r.style),
     etag: String(r.etag ?? 0),
+    createdTime: r.created_at ? new Date(Number(r.created_at)).toISOString().replace('Z', '+0000') : null,
   };
 }
 
@@ -150,6 +151,17 @@ export function serializeCheckin(r: Row): CheckinRow {
     value: r.value == null ? null : Number(r.value),
     goal: r.goal == null ? null : Number(r.goal),
     status: r.status == null ? null : Number(r.status),
+    time: str(r.time),
+  };
+}
+
+/** One itemized check-in of a count habit's day (NodeTick extension). */
+export function serializeCheckinEntry(r: Row) {
+  return {
+    id: String(r.id),
+    habitId: String(r.habit_id),
+    stamp: Number(r.stamp),
+    value: Number(r.value ?? 0),
     time: str(r.time),
   };
 }

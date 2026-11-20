@@ -21,7 +21,7 @@ What [NodeWarden](https://github.com/shuaiplus/nodewarden) is to Bitwarden, Node
 - **Search**: every word has to match the title, description, a subtask or a tag (`#tag` matches tags only); hits are highlighted, with the description or subtask they came from; multi-select filters for list, tag, date (today / tomorrow / this week / next 7 days / this month / overdue / no date / custom), priority, type (task / note) and status (open / completed / won't do); recent searches; save the keywords and filters as a filter in one step
 - **Calendar**: Year / Month / Week / Day / Schedule / 3-day / 2-week views and a mini month calendar; drag to reschedule, or click the `+` in a cell to create a task on that date
 - **Eisenhower Matrix**: sorts tasks into four quadrants by priority
-- **Habits**: a 7-day check-in strip and streaks
+- **Habits**: every day, chosen weekdays, N days a week, N days a month or every N days, with start date and duration; count habits record each check-in separately (undo, edit); Morning / Afternoon / Night / Others sections, encouragement, archive and permanent delete; the detail panel shows a month calendar, current and longest streaks, monthly rate, amounts, a yearly heatmap, a monthly trend and the check-in log; Today lists only habits due today, and reminders go out only on those days
 - **Focus**: a Pomodoro timer and weekly stats
 - **Countdowns**: five card styles (classic, solid, calendar, soft, ring), a color palette and emoji icons, shown as days or years/months/days; Chinese lunar dates (leap months included) with lunar yearly repeats for birthdays and festivals; monthly and yearly repeats (a 29th–31st falls on a short month's last day, Feb 29 on Feb 28 in common years); reminders on the day and 1, 2 or 3 days, 1 week or 1 month before, at their own time; a detail panel with weekday, lunar date, age or anniversary count, a y/m/d interval and an editable note; pin, archive and restore; sort by date, custom order (drag) or creation; card or list view; group by type; optionally shown as all-day entries in the calendar
 - **Statistics**: the **Statistics** page in the avatar menu shows, for the last 7 days / 30 days / 12 weeks / 12 months, completed tasks (compared with the previous period), the completion rate of tasks due, the on-time rate and what is overdue now; a completion trend, a year of completions as a calendar heat map, and breakdowns by list, tag, priority, weekday and time of day; narrow it to one list, and switch any chart to a table
@@ -267,13 +267,13 @@ nodetick backup import ./my-backup.json   # merge by id without deleting existin
 - **Tasks**: get / create / update / complete / delete / move / completed / filter / search; add, delete and list comments; subtasks, parent and child tasks, tags, reminders, repeat rules, focus summaries
 - **Projects (lists)**: create, read, update and delete; `data` (project + tasks + Kanban columns); groups (folders); Kanban columns
 - **Tags**: list / create (tags used on tasks are registered automatically)
-- **Habits**: get / list / create / update / checkin (upsert by date) / checkins range queries
+- **Habits**: get / list / create / update / checkin (upsert by date) / checkins range queries / section list
 - **Focus**: get / list (time range of at most 30 days) / create / delete; both Pomodoro and stopwatch records
 - **Countdowns**: list / create / update / delete (the official API only has list; writes are a NodeTick extension)
 
 Authentication works the same way as the official CLI: OAuth PKCE (`nodetick auth login`) and manual tokens (`nodetick auth token`).
 
-These official commands are not implemented yet (compared with ticktick-cli 0.1.16): preference get; task complete-batch, assign, unassign; project members; tag update, rename, delete; habit section list; focus update; calendar account list, calendar event query.
+These official commands are not implemented yet (compared with ticktick-cli 0.1.16): preference get; task complete-batch, assign, unassign; project members; tag update, rename, delete; focus update; calendar account list, calendar event query.
 
 ## API
 
@@ -330,8 +330,14 @@ The base path is `{server}/open/v1`, and the endpoints follow the [TickTick Open
 | POST / DELETE | `/tag/{tagName}` | Update (rename, color, order, parent tag `parentId`) / delete a tag (its sub-tags become top-level) ★ |
 | GET / POST | `/habit` | List habits / create a habit |
 | GET / POST | `/habit/{habitId}` | Get / update a habit |
-| POST | `/habit/{habitId}/checkin` | Check in (upsert by date) |
+| POST | `/habit/{habitId}/checkin` | Check in (upsert by date; clears that day's itemized entries) |
 | GET | `/habit/checkins` | Query check-ins by date range |
+| GET | `/habit/sections` | Habit sections (Morning / Afternoon / Night; Others is id `-1`) |
+| DELETE | `/habit/{habitId}` | Delete a habit with its check-ins, entries and logs ★ |
+| POST | `/habit/{habitId}/checkin/entry` | Add one check-in `{stamp, value, time?, goal?}`; the day's total grows atomically ★ |
+| POST / DELETE | `/habit/{habitId}/checkin/entry/{entryId}` | Edit `{value?, time?}` / remove one check-in ★ |
+| GET | `/habit/{habitId}/checkin/entries` | Itemized check-ins (up to 366 days) ★ |
+| DELETE | `/habit/{habitId}/record/{stamp}` | Delete one day's log ★ |
 | GET / POST | `/habit/{habitId}/records`, `/habit/{habitId}/record` | Query / write habit records ★ |
 | GET | `/focus` | List focus records (time range of at most 30 days) |
 | POST | `/focus` | Create a focus record |
@@ -446,7 +452,7 @@ To debug push notifications, also add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` an
 - [x] Countdowns: round out reminders, repeats, notes, styles, archiving and display settings to match TickTick's own Countdown feature more closely.
 - [x] Search: filter by list, tag, date, priority, type and status, and save a search as a filter.
 - [ ] Summary: persist summaries and wire up templates, saving, copying and sharing.
-- [ ] Habits: custom repeat rules, editing, multiple numeric check-ins and historical stats.
+- [x] Habits: custom repeat rules, editing, multiple numeric check-ins and historical stats.
 - [ ] Upgrade task descriptions to a rich-text editor with `/` quick insert, closer to TickTick's editor.
 - [ ] Localize the remaining hard-coded English strings, and add E2E tests for loading, error, empty and responsive states in production.
 - [x] Treat the first natural-language date in quick add as a special element: the text stays in the input with a blue recognized state, and clicking it or pressing Backspace at its edge only cancels the recognition without deleting the text.
