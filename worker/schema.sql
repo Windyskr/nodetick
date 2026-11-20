@@ -259,7 +259,9 @@ CREATE TABLE IF NOT EXISTS notification_settings (
   sound_enabled INTEGER NOT NULL DEFAULT 1,
   timezone TEXT NOT NULL DEFAULT 'UTC',
   all_day_time TEXT NOT NULL DEFAULT '09:00',
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  digest_enabled INTEGER NOT NULL DEFAULT 0,
+  digest_time TEXT NOT NULL DEFAULT '08:00'
 );
 
 CREATE TABLE IF NOT EXISTS push_subscriptions (

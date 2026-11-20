@@ -1305,7 +1305,8 @@ describe('notifications', () => {
     const configured = (await (
       await SELF.fetch(`${HOST}/open/v1/notification/config`, { headers: auth(token) })
     ).json()) as { settings: typeof settings };
-    expect(configured.settings).toEqual(settings);
+    // The daily digest is optional in the PUT and keeps its defaults here.
+    expect(configured.settings).toEqual({ ...settings, digestEnabled: false, digestTime: '08:00' });
   });
 
   it('rejects malformed settings and handles subscription configuration', async () => {

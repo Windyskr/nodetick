@@ -20,6 +20,7 @@ export const NOTIFICATION_TEXT = {
   taskSoon: { zh: '任务即将开始', en: 'Task starts soon' },
   habitPending: { zh: '今天还没有打卡', en: "You haven't checked in today" },
   countdownToday: { zh: '今天', en: 'Today' },
+  digestTitle: { zh: '今日任务', en: "Today's tasks" },
   testTitle: { zh: 'NodeTick 通知测试', en: 'NodeTick test notification' },
   testBody: { zh: '通知功能已经连接成功。', en: 'Notifications are working.' },
 } as const;
@@ -46,7 +47,7 @@ export interface NotificationPayload {
   body: Localized;
   tag: string;
   url: string;
-  sourceType: 'task' | 'habit' | 'countdown' | 'test';
+  sourceType: 'task' | 'habit' | 'countdown' | 'digest' | 'test';
   sourceId: string;
   sound?: 'on' | 'off';
 }
@@ -66,6 +67,8 @@ export type SettingRow = {
   sound_enabled: number;
   timezone: string;
   all_day_time: string;
+  digest_enabled: number;
+  digest_time: string;
 };
 
 const LOOKBACK_MS = 10 * 60 * 1000;
@@ -271,7 +274,9 @@ async function settings(db: D1Database): Promise<SettingRow[]> {
        COALESCE(s.countdown_enabled, 1) AS countdown_enabled,
        COALESCE(s.sound_enabled, 1) AS sound_enabled,
        COALESCE(s.timezone, 'UTC') AS timezone,
-       COALESCE(s.all_day_time, '09:00') AS all_day_time
+       COALESCE(s.all_day_time, '09:00') AS all_day_time,
+       COALESCE(s.digest_enabled, 0) AS digest_enabled,
+       COALESCE(s.digest_time, '08:00') AS digest_time
      FROM users u JOIN push_subscriptions p ON p.user_id = u.id
      LEFT JOIN notification_settings s ON s.user_id = u.id
      GROUP BY u.id`,
@@ -429,6 +434,55 @@ async function claim(db: D1Database, candidate: Candidate): Promise<boolean> {
   return Boolean(result.meta.changes);
 }
 
+/**
+ * The daily digest (TickTick's 每日提醒): at the user's digest time, one push
+ * listing today's open tasks and how many are overdue. Runs every minute but
+ * reads tasks only in the digest minute(s); nothing is sent on an empty day.
+ */
+export async function digestCandidates(db: D1Database, setting: SettingRow, now: number): Promise<Candidate[]> {
+  if (!setting.digest_enabled) return [];
+  const timeZone = validTimeZone(setting.timezone);
+  const today = localDay(new Date(now), timeZone);
+  const time = /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(setting.digest_time) ? setting.digest_time : '08:00';
+  const scheduledAt = zonedTimestamp(today, time, timeZone);
+  if (scheduledAt == null || !dueNow(scheduledAt, now)) return [];
+  const rows = await db.prepare(
+    `SELECT title, start_date, due_date, is_all_day, priority FROM tasks
+     WHERE user_id = ? AND deleted = 0 AND status = 0 AND (due_date IS NOT NULL OR start_date IS NOT NULL)`,
+  ).bind(setting.user_id).all<Record<string, unknown>>();
+  const todays: { title: string; priority: number; at: number }[] = [];
+  let overdue = 0;
+  for (const row of rows.results) {
+    const anchor = String(row.due_date ?? row.start_date ?? '');
+    // All-day dates keep their day in the prefix; timed ones are instants in the user's zone.
+    const allDay = Number(row.is_all_day ?? 0) === 1;
+    const instant = allDay ? null : Date.parse(anchor.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+    const day = allDay || instant == null || Number.isNaN(instant) ? anchor.slice(0, 10) : localDay(new Date(instant), timeZone);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    if (day < today) overdue++;
+    else if (day === today) todays.push({ title: String(row.title ?? ''), priority: Number(row.priority ?? 0), at: instant ?? 0 });
+  }
+  if (!todays.length && !overdue) return [];
+  todays.sort((a, b) => b.priority - a.priority || a.at - b.at);
+  const names = todays.slice(0, 3).map((task) => task.title.trim() || '…');
+  const more = todays.length > 3 ? '…' : '';
+  const zh = [
+    todays.length ? `今天 ${todays.length} 项：${names.join('、')}${more}` : '今天没有安排的任务',
+    overdue ? `另有 ${overdue} 项已过期` : '',
+  ].filter(Boolean).join('；');
+  const en = [
+    todays.length ? `${todays.length} today: ${names.join(', ')}${more}` : 'Nothing scheduled today',
+    overdue ? `${overdue} overdue` : '',
+  ].filter(Boolean).join('; ');
+  return [{
+    userId: setting.user_id, scheduledAt,
+    dedupeKey: `digest:${setting.user_id}:${today}`,
+    sourceType: 'digest', sourceId: today, tag: `digest-${today}`,
+    title: NOTIFICATION_TEXT.digestTitle, body: { zh, en }, url: '/app/tasks/today',
+    sound: setting.sound_enabled ? 'on' : 'off',
+  }];
+}
+
 export async function dispatchDueNotifications(env: Env, now = Date.now()): Promise<{ candidates: number; sent: number; failed: number }> {
   if (!pushConfigured(env)) return { candidates: 0, sent: 0, failed: 0 };
   await ensureSchema(env);
@@ -440,6 +494,7 @@ export async function dispatchDueNotifications(env: Env, now = Date.now()): Prom
       ...await taskCandidates(env.DB, setting, now),
       ...await habitCandidates(env.DB, setting, now),
       ...await countdownCandidates(env.DB, setting, now),
+      ...await digestCandidates(env.DB, setting, now),
     );
   }
   let sent = 0;

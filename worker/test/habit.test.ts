@@ -457,7 +457,7 @@ describe('habit reminders', () => {
     await api.ok('POST', '/habit', { name: 'Walk', reminders: ['09:00'] });
     const setting: SettingRow = {
       user_id: userId, enabled: 1, task_enabled: 1, habit_enabled: 1, countdown_enabled: 1, sound_enabled: 1,
-      timezone: 'Asia/Shanghai', all_day_time: '09:00',
+      timezone: 'Asia/Shanghai', all_day_time: '09:00', digest_enabled: 0, digest_time: '08:00',
     };
     const prepare = vi.spyOn(env.DB, 'prepare');
     try {

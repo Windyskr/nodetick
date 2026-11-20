@@ -19,6 +19,8 @@ const fallbackSettings = (): NotificationSettings => ({
   soundEnabled: true,
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   allDayTime: '09:00',
+  digestEnabled: false,
+  digestTime: '08:00',
 });
 
 function applicationKey(value: string): ArrayBuffer {
@@ -232,6 +234,19 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
                   className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-tt"
                 />
               </label>
+              <SettingRow label={t('notifyDigest')} checked={settings.digestEnabled} onChange={(value) => void change('digestEnabled', value)} />
+              {settings.digestEnabled && (
+                <label className="flex items-center justify-between px-1 pb-3 text-[12px] text-ink-3">
+                  <span className="pr-3">{t('notifyDigestHint')}</span>
+                  <input
+                    type="time"
+                    value={settings.digestTime}
+                    aria-label={t('notifyDigestTime')}
+                    onChange={(event) => { if (event.target.value) void change('digestTime', event.target.value); }}
+                    className="shrink-0 rounded-lg border border-line bg-white px-2.5 py-1.5 text-[12px] text-ink outline-none focus:border-tt"
+                  />
+                </label>
+              )}
             </div>
 
             <div className="mt-4 flex min-h-9 items-center justify-between border-t border-line pt-4">

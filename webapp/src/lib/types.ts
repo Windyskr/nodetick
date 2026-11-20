@@ -252,6 +252,9 @@ export interface NotificationSettings {
   soundEnabled: boolean;
   timezone: string;
   allDayTime: string;
+  /** NodeTick's daily digest: one push at `digestTime` with today's tasks. */
+  digestEnabled: boolean;
+  digestTime: string;
 }
 
 export interface NotificationConfig {

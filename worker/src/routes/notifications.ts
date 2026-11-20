@@ -17,7 +17,8 @@ const KEY_RE = /^[A-Za-z0-9_-]+$/;
 notifications.get('/notification/config', async (c) => {
   const userId = c.get('userId');
   const row = await c.env.DB.prepare(
-    `SELECT enabled, task_enabled, habit_enabled, countdown_enabled, sound_enabled, timezone, all_day_time
+    `SELECT enabled, task_enabled, habit_enabled, countdown_enabled, sound_enabled, timezone, all_day_time,
+       digest_enabled, digest_time
      FROM notification_settings WHERE user_id = ?`,
   ).bind(userId).first<Record<string, unknown>>();
   const count = await c.env.DB.prepare('SELECT COUNT(*) AS total FROM push_subscriptions WHERE user_id = ?')
@@ -34,6 +35,8 @@ notifications.get('/notification/config', async (c) => {
       soundEnabled: row ? Boolean(row.sound_enabled) : true,
       timezone: String(row?.timezone ?? 'UTC'),
       allDayTime: String(row?.all_day_time ?? '09:00'),
+      digestEnabled: row ? Boolean(row.digest_enabled) : false,
+      digestTime: String(row?.digest_time ?? '08:00'),
     },
   });
 });
@@ -49,15 +52,26 @@ notifications.put('/notification/settings', async (c) => {
   try { new Intl.DateTimeFormat('en-US', { timeZone: b.timezone }).format(); } catch { return c.json({ error: 'invalid timezone' }, 400); }
   const [hour, minute] = b.allDayTime.split(':').map(Number);
   if (hour > 23 || minute > 59) return c.json({ error: 'invalid notification time' }, 400);
+  // The daily digest (NodeTick extension) is optional: clients that don't
+  // send it keep what is stored.
+  if (b.digestEnabled !== undefined && typeof b.digestEnabled !== 'boolean') return c.json({ error: 'invalid notification settings' }, 400);
+  if (b.digestTime !== undefined && (typeof b.digestTime !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(b.digestTime))) {
+    return c.json({ error: 'invalid notification time' }, 400);
+  }
+  const digestEnabled = typeof b.digestEnabled === 'boolean' ? (b.digestEnabled ? 1 : 0) : null;
+  const digestTime = typeof b.digestTime === 'string' ? b.digestTime : null;
   await c.env.DB.prepare(
     `INSERT INTO notification_settings
-      (user_id, enabled, task_enabled, habit_enabled, countdown_enabled, sound_enabled, timezone, all_day_time, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (user_id, enabled, task_enabled, habit_enabled, countdown_enabled, sound_enabled, timezone, all_day_time, updated_at,
+       digest_enabled, digest_time)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 0), COALESCE(?, '08:00'))
      ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled, task_enabled=excluded.task_enabled,
        habit_enabled=excluded.habit_enabled, countdown_enabled=excluded.countdown_enabled,
        sound_enabled=excluded.sound_enabled, timezone=excluded.timezone,
-       all_day_time=excluded.all_day_time, updated_at=excluded.updated_at`,
-  ).bind(userId, b.enabled ? 1 : 0, b.taskEnabled ? 1 : 0, b.habitEnabled ? 1 : 0, b.countdownEnabled ? 1 : 0, b.soundEnabled ? 1 : 0, b.timezone, b.allDayTime, Date.now()).run();
+       all_day_time=excluded.all_day_time, updated_at=excluded.updated_at,
+       digest_enabled=COALESCE(?, digest_enabled), digest_time=COALESCE(?, digest_time)`,
+  ).bind(userId, b.enabled ? 1 : 0, b.taskEnabled ? 1 : 0, b.habitEnabled ? 1 : 0, b.countdownEnabled ? 1 : 0, b.soundEnabled ? 1 : 0, b.timezone, b.allDayTime, Date.now(),
+    digestEnabled, digestTime, digestEnabled, digestTime).run();
   return c.json({ ok: true });
 });
 
