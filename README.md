@@ -22,7 +22,7 @@
 - **日历**：年 / 月 / 周 / 日 / 日程 / 3 日 / 2 周视图和迷你月历；拖拽改期，点格子里的 `+` 直接新建带日期的任务
 - **四象限**：按优先级把任务分进四个象限
 - **习惯**：每天 / 每周固定几天 / 每周 N 天 / 每月 N 天 / 每隔 N 天，可设开始日期和坚持天数；按次数打卡时每次单独记录，可撤销和修改；晨间 / 午间 / 晚间 / 其他分组、激励语、归档与彻底删除；详情有月历、当前与最长连续、月完成率、完成量、年度热力图、每月趋势和打卡日志；「今天」只列当天要打卡的习惯，提醒只在这些日子推送
-- **专注**：番茄计时器和周统计
+- **专注**：番茄计时和正计时，切换页面或刷新后继续计时，左侧栏显示进度；短休息 / 长休息、自动开始、结束提示音（标签页在后台时另有通知）和白噪音；可从任务菜单直接开始专注，任务详情显示累计专注时长；完整的专注记录，可编辑、删除和补记；按日 / 周 / 月 / 年统计，含环比、趋势、任务和清单排行、最佳专注时段和年度热力图
 - **倒数纪念日**：五种卡片样式（经典 / 纯色 / 日历 / 柔和 / 圆环）、调色板和 emoji 图标，按天数或年月日显示；支持农历日期（含闰月）和「农历每年」重复，适合农历生日和春节、中秋等节日；按月或按年重复时，29–31 日遇到小月按月末，2 月 29 日在平年按 2 月 28 日；提醒可多选当天、提前 1 / 2 / 3 天、1 周、1 个月，并可单独设置提醒时间；详情面板显示星期、农历、岁数 / 周年、年月日间隔和可编辑的备注；支持置顶、归档与恢复，按日期 / 自定义（拖动）/ 创建时间排序，卡片或列表视图，按类型分组，可在日历中显示为全天条目
 - **统计**：头像菜单里的「统计」页按近 7 天 / 30 天 / 12 周 / 12 个月统计完成任务数（与上期对比）、到期任务完成率、准时完成率和当前逾期；完成趋势柱状图、过去一年的完成日历，以及按清单、标签、优先级、星期和时段的分布；可只看一个清单，每张图都能切换成表格
 - **摘要**：按条件汇总任务（开发中，见[路线图](#路线图)）
@@ -268,12 +268,12 @@ nodetick backup import ./my-backup.json   # 按 id 合并导入，不删除现�
 - **清单**：增删改查、`data`（清单 + 任务 + 看板列）、分组（文件夹）、看板列
 - **标签**：list / create（任务上用到的标签自动登记）
 - **习惯**：get / list / create / update / checkin（按日期 upsert）/ checkins 范围查询 / section list
-- **专注**：get / list（时间范围最多 30 天）/ create / delete；支持番茄和正计时两种类型
+- **专注**：get / list（时间范围最多 30 天）/ create / update / delete；支持番茄和正计时两种类型
 - **倒计时**：list / create / update / delete（官方只有 list，写入是 NodeTick 扩展）
 
 认证方式也与官方一致：OAuth PKCE（`nodetick auth login`）和手动令牌（`nodetick auth token`）。
 
-以下官方命令暂未实现（对照 ticktick-cli 0.1.16）：preference get；task complete-batch、assign、unassign；project members；tag update、rename、delete；focus update；calendar account list、calendar event query。
+以下官方命令暂未实现（对照 ticktick-cli 0.1.16）：preference get；task complete-batch、assign、unassign；project members；tag update、rename、delete；calendar account list、calendar event query。
 
 ## API
 
@@ -342,6 +342,9 @@ nodetick backup import ./my-backup.json   # 按 id 合并导入，不删除现�
 | GET | `/focus` | 专注记录列表（时间范围最多 30 天） |
 | POST | `/focus` | 创建专注记录 |
 | GET / DELETE | `/focus/{focusId}?type=` | 获取 / 删除专注记录 |
+| POST | `/focus/{focusId}` | 更新专注记录（只改传入的字段） |
+| GET | `/focus/stats?tz=&from=&to=&taskId=` | 专注统计：累计总量；传 `from` / `to`（本地日期，最多 371 天）时另按 `tz` 汇总该时段的每天、任务、清单和时段分布；`taskId` 只统计一个任务 ★ |
+| GET | `/focus/history?before=&limit=` | 全部专注记录（番茄和正计时），按开始时间倒序，每页最多 100 条；把上一页的 `nextBefore` 作为 `before` 翻页 ★ |
 | GET | `/countdown` | 倒计时列表（另含 `note`、`pinned`、`archived`、`reminderTime`、`lunar`、`numberFormat`、`showInCalendar` 等 NodeTick 字段） |
 | POST | `/countdown` | 创建倒计时 ★ |
 | POST / DELETE | `/countdown/{countdownId}` | 更新（只改传入的字段）/ 删除倒计时 ★ |
@@ -448,7 +451,7 @@ SESSION_SECRET=<32 位以上随机字符串>
 
 ## 路线图
 
-- [ ] 为专注增加正计时、更完整的累计统计和完整记录历史。
+- [x] 为专注增加正计时、更完整的累计统计和完整记录历史。
 - [x] 完善倒计时的提醒、重复、备注、样式、归档和显示设置，进一步对齐官方“倒数纪念日”。
 - [x] 搜索增加清单、标签、日期、优先级、类型、状态筛选，以及保存为过滤器。
 - [ ] 完成摘要持久化，并接通模板、保存、复制和分享功能。

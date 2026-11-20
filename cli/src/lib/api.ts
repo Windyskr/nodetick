@@ -238,6 +238,13 @@ export class NodeTickApi {
     });
   }
 
+  async updateFocus(focusId: string, input: unknown): Promise<Record<string, unknown>> {
+    return this.request(`/focus/${encodeURIComponent(focusId)}`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
   async deleteFocus(focusId: string, type: number): Promise<Record<string, unknown>> {
     const q = new URLSearchParams({ type: String(type) });
     return this.request(`/focus/${encodeURIComponent(focusId)}?${q}`, {

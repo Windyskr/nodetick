@@ -140,7 +140,7 @@ export async function importBackup(
   upsert('habit_checkins', doc.habitCheckins, ['id', 'habit_id', 'stamp', 'value', 'goal', 'status', 'time', 'op_time', 'created_at']);
   upsert('habit_checkin_entries', doc.habitCheckinEntries, ['id', 'habit_id', 'stamp', 'value', 'time', 'created_at']);
   upsert('habit_records', doc.habitRecords, ['id', 'habit_id', 'stamp', 'content', 'emoji', 'op_time', 'created_at']);
-  upsert('focus_records', doc.focusRecords, ['id', 'type', 'task_id', 'note', 'start_time', 'end_time', 'duration', 'pause_duration', 'relation', 'status', 'etag', 'created_at']);
+  upsert('focus_records', doc.focusRecords, ['id', 'type', 'task_id', 'note', 'start_time', 'end_time', 'duration', 'pause_duration', 'relation', 'status', 'etag', 'created_at', 'added']);
   // Backups from before note…show_in_calendar existed import with the column
   // defaults: INSERT OR REPLACE turns a NULL for a NOT NULL column into its default.
   upsert('countdowns', doc.countdowns, ['id', 'name', 'date', 'kind', 'reminders', 'repeat_flag', 'calculation', 'display_mode', 'style', 'color', 'icon', 'sort_order', 'created_at',

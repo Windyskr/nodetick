@@ -15,6 +15,24 @@ import { BackupImportError, exportBackup, importBackup } from '../services/backu
 import { COUNTDOWN_REMINDERS } from '../services/notifications.js';
 import { LUNAR_FIRST_DAY, LUNAR_LAST_DAY } from '../lunar.js';
 import { runBatches } from '../db.js';
+import {
+  aggregateFocus,
+  firstLocalDay,
+  type FocusStatsRow,
+  type FocusTaskRow,
+  HISTORY_SLACK,
+  historyPage,
+  historyTextBound,
+  MAX_OFFSET_MS,
+  offsetSegments,
+  type OffsetSegment,
+  parseDay,
+  textDayAfter,
+  textDayBefore,
+  validTimeZone,
+  Zone,
+  zonedDayStart,
+} from '../services/focus.js';
 import { tagKey } from './tasks.js';
 
 type State = { Bindings: Env; Variables: Vars };
@@ -1037,6 +1055,81 @@ misc.delete('/habit/:habitId/record/:stamp', async (c) => {
 // --- Focus records ---
 
 const MAX_FOCUS_RANGE_DAYS = 30;
+/** Stats ranges: a calendar year, or the 53 weeks of a contribution heatmap. */
+const MAX_STATS_RANGE_DAYS = 371;
+const MAX_STATS_RECORDS = 20_000;
+const MAX_HISTORY_LIMIT = 100;
+const DEFAULT_HISTORY_LIMIT = 50;
+const MAX_FOCUS_TASK_ID = 128;
+const DAY_MS = 86_400_000;
+
+interface FocusInput {
+  type?: 0 | 1;
+  /** null unlinks the task. */
+  taskId?: string | null;
+  note?: string | null;
+  startTime?: string;
+  endTime?: string;
+  duration?: number;
+  pauseDuration?: number;
+  relationType?: number[];
+  added?: boolean;
+}
+
+/**
+ * Validate a focus record body. Creating requires `type`; an update takes
+ * any subset, where an absent or null field stays as it is, except that null
+ * or "" clears `taskId` and `note`.
+ */
+function focusInput(b: Record<string, unknown>, update: boolean): { error: string } | { value: FocusInput } {
+  const value: FocusInput = {};
+  if (!update || b.type != null) {
+    if (b.type !== 0 && b.type !== 1) return { error: 'type must be 0 (pomodoro) or 1 (timing)' };
+    value.type = b.type;
+  }
+  if (b.note != null && (typeof b.note !== 'string' || b.note.length > MAX_FOCUS_NOTE)) {
+    return { error: 'note must be a string of at most 65536 characters' };
+  }
+  if (b.note !== undefined) value.note = typeof b.note === 'string' && b.note ? b.note : null;
+  if (invalidFocusRelation(b.relationType)) {
+    return { error: 'relationType must contain at most 32 integer values' };
+  }
+  if (Array.isArray(b.relationType)) value.relationType = b.relationType as number[];
+  if (b.taskId != null && typeof b.taskId !== 'string') return { error: 'taskId must be a string' };
+  if (b.taskId !== undefined) {
+    const taskId = typeof b.taskId === 'string' ? b.taskId.trim() : '';
+    if (taskId.length > MAX_FOCUS_TASK_ID) return { error: 'taskId is too long' };
+    value.taskId = taskId || null;
+  }
+  for (const key of ['startTime', 'endTime'] as const) {
+    if (b[key] == null) continue;
+    if (!validFocusDate(b[key])) return { error: `${key} must be a valid ISO 8601 date` };
+    value[key] = b[key];
+  }
+  for (const key of ['duration', 'pauseDuration'] as const) {
+    if (b[key] == null) continue;
+    const seconds = strictFocusNumber(b[key]);
+    if (seconds == null || seconds < 0 || seconds > MAX_FOCUS_SECONDS) {
+      return { error: `${key} must be a non-negative number of seconds` };
+    }
+    value[key] = seconds;
+  }
+  if (b.added != null) {
+    if (typeof b.added !== 'boolean') return { error: 'added must be a boolean' };
+    value.added = b.added;
+  }
+  return { value };
+}
+
+/** Whole seconds from start to end (negative when reversed); null unless both parse. */
+function focusSpan(startTime: unknown, endTime: unknown): number | null {
+  const start = parseApiDate(startTime);
+  const end = parseApiDate(endTime);
+  return typeof start === 'number' && typeof end === 'number' ? Math.round((end - start) / 1000) : null;
+}
+
+/** The focused part of a span: its length minus the pauses. */
+const focusedSeconds = (span: number, pause: number | null | undefined) => Math.max(0, span - (pause ?? 0));
 
 misc.get('/focus', async (c) => {
   const userId = c.get('userId');
@@ -1076,6 +1169,140 @@ misc.get('/focus', async (c) => {
   return c.json(out.map(serializeFocus));
 });
 
+/**
+ * NodeTick extension: focus statistics. `total` covers all time; with
+ * `from`/`to` (local days, inclusive, at most 371) the period totals, the
+ * days, the tasks and lists and the hour-of-day spread are computed in `tz`
+ * (IANA, default UTC). `taskId` narrows everything to one task. One D1 round
+ * trip; the period's records are read once more to name their tasks.
+ */
+misc.get('/focus/stats', async (c) => {
+  const userId = c.get('userId');
+  const tzRaw = c.req.query('tz');
+  const tz = tzRaw ? validTimeZone(tzRaw) : 'UTC';
+  if (!tz) return c.json({ error: 'tz must be an IANA time zone such as Asia/Shanghai' }, 400);
+  const fromRaw = c.req.query('from') || null;
+  const toRaw = c.req.query('to') || null;
+  if ((fromRaw == null) !== (toRaw == null)) return c.json({ error: 'from and to must be given together' }, 400);
+  const fromDay = parseDay(fromRaw);
+  const toDay = parseDay(toRaw);
+  if (fromRaw && (fromDay == null || toDay == null)) return c.json({ error: 'from/to must be YYYY-MM-DD dates' }, 400);
+  if (fromDay != null && toDay != null) {
+    if (toDay < fromDay) return c.json({ error: 'to must not precede from' }, 400);
+    if ((toDay - fromDay) / DAY_MS >= MAX_STATS_RANGE_DAYS) {
+      return c.json({ error: `range must not exceed ${MAX_STATS_RANGE_DAYS} days` }, 400);
+    }
+  }
+  const taskId = c.req.query('taskId') || null;
+  if (taskId && taskId.length > MAX_FOCUS_TASK_ID) return c.json({ error: 'taskId is too long' }, 400);
+
+  const zone = new Zone(tz);
+  let window: { fromMs: number; toMs: number; segments: OffsetSegment[] } | null = null;
+  if (fromDay != null && toDay != null) {
+    const segments = offsetSegments(zone, fromDay - MAX_OFFSET_MS - DAY_MS, toDay + 2 * DAY_MS + MAX_OFFSET_MS);
+    window = { fromMs: zonedDayStart(segments, fromDay), toMs: zonedDayStart(segments, toDay + DAY_MS), segments };
+  }
+
+  const db = c.env.DB;
+  const scope = taskId ? ' AND task_id = ?' : '';
+  const scoped = (...args: unknown[]) => (taskId ? [userId, taskId, ...args] : [userId, ...args]);
+  const statements = [
+    db.prepare(
+      `SELECT COUNT(*) AS records,
+         COALESCE(SUM(CASE WHEN type = 0 THEN 1 ELSE 0 END), 0) AS pomoCount,
+         COALESCE(SUM(CASE WHEN type = 0 AND duration > 0 THEN duration ELSE 0 END), 0) AS pomoSeconds,
+         COALESCE(SUM(CASE WHEN type = 1 AND duration > 0 THEN duration ELSE 0 END), 0) AS stopwatchSeconds
+       FROM focus_records WHERE user_id = ?${scope}`,
+    ).bind(...scoped()),
+    // The earliest instant lies within three text days of the smallest start_time.
+    db.prepare(
+      `SELECT start_time FROM focus_records WHERE user_id = ?${scope} AND start_time < (
+         SELECT date(substr(MIN(start_time), 1, 10), '+3 day') FROM focus_records WHERE user_id = ?${scope}
+       ) ORDER BY start_time LIMIT 1000`,
+    ).bind(...scoped(), ...scoped()),
+  ];
+  if (window) {
+    const lo = textDayBefore(window.fromMs);
+    const hi = textDayAfter(window.toMs);
+    statements.push(
+      db.prepare(
+        `SELECT type, start_time, end_time, duration, task_id FROM focus_records
+         WHERE user_id = ?${scope} AND start_time >= ? AND start_time < ? LIMIT ?`,
+      ).bind(...scoped(lo, hi, MAX_STATS_RECORDS + 1)),
+      db.prepare(
+        `SELECT id, title, project_id FROM tasks WHERE user_id = ? AND id IN (
+           SELECT task_id FROM focus_records WHERE user_id = ?${scope} AND start_time >= ? AND start_time < ? AND task_id IS NOT NULL
+         )`,
+      ).bind(userId, ...scoped(lo, hi)),
+    );
+  }
+  const [totals, firsts, records, tasks] = await db.batch<Record<string, unknown>>(statements);
+  if (records && records.results.length > MAX_STATS_RECORDS) {
+    return c.json({ error: `focus result set exceeds ${MAX_STATS_RECORDS} records` }, 413);
+  }
+  const sums = totals.results[0] ?? {};
+  const pomoSeconds = Number(sums.pomoSeconds ?? 0);
+  const stopwatchSeconds = Number(sums.stopwatchSeconds ?? 0);
+  const aggregate = window
+    ? aggregateFocus(
+      records.results as unknown as FocusStatsRow[],
+      tasks.results as unknown as FocusTaskRow[],
+      window.fromMs,
+      window.toMs,
+      window.segments,
+    )
+    : null;
+  return c.json({
+    tz,
+    from: fromRaw,
+    to: toRaw,
+    taskId,
+    total: {
+      pomoCount: Number(sums.pomoCount ?? 0),
+      pomoSeconds,
+      stopwatchSeconds,
+      seconds: pomoSeconds + stopwatchSeconds,
+      records: Number(sums.records ?? 0),
+      firstDay: firstLocalDay(firsts.results.map((row) => row.start_time), zone),
+    },
+    period: aggregate?.period ?? null,
+    days: aggregate?.days ?? [],
+    byTask: aggregate?.byTask ?? [],
+    byProject: aggregate?.byProject ?? [],
+    byHour: aggregate?.byHour ?? [],
+  });
+});
+
+/**
+ * NodeTick extension: the whole history of both record types, newest first
+ * by instant, `limit` (at most 100) at a time. Pass the previous page's
+ * `nextBefore` as `before`; it is null after the oldest record.
+ */
+misc.get('/focus/history', async (c) => {
+  const userId = c.get('userId');
+  const beforeRaw = c.req.query('before') || null;
+  if (beforeRaw && !validFocusDate(beforeRaw)) return c.json({ error: 'before must be a valid ISO 8601 date' }, 400);
+  const before = beforeRaw ? (parseApiDate(beforeRaw) as number) : Number.POSITIVE_INFINITY;
+  const limitRaw = c.req.query('limit');
+  const limit = limitRaw ? Number(limitRaw) : DEFAULT_HISTORY_LIMIT;
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_HISTORY_LIMIT) {
+    return c.json({ error: `limit must be an integer from 1 to ${MAX_HISTORY_LIMIT}` }, 400);
+  }
+  const fetched = limit + HISTORY_SLACK;
+  const rows = Number.isFinite(before)
+    ? await c.env.DB.prepare('SELECT * FROM focus_records WHERE user_id = ? AND start_time < ? ORDER BY start_time DESC LIMIT ?')
+      .bind(userId, historyTextBound(before), fetched)
+      .all()
+    : await c.env.DB.prepare('SELECT * FROM focus_records WHERE user_id = ? AND start_time IS NOT NULL ORDER BY start_time DESC LIMIT ?')
+      .bind(userId, fetched)
+      .all();
+  const page = historyPage(rows.results, before, limit, fetched);
+  return c.json({
+    records: page.records.map(serializeFocus),
+    nextBefore: page.nextBefore == null ? null : new Date(page.nextBefore).toISOString(),
+  });
+});
+
 misc.get('/focus/:focusId', async (c) => {
   const userId = c.get('userId');
   const type = focusType(c.req.query('type'));
@@ -1091,74 +1318,99 @@ misc.get('/focus/:focusId', async (c) => {
 
 misc.post('/focus', async (c) => {
   const userId = c.get('userId');
-  const b = await readJsonObject(c.req);
-  const type = b.type === 0 || b.type === 1 ? b.type : null;
-  if (type == null) return c.json({ error: 'type must be 0 (pomodoro) or 1 (timing)' }, 400);
-  if (b.note != null && (typeof b.note !== 'string' || b.note.length > MAX_FOCUS_NOTE)) {
-    return c.json({ error: 'note must be a string of at most 65536 characters' }, 400);
-  }
-  if (invalidFocusRelation(b.relationType)) {
-    return c.json({ error: 'relationType must contain at most 32 integer values' }, 400);
-  }
-  if (b.taskId != null && typeof b.taskId !== 'string') {
-    return c.json({ error: 'taskId must be a string' }, 400);
-  }
-  const taskId = typeof b.taskId === 'string' && b.taskId.trim() ? b.taskId.trim() : null;
-  if (taskId) {
+  const parsed = focusInput(await readJsonObject(c.req), false);
+  if ('error' in parsed) return c.json({ error: parsed.error }, 400);
+  const input = parsed.value;
+  if (input.taskId) {
     const task = await c.env.DB.prepare('SELECT id FROM tasks WHERE id = ? AND user_id = ?')
-      .bind(taskId, userId)
+      .bind(input.taskId, userId)
       .first();
     if (!task) return c.json({ error: 'task not found' }, 404);
   }
-  let startTime: string | null = null;
-  let endTime: string | null = null;
-  for (const key of ['startTime', 'endTime'] as const) {
-    if (b[key] != null && !validFocusDate(b[key])) {
-      return c.json({ error: `${key} must be a valid ISO 8601 date` }, 400);
-    }
-    if (key === 'startTime' && typeof b[key] === 'string') startTime = b[key];
-    if (key === 'endTime' && typeof b[key] === 'string') endTime = b[key];
-  }
-  const pauseDuration = strictFocusNumber(b.pauseDuration);
-  if (b.pauseDuration != null && (pauseDuration == null || pauseDuration < 0 || pauseDuration > MAX_FOCUS_SECONDS)) {
-    return c.json({ error: 'pauseDuration must be a non-negative number' }, 400);
-  }
-  const id = genId();
-  let duration = strictFocusNumber(b.duration);
-  if (b.duration != null && (duration == null || duration < 0 || duration > MAX_FOCUS_SECONDS)) {
-    return c.json({ error: 'duration must be a non-negative number' }, 400);
-  }
-  if (duration == null && startTime && endTime) {
-    const startMs = Date.parse(startTime);
-    const endMs = Date.parse(endTime);
-    if (endMs < startMs) return c.json({ error: 'endTime must not precede startTime' }, 400);
-    const ms = endMs - startMs;
-    if (!Number.isNaN(ms) && ms > 0) duration = Math.round(ms / 1000);
-  }
+  const span = focusSpan(input.startTime, input.endTime);
+  if (span != null && span < 0) return c.json({ error: 'endTime must not precede startTime' }, 400);
+  const duration = input.duration ?? (span != null && span > 0 ? focusedSeconds(span, input.pauseDuration) : null);
   if (duration != null && duration > MAX_FOCUS_SECONDS) {
     return c.json({ error: 'duration is too long' }, 400);
   }
   const row = await c.env.DB.prepare(
     `INSERT INTO focus_records
-      (id, user_id, type, task_id, note, start_time, end_time, duration, pause_duration, relation, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, user_id, type, task_id, note, start_time, end_time, duration, pause_duration, relation, added, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`,
   )
     .bind(
-      id,
+      genId(),
       userId,
-      type,
-      taskId,
-      b.note != null ? b.note : null,
-      startTime,
-      endTime,
+      input.type,
+      input.taskId ?? null,
+      input.note ?? null,
+      input.startTime ?? null,
+      input.endTime ?? null,
       duration,
-      pauseDuration,
-      Array.isArray(b.relationType) ? JSON.stringify(b.relationType) : null,
+      input.pauseDuration ?? null,
+      input.relationType ? JSON.stringify(input.relationType) : null,
+      input.added ? 1 : 0,
       Date.now(),
     )
     .first();
   return c.json(serializeFocus(row!));
+});
+
+/**
+ * Update a record: the TickTick Open API's POST /focus/{focusId}
+ * (ticktick-cli `focus update`), whose `type` must match the record's when
+ * given. Same validation as create; new times or pauses recompute the
+ * duration unless the body sets one.
+ */
+misc.post('/focus/:focusId', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('focusId');
+  const parsed = focusInput(await readJsonObject(c.req), true);
+  if ('error' in parsed) return c.json({ error: parsed.error }, 400);
+  const input = parsed.value;
+  const db = c.env.DB;
+  const [found, task] = await db.batch<Record<string, unknown>>([
+    db.prepare('SELECT * FROM focus_records WHERE id = ? AND user_id = ?').bind(id, userId),
+    ...(input.taskId ? [db.prepare('SELECT id FROM tasks WHERE id = ? AND user_id = ?').bind(input.taskId, userId)] : []),
+  ]);
+  const existing = found.results[0];
+  if (!existing || (input.type != null && Number(existing.type) !== input.type)) {
+    return c.json({ error: 'focus record not found' }, 404);
+  }
+  if (input.taskId && !task.results.length) return c.json({ error: 'task not found' }, 404);
+  const startTime = input.startTime ?? (existing.start_time == null ? null : String(existing.start_time));
+  const endTime = input.endTime ?? (existing.end_time == null ? null : String(existing.end_time));
+  const span = focusSpan(startTime, endTime);
+  if (span != null && span < 0) return c.json({ error: 'endTime must not precede startTime' }, 400);
+  const pauseDuration = input.pauseDuration ?? (existing.pause_duration == null ? null : Number(existing.pause_duration));
+  const retimed = input.startTime != null || input.endTime != null || input.pauseDuration != null;
+  const duration = input.duration
+    ?? (retimed && span != null && span > 0
+      ? focusedSeconds(span, pauseDuration)
+      : existing.duration == null ? null : Number(existing.duration));
+  if (duration != null && duration > MAX_FOCUS_SECONDS) return c.json({ error: 'duration is too long' }, 400);
+  const row = await db.prepare(
+    `UPDATE focus_records SET task_id = ?, note = ?, start_time = ?, end_time = ?, duration = ?,
+       pause_duration = ?, relation = ?, added = ?, etag = etag + 1
+     WHERE id = ? AND user_id = ?
+     RETURNING *`,
+  )
+    .bind(
+      input.taskId !== undefined ? input.taskId : existing.task_id ?? null,
+      input.note !== undefined ? input.note : existing.note ?? null,
+      startTime,
+      endTime,
+      duration,
+      pauseDuration,
+      input.relationType ? JSON.stringify(input.relationType) : existing.relation ?? null,
+      input.added != null ? (input.added ? 1 : 0) : existing.added ?? 0,
+      id,
+      userId,
+    )
+    .first();
+  if (!row) return c.json({ error: 'focus record not found' }, 404);
+  return c.json(serializeFocus(row));
 });
 
 misc.delete('/focus/:focusId', async (c) => {
@@ -1166,14 +1418,11 @@ misc.delete('/focus/:focusId', async (c) => {
   const type = focusType(c.req.query('type'));
   if (type == null) return c.json({ error: 'type is required' }, 400);
   const row = await c.env.DB.prepare(
-    'SELECT * FROM focus_records WHERE id = ? AND type = ? AND user_id = ?',
+    'DELETE FROM focus_records WHERE id = ? AND type = ? AND user_id = ? RETURNING *',
   )
     .bind(c.req.param('focusId'), type, userId)
     .first();
   if (!row) return c.json({ error: 'focus record not found' }, 404);
-  await c.env.DB.prepare('DELETE FROM focus_records WHERE id = ? AND user_id = ?')
-    .bind(c.req.param('focusId'), userId)
-    .run();
   return c.json(serializeFocus(row));
 });
 

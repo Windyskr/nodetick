@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Ban, Calendar, Flag, Inbox, MessageSquare, MoreHorizontal, Pin, PinOff, Plus, Trash2, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Ban, Calendar, Flag, Inbox, MessageSquare, MoreHorizontal, Pin, PinOff, Plus, Timer, Trash2, X } from 'lucide-react';
 import type { Task, TaskComment } from '../../lib/types';
 import { useStore, INBOX_ID } from '../../stores/store';
 import { api } from '../../lib/api';
@@ -12,6 +13,8 @@ import { useT, useTF } from '../../i18n';
 import { projectDisplayName } from '../../lib/project';
 import { isSubmitEnter } from '../../lib/keys';
 import { hasTag } from '../../lib/tags';
+import { useFocus } from '../../stores/focus';
+import { TaskFocusTotal } from './focus/TaskFocusTotal';
 
 /**
  * Right-hand task detail panel, TickTick-style: title, description,
@@ -19,6 +22,8 @@ import { hasTag } from '../../lib/tags';
  */
 export default function TaskDetail({ task, variant = 'panel' }: { task: Task; variant?: 'panel' | 'modal' }) {
   const { projects, saveTask, toggleComplete, trashTask, abandonTask, selectTask } = useStore();
+  const focusEnabled = useStore((state) => state.features.focus);
+  const navigate = useNavigate();
   const t = useT();
   const f = useTF();
   const [title, setTitle] = useState(task.title);
@@ -186,6 +191,7 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
             {f('estimatedPomo', task.focusSummaries[0].estimatedPomo ?? 0)}
           </div>
         )}
+        {focusEnabled && <TaskFocusTotal taskId={task.id} />}
         <textarea
           value={title}
           rows={1}
@@ -362,6 +368,17 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
                   void saveTask(task.id, { projectId: task.projectId, pinned: !task.pinned });
                 }}
               />
+              {focusEnabled && !done && (
+                <MenuItem
+                  icon={<Timer size={15} />}
+                  label={t('focusStartTask')}
+                  onClick={() => {
+                    close();
+                    useFocus.getState().startForTask(task.id);
+                    navigate('/app/focus');
+                  }}
+                />
+              )}
               {!done && (
                 <MenuItem
                   icon={<Ban size={15} />}

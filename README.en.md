@@ -22,7 +22,7 @@ What [NodeWarden](https://github.com/shuaiplus/nodewarden) is to Bitwarden, Node
 - **Calendar**: Year / Month / Week / Day / Schedule / 3-day / 2-week views and a mini month calendar; drag to reschedule, or click the `+` in a cell to create a task on that date
 - **Eisenhower Matrix**: sorts tasks into four quadrants by priority
 - **Habits**: every day, chosen weekdays, N days a week, N days a month or every N days, with start date and duration; count habits record each check-in separately (undo, edit); Morning / Afternoon / Night / Others sections, encouragement, archive and permanent delete; the detail panel shows a month calendar, current and longest streaks, monthly rate, amounts, a yearly heatmap, a monthly trend and the check-in log; Today lists only habits due today, and reminders go out only on those days
-- **Focus**: a Pomodoro timer and weekly stats
+- **Focus**: Pomodoro and stopwatch timers that keep running across page changes and reloads, with progress in the side rail; short and long breaks, auto-start, an end-of-session chime (plus a notification when the tab is in the background) and white noise; start focusing from a task's menu, and see a task's total focus time in its details; a complete record history you can edit, delete and backfill; daily / weekly / monthly / yearly stats with change from the previous period, trends, task and list rankings, best focus hours and a yearly heat map
 - **Countdowns**: five card styles (classic, solid, calendar, soft, ring), a color palette and emoji icons, shown as days or years/months/days; Chinese lunar dates (leap months included) with lunar yearly repeats for birthdays and festivals; monthly and yearly repeats (a 29th–31st falls on a short month's last day, Feb 29 on Feb 28 in common years); reminders on the day and 1, 2 or 3 days, 1 week or 1 month before, at their own time; a detail panel with weekday, lunar date, age or anniversary count, a y/m/d interval and an editable note; pin, archive and restore; sort by date, custom order (drag) or creation; card or list view; group by type; optionally shown as all-day entries in the calendar
 - **Statistics**: the **Statistics** page in the avatar menu shows, for the last 7 days / 30 days / 12 weeks / 12 months, completed tasks (compared with the previous period), the completion rate of tasks due, the on-time rate and what is overdue now; a completion trend, a year of completions as a calendar heat map, and breakdowns by list, tag, priority, weekday and time of day; narrow it to one list, and switch any chart to a table
 - **Summary**: a digest of tasks that match your criteria (in progress, see the [Roadmap](#roadmap))
@@ -268,12 +268,12 @@ nodetick backup import ./my-backup.json   # merge by id without deleting existin
 - **Projects (lists)**: create, read, update and delete; `data` (project + tasks + Kanban columns); groups (folders); Kanban columns
 - **Tags**: list / create (tags used on tasks are registered automatically)
 - **Habits**: get / list / create / update / checkin (upsert by date) / checkins range queries / section list
-- **Focus**: get / list (time range of at most 30 days) / create / delete; both Pomodoro and stopwatch records
+- **Focus**: get / list (time range of at most 30 days) / create / update / delete; both Pomodoro and stopwatch records
 - **Countdowns**: list / create / update / delete (the official API only has list; writes are a NodeTick extension)
 
 Authentication works the same way as the official CLI: OAuth PKCE (`nodetick auth login`) and manual tokens (`nodetick auth token`).
 
-These official commands are not implemented yet (compared with ticktick-cli 0.1.16): preference get; task complete-batch, assign, unassign; project members; tag update, rename, delete; focus update; calendar account list, calendar event query.
+These official commands are not implemented yet (compared with ticktick-cli 0.1.16): preference get; task complete-batch, assign, unassign; project members; tag update, rename, delete; calendar account list, calendar event query.
 
 ## API
 
@@ -342,6 +342,9 @@ The base path is `{server}/open/v1`, and the endpoints follow the [TickTick Open
 | GET | `/focus` | List focus records (time range of at most 30 days) |
 | POST | `/focus` | Create a focus record |
 | GET / DELETE | `/focus/{focusId}?type=` | Get / delete a focus record |
+| POST | `/focus/{focusId}` | Update a focus record (only the fields sent) |
+| GET | `/focus/stats?tz=&from=&to=&taskId=` | Focus stats: all-time totals; with `from` / `to` (local days, at most 371) also the period's days, tasks, lists and hours of day in `tz`; `taskId` narrows it to one task ★ |
+| GET | `/focus/history?before=&limit=` | Every focus record (Pomodoro and stopwatch), newest first, up to 100 per page; pass the previous page's `nextBefore` as `before` ★ |
 | GET | `/countdown` | List countdowns (plus NodeTick fields such as `note`, `pinned`, `archived`, `reminderTime`, `lunar`, `numberFormat`, `showInCalendar`) |
 | POST | `/countdown` | Create a countdown ★ |
 | POST / DELETE | `/countdown/{countdownId}` | Update (only the fields sent) / delete a countdown ★ |
@@ -448,7 +451,7 @@ To debug push notifications, also add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` an
 
 ## Roadmap
 
-- [ ] Focus: add a stopwatch mode, fuller cumulative stats and a complete record history.
+- [x] Focus: add a stopwatch mode, fuller cumulative stats and a complete record history.
 - [x] Countdowns: round out reminders, repeats, notes, styles, archiving and display settings to match TickTick's own Countdown feature more closely.
 - [x] Search: filter by list, tag, date, priority, type and status, and save a search as a filter.
 - [ ] Summary: persist summaries and wire up templates, saving, copying and sharing.

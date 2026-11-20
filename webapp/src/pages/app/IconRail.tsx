@@ -9,7 +9,6 @@ import {
   IconBell,
   IconCalendar,
   IconCountdown,
-  IconFocus,
   IconHabit,
   IconMatrix,
   IconSearch,
@@ -17,6 +16,8 @@ import {
 import NotificationSettingsDialog, { unsubscribeCurrentBrowser } from './NotificationSettingsDialog';
 import SettingsDialog from './SettingsDialog';
 import ChangePasswordDialog from './ChangePasswordDialog';
+import { useFocusEngine } from '../../stores/focus';
+import { FocusRailItem } from './focus/RailItem';
 
 const RAIL = 'flex h-full w-[50px] shrink-0 flex-col items-center border-r border-line bg-[#fbfbfb] py-4';
 type Theme = 'blue' | 'violet' | 'green' | 'dark';
@@ -47,6 +48,8 @@ export default function IconRail() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  // The focus timer keeps running (title, bell, saving) on every page.
+  useFocusEngine(me?.id, () => navigate('/app/focus'));
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -206,7 +209,7 @@ export default function IconRail() {
         {item('/app/tasks/all', t('navTasks'), IconAll, /^\/app\/(tasks|summary)(\/|$)/)}
         {item('/app/calendar', t('navCalendar'), IconCalendar)}
         {features.matrix && item('/app/matrix', t('navMatrix'), IconMatrix)}
-        {features.focus && item('/app/focus', t('navFocus'), IconFocus)}
+        {features.focus && <FocusRailItem />}
         {features.habit && item('/app/habit', t('navHabits'), IconHabit)}
         {features.countdown && item('/app/countdown', t('navCountdowns'), IconCountdown)}
         {item('/app/search', t('navSearch'), IconSearch)}

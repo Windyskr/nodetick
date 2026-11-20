@@ -189,6 +189,8 @@ export function serializeFocus(r: Row) {
     pauseDuration: r.pause_duration == null ? null : Number(r.pause_duration),
     relationType: parseJsonArray<number>(r.relation as string),
     status: Number(r.status ?? 0),
+    /** Entered by hand rather than timed (TickTick's `added`). */
+    added: !!r.added,
     etag: String(r.etag ?? 0),
   };
 }

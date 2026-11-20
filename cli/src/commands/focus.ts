@@ -64,6 +64,44 @@ async function createFocusCmd(options: Options & { json?: boolean }) {
   console.log(formatFocusView(focus));
 }
 
+function parseBool(raw: string, label: string): boolean {
+  const s = raw.trim().toLowerCase();
+  if (s === 'true' || s === '1' || s === 'yes') return true;
+  if (s === 'false' || s === '0' || s === 'no') return false;
+  throw new Error(`${label} must be true/false`);
+}
+
+async function updateFocusCmd(focusId: string, options: Options & { json?: boolean }) {
+  const type = parseFocusType(options.type as string);
+  const rawTask = options.taskId as string | undefined;
+  // `--task-id none` (or "") unlinks the task, like `task update --parent-id none`.
+  const taskId = rawTask === undefined ? undefined : rawTask === '' || rawTask.toLowerCase() === 'none' ? null : rawTask;
+  const input = {
+    type,
+    taskId,
+    note: options.note as string | undefined,
+    startTime: options.startTime as string | undefined,
+    endTime: options.endTime as string | undefined,
+    duration: numberOption('--duration', options.duration, { integer: true }),
+    pauseDuration: numberOption('--pause-duration', options.pauseDuration, { integer: true }),
+    added: options.added != null ? parseBool(String(options.added), '--added') : undefined,
+  };
+  if (Object.entries(input).every(([key, value]) => key === 'type' || value === undefined)) {
+    throw new Error('Specify at least one field to update: --task-id, --note, --start-time, --end-time, --duration, --pause-duration, --added');
+  }
+  if (input.startTime && input.endTime && Date.parse(input.endTime.replace(/([+-]\d{2})(\d{2})$/, '$1:$2')) < Date.parse(input.startTime.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'))) {
+    throw new Error('--end-time must not be earlier than --start-time');
+  }
+  const api = await getApi();
+  const focus = await api.updateFocus(focusId, input);
+  if (options.json) {
+    console.log(formatJson(focus));
+    return;
+  }
+  console.log(`${chalk.green('Updated:')} ${focus.id}`);
+  console.log(formatFocusView(focus));
+}
+
 async function deleteFocusCmd(focusId: string, options: Options & { json?: boolean }) {
   const api = await getApi();
   const type = parseFocusType(options.type as string);
@@ -78,7 +116,7 @@ async function deleteFocusCmd(focusId: string, options: Options & { json?: boole
 export function registerFocusCommand(program: Command) {
   const focus = program
     .command('focus')
-    .description('Create, query, and delete focus / Pomodoro records');
+    .description('Create, query, update, and delete focus / Pomodoro records');
 
   focus
     .command('get <focusId>')
@@ -111,6 +149,20 @@ export function registerFocusCommand(program: Command) {
     .action(async (options) => {
       await createFocusCmd(options);
     });
+
+  focus
+    .command('update <focusId>')
+    .description('Update a focus record (type required; new times recompute the duration)')
+    .requiredOption('--type <type>', '0|pomodoro or 1|timing')
+    .option('--task-id <taskId>', 'Associated task id ("none" unlinks it)')
+    .option('--note <note>', 'Focus note ("" clears it)')
+    .option('--start-time <iso>', 'Start time (yyyy-MM-ddTHH:mm:ss+ZZZZ)')
+    .option('--end-time <iso>', 'End time (yyyy-MM-ddTHH:mm:ss+ZZZZ)')
+    .option('--duration <seconds>', 'Focus duration in seconds')
+    .option('--pause-duration <seconds>', 'Pause duration in seconds')
+    .option('--added <bool>', 'Manually added (true/false)')
+    .option('--json', 'Output as JSON')
+    .action(updateFocusCmd);
 
   focus
     .command('delete <focusId>')

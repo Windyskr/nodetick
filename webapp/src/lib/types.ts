@@ -182,7 +182,38 @@ export interface Focus {
   pauseDuration: number | null;
   relationType: number[];
   status: number;
+  /** Entered by hand rather than timed. */
+  added: boolean;
   etag: string;
+}
+
+/** Totals in GET /open/v1/focus/stats (`total` is all time, `period` the from–to range). */
+export interface FocusTotals {
+  pomoCount: number;
+  pomoSeconds: number;
+  stopwatchSeconds: number;
+  seconds: number;
+  records: number;
+}
+
+export interface FocusStats {
+  tz: string;
+  from: string | null;
+  to: string | null;
+  taskId: string | null;
+  total: FocusTotals & { firstDay: string | null };
+  period: FocusTotals | null;
+  days: { day: string; pomoCount: number; seconds: number }[];
+  byTask: { taskId: string | null; title: string | null; projectId: string | null; seconds: number; count: number; pomoCount: number }[];
+  byProject: { projectId: string | null; seconds: number; count: number; pomoCount: number }[];
+  /** Focused seconds per local hour of day (24 entries; empty without a range). */
+  byHour: number[];
+}
+
+export interface FocusHistoryPage {
+  records: Focus[];
+  /** Pass as `before` for the next page; null after the oldest record. */
+  nextBefore: string | null;
 }
 
 export interface Countdown {

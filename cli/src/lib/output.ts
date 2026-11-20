@@ -149,6 +149,8 @@ export function formatFocusView(f: Task): string {
   if (f.startTime) lines.push(`Start:     ${str(f.startTime)}`);
   if (f.endTime) lines.push(`End:       ${str(f.endTime)}`);
   if (f.duration != null) lines.push(`Duration:  ${str(f.duration)}s`);
+  if (f.pauseDuration != null) lines.push(`Paused:    ${str(f.pauseDuration)}s`);
+  if (f.added) lines.push('Added:     manually');
   if (f.status != null) lines.push(`Status:    ${str(f.status)}`);
   if (f.etag) lines.push(`ETag:      ${str(f.etag)}`);
   return lines.join('\n');

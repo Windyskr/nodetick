@@ -29,7 +29,7 @@ const commands: Record<string, [string, () => Promise<unknown>]> = {
     async () => (await import('./commands/habit.js')).registerHabitCommand,
   ],
   focus: [
-    'Create, query, and delete focus / Pomodoro records',
+    'Create, query, update, and delete focus / Pomodoro records',
     async () => (await import('./commands/focus.js')).registerFocusCommand,
   ],
   tag: [

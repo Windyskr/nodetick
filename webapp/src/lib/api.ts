@@ -3,6 +3,8 @@ import type {
   ApiToken,
   Countdown,
   Focus,
+  FocusHistoryPage,
+  FocusStats,
   Habit,
   HabitCheckinEntry,
   HabitEntryResult,
@@ -196,6 +198,13 @@ export const api = {
   listFocus: (from: string, to: string, type = 0) =>
     get<Focus[]>(`/open/v1/focus?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&type=${type}`),
   addFocus: (input: Record<string, unknown>) => post<Focus>('/open/v1/focus', input),
+  updateFocus: (id: string, patch: Record<string, unknown>) => post<Focus>(`/open/v1/focus/${encodeURIComponent(id)}`, patch),
+  deleteFocus: (id: string, type: number) => del<Focus>(`/open/v1/focus/${encodeURIComponent(id)}?type=${type}`),
+  /** All-time totals, plus the from–to period (local days in `tz`) when given. */
+  focusStats: (query: { tz: string; from?: string; to?: string; taskId?: string }) =>
+    get<FocusStats>(`/open/v1/focus/stats?${new URLSearchParams(Object.entries(query).filter((entry): entry is [string, string] => !!entry[1]))}`),
+  focusHistory: (before: string | null, limit = 50) =>
+    get<FocusHistoryPage>(`/open/v1/focus/history?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ''}`),
 
   // --- Countdowns ---
   listCountdowns: () => get<Countdown[]>('/open/v1/countdown'),

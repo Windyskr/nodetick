@@ -219,9 +219,12 @@ CREATE TABLE IF NOT EXISTS focus_records (
   relation TEXT,
   status INTEGER NOT NULL DEFAULT 0,
   etag INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  added INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_focus_user_type ON focus_records(user_id, type);
+CREATE INDEX IF NOT EXISTS idx_focus_user_start ON focus_records(user_id, start_time);
+CREATE INDEX IF NOT EXISTS idx_focus_user_task ON focus_records(user_id, task_id);
 
 CREATE TABLE IF NOT EXISTS countdowns (
   id TEXT PRIMARY KEY,

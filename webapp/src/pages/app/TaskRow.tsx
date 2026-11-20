@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { AlignLeft, Ban, Bell, Calendar, CheckSquare, MoreHorizontal, Pin, PinOff, Repeat, RotateCcw, Square, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AlignLeft, Ban, Bell, Calendar, CheckSquare, MoreHorizontal, Pin, PinOff, Repeat, RotateCcw, Square, Timer, Trash2 } from 'lucide-react';
 import type { Task } from '../../lib/types';
 import { useStore } from '../../stores/store';
+import { useFocus } from '../../stores/focus';
 import { dayOf, scheduleLabel, todayStr } from '../../components/taskSchedule';
 import { RoundCheck } from '../../components/RoundCheck';
 import { ScheduleMenu } from '../../components/ScheduleMenu';
@@ -62,6 +64,8 @@ export function TaskRow({
   const { selectTask, selectedTaskId, toggleComplete, trashTask, restoreTask, purgeTask, saveTask, duplicateTask, moveTask, showToast, toggleSelect, selectedIds, reorderTasks, abandonTask, restoreAbandoned } =
     useStore();
   const t = useT();
+  const navigate = useNavigate();
+  const focusEnabled = useStore((state) => state.features.focus);
   const [menuView, setMenuView] = useState<'main' | 'move'>('main');
   const [dropPos, setDropPos] = useState<'before' | 'after' | null>(null);
   const selected = selectedTaskId === task.id;
@@ -300,6 +304,17 @@ export function TaskRow({
                       void saveTask(task.id, { projectId: task.projectId, pinned: !task.pinned });
                     }}
                   />
+                  {focusEnabled && !done && (
+                    <MenuItem
+                      icon={<Timer size={14} />}
+                      label={t('focusStartTask')}
+                      onClick={() => {
+                        close();
+                        useFocus.getState().startForTask(task.id);
+                        navigate('/app/focus');
+                      }}
+                    />
+                  )}
                   <MenuItem
                     label={t('duplicateTask')}
                     onClick={() => {
