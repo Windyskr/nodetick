@@ -455,7 +455,7 @@ To debug push notifications, also add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` an
 | `pnpm --filter worker test` | Worker integration tests (vitest + @cloudflare/vitest-pool-workers, real D1 semantics) |
 | `pnpm --filter webapp test` | Web app unit tests for pure logic (quick-add parsing, dates, i18n) |
 | `pnpm test:e2e` | Test a real server with the `nodetick` CLI; see [tests/README.md](tests/README.md) |
-| `pnpm test:web` | Build the web app and test loading, errors, empty states, narrow screens and stray strings in Chrome against an empty local database (Playwright) |
+| `pnpm test:web` | Build the web app and test loading, errors, empty states, narrow screens, the summary flow, and stray strings from the other language on every page, dialog and menu, in Chrome against an empty local database (Playwright) |
 | `pnpm build` | Compile the CLI and build the web app into `webapp/dist` |
 | `pnpm type-check` | Run `tsc` on every workspace |
 
@@ -469,7 +469,7 @@ To debug push notifications, also add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` an
 - [x] Summary: persist summaries and wire up templates, saving, copying and sharing.
 - [x] Habits: custom repeat rules, editing, multiple numeric check-ins and historical stats.
 - [x] Upgrade task descriptions to a rich-text editor with `/` quick insert, closer to TickTick's editor.
-- [ ] Localize the remaining hard-coded English strings, and add E2E tests for loading, error, empty and responsive states in production.
+- [x] Localize the remaining hard-coded English strings, and add E2E tests for loading, error, empty and responsive states in production.
 - [x] Treat the first natural-language date in quick add as a special element: the text stays in the input with a blue recognized state, and clicking it or pressing Backspace at its edge only cancels the recognition without deleting the text.
 - [x] Calendar Year / Month / Week / Day / Schedule / 3-day / 2-week views and time-range scheduling.
 - [x] Admin user management (invite codes were dropped; admins add users directly).

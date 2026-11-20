@@ -455,7 +455,7 @@ SESSION_SECRET=<32 位以上随机字符串>
 | `pnpm --filter worker test` | Worker 集成测试（vitest + @cloudflare/vitest-pool-workers，真实 D1 语义） |
 | `pnpm --filter webapp test` | 网页应用的纯逻辑单元测试（快速添加解析、日期、i18n） |
 | `pnpm test:e2e` | 用 `nodetick` CLI 测试真实服务器，见 [tests/README.md](tests/README.md) |
-| `pnpm test:web` | 构建网页应用，在本地空库上用 Chrome 测试加载、出错、空状态、窄屏和中英文文案（Playwright） |
+| `pnpm test:web` | 构建网页应用，在本地空库上用 Chrome 测试加载、出错、空状态、窄屏、摘要流程，以及各页面、对话框和菜单的中英文文案（Playwright） |
 | `pnpm build` | 编译 CLI，并构建网页应用到 `webapp/dist` |
 | `pnpm type-check` | 对所有 workspace 运行 `tsc` |
 
@@ -469,7 +469,7 @@ SESSION_SECRET=<32 位以上随机字符串>
 - [x] 完成摘要持久化，并接通模板、保存、复制和分享功能。
 - [x] 增加习惯自定义重复规则、编辑、多次数值打卡和历史统计。
 - [x] 将任务描述升级为富文本编辑器，支持 `/` 快速插入，进一步对齐 TickTick 编辑体验。
-- [ ] 清理剩余英文文案，并补充生产环境下加载、错误、空状态和响应式场景的 E2E 测试。
+- [x] 清理剩余英文文案，并补充生产环境下加载、错误、空状态和响应式场景的 E2E 测试。
 - [x] 将第一个自然语言日期识别为特殊元素：文字继续保留在快速添加输入框中，显示蓝色识别状态；点击或边界退格只取消识别，不删除文字。
 - [x] 日历年 / 月 / 周 / 日 / 日程 / 3日 / 2周视图和时间段排程。
 - [x] 增加管理员用户管理（已取消邀请码，改为管理员直接添加用户）。
