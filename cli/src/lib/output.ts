@@ -198,5 +198,8 @@ export function formatTagRow(t: Task): string {
 export function formatCountdownRow(c: Task): string {
   const date = c.date != null ? chalk.dim(` date:${str(c.date)}`) : '';
   const name = str(c.name) || str(c.id);
-  return `  ${chalk.dim(str(c.id))} ${name}${date}`;
+  const repeat = c.repeatFlag ? chalk.dim(` ${c.lunar ? 'lunar-' : ''}${str(c.repeatFlag)}`) : c.lunar ? chalk.dim(' lunar') : '';
+  const kind = c.kind && c.kind !== 'countdown' ? chalk.dim(` ${str(c.kind)}`) : '';
+  const flags = `${c.pinned ? chalk.yellow(' [pinned]') : ''}${c.archived ? chalk.dim(' [archived]') : ''}`;
+  return `  ${chalk.dim(str(c.id))} ${name}${date}${kind}${repeat}${flags}`;
 }

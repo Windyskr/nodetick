@@ -20,6 +20,9 @@ import type {
 import type { MsDeviceCode, MsImportChunk, MsImportChunkResult, MsTokenPoll } from './msTodo';
 import type { TickTickChunk, TickTickChunkResult } from './ticktick';
 
+/** Writable countdown fields (the server fills id, archivedTime and createdTime). */
+export type CountdownInput = Omit<Countdown, 'id' | 'archivedTime' | 'createdTime'>;
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -183,9 +186,8 @@ export const api = {
 
   // --- Countdowns ---
   listCountdowns: () => get<Countdown[]>('/open/v1/countdown'),
-  createCountdown: (input: Omit<Countdown, 'id' | 'sortOrder'> & { sortOrder?: number }) =>
-    post<Countdown>('/open/v1/countdown', input),
-  updateCountdown: (id: string, patch: Partial<Omit<Countdown, 'id'>>) =>
+  createCountdown: (input: CountdownInput) => post<Countdown>('/open/v1/countdown', input),
+  updateCountdown: (id: string, patch: Partial<CountdownInput>) =>
     post<Countdown>(`/open/v1/countdown/${id}`, patch),
   deleteCountdown: (id: string) => del<void>(`/open/v1/countdown/${id}`),
 };

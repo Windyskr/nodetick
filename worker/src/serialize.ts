@@ -191,7 +191,18 @@ export function serializeComment(r: Row) {
   };
 }
 
+/**
+ * Web builds before the pinned/archived columns faked them with sort_order
+ * -1e9 (pinned) and >= 1e9 (archived). Such rows read as pinned/archived with
+ * sort order 0 until their next save writes the real columns.
+ */
+export const LEGACY_PINNED_ORDER = -1_000_000_000;
+export const LEGACY_ARCHIVED_ORDER = 1_000_000_000;
+
 export function serializeCountdown(r: Row) {
+  const order = Number(r.sort_order ?? 0);
+  const legacyPinned = order <= LEGACY_PINNED_ORDER;
+  const legacyArchived = order >= LEGACY_ARCHIVED_ORDER;
   return {
     id: String(r.id),
     name: str(r.name),
@@ -204,6 +215,15 @@ export function serializeCountdown(r: Row) {
     style: Number(r.style ?? 0),
     color: str(r.color) ?? '#4772FA',
     icon: str(r.icon),
-    sortOrder: Number(r.sort_order ?? 0),
+    sortOrder: legacyPinned || legacyArchived ? 0 : order,
+    note: str(r.note) ?? '',
+    pinned: !!r.pinned || legacyPinned,
+    archived: !!r.archived || legacyArchived,
+    archivedTime: r.archived_at == null ? null : new Date(Number(r.archived_at)).toISOString(),
+    reminderTime: str(r.reminder_time),
+    lunar: !!r.lunar,
+    numberFormat: r.number_format === 'ymd' ? 'ymd' : 'days',
+    showInCalendar: r.show_in_calendar == null ? true : !!r.show_in_calendar,
+    createdTime: r.created_at == null ? null : new Date(Number(r.created_at)).toISOString(),
   };
 }

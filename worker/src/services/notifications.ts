@@ -5,6 +5,7 @@ import {
 } from '@block65/webcrypto-web-push';
 import type { Env } from '../env.js';
 import { ensureSchema } from '../db.js';
+import { lunarYearlyFallsOn, solarToLunar } from '../lunar.js';
 import { daysInMonth, genId, parseJsonArray } from '../util.js';
 
 /** Languages a push subscription can receive (the device's UI language). */
@@ -18,10 +19,16 @@ export const NOTIFICATION_TEXT = {
   taskSoon: { zh: '任务即将开始', en: 'Task starts soon' },
   habitPending: { zh: '今天还没有打卡', en: "You haven't checked in today" },
   countdownToday: { zh: '今天', en: 'Today' },
-  countdownSoon: { zh: '还有 3 天', en: '3 days to go' },
   testTitle: { zh: 'NodeTick 通知测试', en: 'NodeTick test notification' },
   testBody: { zh: '通知功能已经连接成功。', en: 'Notifications are working.' },
 } as const;
+
+/** "还有 N 天" / "N days to go" ("今天" / "Today" on the day), in workdays for workday countdowns. */
+export function countdownBody(days: number, workdays = false): Localized {
+  if (days <= 0) return NOTIFICATION_TEXT.countdownToday;
+  if (workdays) return { zh: `还有 ${days} 个工作日`, en: days === 1 ? '1 workday to go' : `${days} workdays to go` };
+  return { zh: `还有 ${days} 天`, en: days === 1 ? '1 day to go' : `${days} days to go` };
+}
 
 export function pushLang(value: unknown): PushLang {
   return value === 'en' ? 'en' : 'zh';
@@ -152,14 +159,106 @@ function occurrenceIn(year: number, month: number, day: number): string {
 /**
  * Whether a countdown dated `date` (YYYY-MM-DD) falls on `day`. Yearly and
  * monthly repeats recur from the original date onwards; days that a short
- * month lacks fall on that month's last day instead of being skipped.
+ * month lacks fall on that month's last day instead of being skipped. A
+ * lunar countdown repeats yearly on its lunar date (see lunarAnniversary);
+ * monthly repeats are always solar.
  */
-export function countdownFallsOn(date: string, repeat: unknown, day: string): boolean {
+export function countdownFallsOn(date: string, repeat: unknown, day: string, lunar = false): boolean {
   if (day < date) return false;
+  if (repeat === 'yearly' && lunar && solarToLunar(date)) return lunarYearlyFallsOn(date, day);
   if (repeat !== 'yearly' && repeat !== 'monthly') return day === date;
   const year = Number(day.slice(0, 4));
   const month = repeat === 'yearly' ? Number(date.slice(5, 7)) : Number(day.slice(5, 7));
   return day === occurrenceIn(year, month, Number(date.slice(8, 10)));
+}
+
+/** Countdown reminder tokens, nearest lead first ('same-day' and '3-days' predate the others). */
+export const COUNTDOWN_REMINDERS = ['same-day', '1-day', '2-days', '3-days', '1-week', '1-month'] as const;
+const COUNTDOWN_LEAD_DAYS: Record<string, number> = { 'same-day': 0, '1-day': 1, '2-days': 2, '3-days': 3, '1-week': 7 };
+
+function dayDistance(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+}
+
+/** Mon–Fri days in (from, to], the count a workday countdown shows. */
+function workdaysUntil(from: string, to: string): number {
+  const total = dayDistance(from, to);
+  let count = Math.floor(total / 7) * 5;
+  const start = new Date(`${from}T00:00:00Z`).getUTCDay();
+  for (let i = 1; i <= total % 7; i++) {
+    const weekday = (start + i) % 7;
+    if (weekday !== 0 && weekday !== 6) count += 1;
+  }
+  return count;
+}
+
+/** `day` one month earlier, clamped to the month end (03-31 → 02-28). */
+function monthBefore(day: string): string {
+  const year = Number(day.slice(0, 4));
+  const month = Number(day.slice(5, 7));
+  return month === 1 ? occurrenceIn(year - 1, 12, Number(day.slice(8, 10))) : occurrenceIn(year, month - 1, Number(day.slice(8, 10)));
+}
+
+/** The occurrence a reminder token announces on `today`, if any. */
+function announcedOccurrence(date: string, repeat: unknown, lunar: boolean, token: string, today: string): string | null {
+  const lead = COUNTDOWN_LEAD_DAYS[token];
+  if (lead != null) {
+    // Match the day the reminder points at (today + lead), so a Jan 2 event
+    // is announced on Dec 30 and a monthly 31st still fires in short months.
+    const target = addDays(today, lead);
+    return countdownFallsOn(date, repeat, target, lunar) ? target : null;
+  }
+  if (token !== '1-month') return null;
+  // One calendar month ahead: 28–31 days. Mar 29–31 are all announced on
+  // Feb 28, like a short month's last day stands in for missing days.
+  for (let offset = 28; offset <= 31; offset++) {
+    const target = addDays(today, offset);
+    if (monthBefore(target) === today && countdownFallsOn(date, repeat, target, lunar)) return target;
+  }
+  return null;
+}
+
+/**
+ * Reminders of one countdown row that are due around `now`, in the user's
+ * zone: each fires at the row's reminder time (else the all-day time) on the
+ * day its lead points at. Pure, so the cron and the tests share it.
+ */
+export function countdownReminderCandidates(
+  row: Record<string, unknown>,
+  setting: Pick<SettingRow, 'user_id' | 'timezone' | 'all_day_time' | 'sound_enabled'>,
+  now: number,
+): Candidate[] {
+  const eventDay = String(row.date ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDay)) return [];
+  const timeZone = validTimeZone(setting.timezone);
+  const today = localDay(new Date(now), timeZone);
+  // A malformed time (e.g. from a hand-edited backup) falls back to the all-day time.
+  const time = typeof row.reminder_time === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(row.reminder_time) ? row.reminder_time : setting.all_day_time;
+  // Every lead shares the time of day: most cron runs stop here.
+  const scheduledAt = zonedTimestamp(today, time, timeZone);
+  if (scheduledAt == null || !dueNow(scheduledAt, now)) return [];
+  const lunar = Number(row.lunar ?? 0) === 1;
+  const workdays = row.calculation === 'workday';
+  const id = String(row.id);
+  const name = String(row.name ?? '');
+  const title = typeof row.icon === 'string' && row.icon ? `${row.icon} ${name}` : name;
+  const out: Candidate[] = [];
+  for (const reminder of parseJsonArray<string>(String(row.reminders ?? '[]'))) {
+    const target = announcedOccurrence(eventDay, row.repeat_flag, lunar, reminder, today);
+    if (!target) continue;
+    // A workday countdown counts workdays, like its card; a weekend-only gap
+    // has none, so that falls back to calendar days.
+    const workdayCount = workdays ? workdaysUntil(today, target) : 0;
+    out.push({
+      userId: setting.user_id, scheduledAt,
+      dedupeKey: `countdown:${id}:${today}:${reminder}`,
+      sourceType: 'countdown', sourceId: id, tag: `countdown-${id}-${target}`,
+      title, body: workdayCount > 0 ? countdownBody(workdayCount, true) : countdownBody(dayDistance(today, target)),
+      url: `/app/countdown?countdown=${encodeURIComponent(id)}`,
+      sound: setting.sound_enabled ? 'on' : 'off',
+    });
+  }
+  return out;
 }
 
 async function settings(db: D1Database): Promise<SettingRow[]> {
@@ -249,32 +348,15 @@ async function habitCandidates(db: D1Database, setting: SettingRow, now: number)
 
 async function countdownCandidates(db: D1Database, setting: SettingRow, now: number): Promise<Candidate[]> {
   if (!setting.countdown_enabled) return [];
-  const today = localDay(new Date(now), validTimeZone(setting.timezone));
+  // Runs every minute: the partial index holds only unarchived countdowns
+  // with reminders. Rows still archived the legacy way (sort_order >= 1e9,
+  // see serializeCountdown) are skipped too.
   const rows = await db.prepare(
-    `SELECT id, name, date, reminders, repeat_flag FROM countdowns WHERE user_id = ? AND reminders != '[]'`,
+    `SELECT id, name, icon, date, reminders, repeat_flag, reminder_time, lunar, calculation
+     FROM countdowns INDEXED BY idx_countdowns_reminders
+     WHERE user_id = ? AND reminders != '[]' AND archived = 0 AND sort_order < 1000000000`,
   ).bind(setting.user_id).all<Record<string, unknown>>();
-  const out: Candidate[] = [];
-  for (const row of rows.results) {
-    const eventDay = String(row.date ?? '');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDay)) continue;
-    for (const reminder of parseJsonArray<string>(String(row.reminders ?? '[]'))) {
-      const lead = reminder === 'same-day' ? 0 : reminder === '3-days' ? 3 : null;
-      // Match the day the reminder points at (today + lead), so a Jan 2 event
-      // is announced on Dec 30 and a monthly 31st still fires in short months.
-      if (lead == null || !countdownFallsOn(eventDay, row.repeat_flag, addDays(today, lead))) continue;
-      const scheduledAt = zonedTimestamp(today, setting.all_day_time, setting.timezone);
-      if (scheduledAt == null || !dueNow(scheduledAt, now)) continue;
-      const id = String(row.id);
-      out.push({
-        userId: setting.user_id, scheduledAt,
-        dedupeKey: `countdown:${id}:${today}:${reminder}`,
-        sourceType: 'countdown', sourceId: id, tag: `countdown-${id}-${today}`,
-        title: String(row.name), body: lead === 0 ? NOTIFICATION_TEXT.countdownToday : NOTIFICATION_TEXT.countdownSoon, url: '/app/countdown',
-        sound: setting.sound_enabled ? 'on' : 'off',
-      });
-    }
-  }
-  return out;
+  return rows.results.flatMap((row) => countdownReminderCandidates(row, setting, now));
 }
 
 export async function sendToUser(env: Env, userId: string, payload: NotificationPayload): Promise<{ sent: number; failed: number }> {

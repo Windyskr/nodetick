@@ -136,7 +136,10 @@ export async function importBackup(
   upsert('habit_checkins', doc.habitCheckins, ['id', 'habit_id', 'stamp', 'value', 'goal', 'status', 'time', 'op_time', 'created_at']);
   upsert('habit_records', doc.habitRecords, ['id', 'habit_id', 'stamp', 'content', 'emoji', 'op_time', 'created_at']);
   upsert('focus_records', doc.focusRecords, ['id', 'type', 'task_id', 'note', 'start_time', 'end_time', 'duration', 'pause_duration', 'relation', 'status', 'etag', 'created_at']);
-  upsert('countdowns', doc.countdowns, ['id', 'name', 'date', 'kind', 'reminders', 'repeat_flag', 'calculation', 'display_mode', 'style', 'color', 'icon', 'sort_order', 'created_at']);
+  // Backups from before note…show_in_calendar existed import with the column
+  // defaults: INSERT OR REPLACE turns a NULL for a NOT NULL column into its default.
+  upsert('countdowns', doc.countdowns, ['id', 'name', 'date', 'kind', 'reminders', 'repeat_flag', 'calculation', 'display_mode', 'style', 'color', 'icon', 'sort_order', 'created_at',
+    'note', 'pinned', 'archived', 'archived_at', 'reminder_time', 'lunar', 'number_format', 'show_in_calendar']);
 
   let imported = 0;
   for (const result of await runBatches(env.DB, statements)) if (result.meta.changes) imported++;

@@ -11,6 +11,8 @@ import {
 } from '../serialize.js';
 import { genId, nonStringField, nowIso, parseApiDate, parseJsonArray, readJsonObject, RequestBodyTooLargeError, isRequestBodyTooLarge } from '../util.js';
 import { BackupImportError, exportBackup, importBackup } from '../services/backup.js';
+import { COUNTDOWN_REMINDERS } from '../services/notifications.js';
+import { LUNAR_FIRST_DAY, LUNAR_LAST_DAY } from '../lunar.js';
 import { runBatches } from '../db.js';
 import { tagKey } from './tasks.js';
 
@@ -93,12 +95,19 @@ const COUNTDOWN_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const COUNTDOWN_KINDS = ['countdown', 'anniversary', 'birthday', 'holiday'] as const;
 const COUNTDOWN_CALCULATIONS = ['standard', 'workday'] as const;
 const COUNTDOWN_DISPLAY_MODES = ['on-day', 'always'] as const;
+const COUNTDOWN_REPEATS = ['yearly', 'monthly'] as const;
+const COUNTDOWN_NUMBER_FORMATS = ['days', 'ymd'] as const;
+const COUNTDOWN_CLOCK = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const MAX_COUNTDOWN_NOTE = 4000;
 
 function validCountdownDate(value: unknown): value is string {
   if (typeof value !== 'string' || !COUNTDOWN_DATE.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
+
+const isOneOf = <T extends string>(list: readonly T[], value: unknown): value is T =>
+  typeof value === 'string' && (list as readonly string[]).includes(value);
 
 function countdownInput(b: Record<string, unknown>, partial = false) {
   const name = b.name;
@@ -108,6 +117,25 @@ function countdownInput(b: Record<string, unknown>, partial = false) {
   }
   if ((!partial || date != null) && (!validCountdownDate(date) || date.length > MAX_COUNTDOWN_DATE)) {
     return { error: 'date must be a valid YYYY-MM-DD date' } as const;
+  }
+  for (const key of ['pinned', 'archived', 'lunar', 'showInCalendar'] as const) {
+    if (b[key] != null && typeof b[key] !== 'boolean') return { error: `${key} must be a boolean` } as const;
+  }
+  // Lunar dates convert through the 1900–2100 table (src/lunar.ts).
+  if (b.lunar === true && typeof date === 'string' && (date < LUNAR_FIRST_DAY || date > LUNAR_LAST_DAY)) {
+    return { error: `lunar dates must fall between ${LUNAR_FIRST_DAY} and ${LUNAR_LAST_DAY}` } as const;
+  }
+  const note = b.note;
+  if (note != null && (typeof note !== 'string' || note.length > MAX_COUNTDOWN_NOTE)) {
+    return { error: `note must be a string of at most ${MAX_COUNTDOWN_NOTE} chars` } as const;
+  }
+  const reminderTime = b.reminderTime;
+  if (reminderTime != null && (typeof reminderTime !== 'string' || !COUNTDOWN_CLOCK.test(reminderTime))) {
+    return { error: 'reminderTime must be HH:MM, or null for the all-day reminder time' } as const;
+  }
+  const numberFormat = b.numberFormat;
+  if (numberFormat != null && !isOneOf(COUNTDOWN_NUMBER_FORMATS, numberFormat)) {
+    return { error: `numberFormat must be one of: ${COUNTDOWN_NUMBER_FORMATS.join(', ')}` } as const;
   }
   const sortOrder = b.sortOrder;
   if (sortOrder != null && (typeof sortOrder !== 'number' || !Number.isFinite(sortOrder))) {
@@ -126,12 +154,12 @@ function countdownInput(b: Record<string, unknown>, partial = false) {
     return { error: 'displayMode is invalid' } as const;
   }
   const reminders = b.reminders;
-  if (reminders != null && (!Array.isArray(reminders) || reminders.length > MAX_COUNTDOWN_REMINDERS || reminders.some((item) => typeof item !== 'string' || item.length > 64))) {
-    return { error: `reminders must contain at most ${MAX_COUNTDOWN_REMINDERS} strings` } as const;
+  if (reminders != null && (!Array.isArray(reminders) || reminders.length > MAX_COUNTDOWN_REMINDERS || reminders.some((item) => !isOneOf(COUNTDOWN_REMINDERS, item)))) {
+    return { error: `reminders must be a list of: ${COUNTDOWN_REMINDERS.join(', ')}` } as const;
   }
   const repeatFlag = b.repeatFlag;
-  if (repeatFlag != null && (typeof repeatFlag !== 'string' || repeatFlag.length > 128)) {
-    return { error: 'repeatFlag must be a string' } as const;
+  if (repeatFlag != null && repeatFlag !== '' && !isOneOf(COUNTDOWN_REPEATS, repeatFlag)) {
+    return { error: 'repeatFlag must be yearly, monthly or null' } as const;
   }
   const style = b.style;
   if (style != null && (typeof style !== 'number' || !Number.isInteger(style) || style < 0 || style > 4)) {
@@ -145,19 +173,28 @@ function countdownInput(b: Record<string, unknown>, partial = false) {
   if (icon != null && (typeof icon !== 'string' || icon.length > 32)) {
     return { error: 'icon must be a string' } as const;
   }
+  const flag = (value: unknown) => (typeof value === 'boolean' ? (value ? 1 : 0) : null);
   return {
     value: {
       name: typeof name === 'string' ? name.trim() : null,
       date: typeof date === 'string' ? date : null,
       kind: typeof kind === 'string' ? kind : null,
-      reminders: Array.isArray(reminders) ? reminders : null,
-      repeatFlag: typeof repeatFlag === 'string' ? repeatFlag : null,
+      // Deduplicated, nearest lead first.
+      reminders: Array.isArray(reminders) ? COUNTDOWN_REMINDERS.filter((token) => reminders.includes(token)) : null,
+      repeatFlag: typeof repeatFlag === 'string' && repeatFlag ? repeatFlag : null,
       calculation: typeof calculation === 'string' ? calculation : null,
       displayMode: typeof displayMode === 'string' ? displayMode : null,
       style: typeof style === 'number' ? style : null,
       color: typeof color === 'string' ? color : null,
       icon: typeof icon === 'string' ? icon : null,
       sortOrder: typeof sortOrder === 'number' ? sortOrder : null,
+      note: typeof note === 'string' ? note : null,
+      pinned: flag(b.pinned),
+      archived: flag(b.archived),
+      reminderTime: typeof reminderTime === 'string' ? reminderTime : null,
+      lunar: flag(b.lunar),
+      numberFormat: typeof numberFormat === 'string' ? numberFormat : null,
+      showInCalendar: flag(b.showInCalendar),
     },
   } as const;
 }
@@ -894,23 +931,24 @@ misc.post('/countdown', async (c) => {
   const parsed = countdownInput(b);
   if ('error' in parsed) return c.json({ error: parsed.error }, 400);
   const value = parsed.value;
-  const id = genId();
-  await c.env.DB.prepare(
+  const now = Date.now();
+  const row = await c.env.DB.prepare(
     `INSERT INTO countdowns (
       id, user_id, name, date, kind, reminders, repeat_flag, calculation,
-      display_mode, style, color, icon, sort_order, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      display_mode, style, color, icon, sort_order, created_at,
+      note, pinned, archived, archived_at, reminder_time, lunar, number_format, show_in_calendar
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    RETURNING *`,
   )
     .bind(
-      id, userId, value.name, value.date, value.kind ?? 'countdown',
+      genId(), userId, value.name, value.date, value.kind ?? 'countdown',
       JSON.stringify(value.reminders ?? []), value.repeatFlag,
       value.calculation ?? 'standard', value.displayMode ?? 'on-day',
       value.style ?? 0, value.color ?? '#4772FA', value.icon,
-      value.sortOrder ?? 0, Date.now(),
+      value.sortOrder ?? 0, now,
+      value.note ?? '', value.pinned ?? 0, value.archived ?? 0, value.archived ? now : null,
+      value.reminderTime, value.lunar ?? 0, value.numberFormat ?? 'days', value.showInCalendar ?? 1,
     )
-    .run();
-  const row = await c.env.DB.prepare('SELECT * FROM countdowns WHERE id = ? AND user_id = ?')
-    .bind(id, userId)
     .first();
   return c.json(serializeCountdown(row!));
 });
@@ -921,30 +959,46 @@ misc.post('/countdown/:countdownId', async (c) => {
   const parsed = countdownInput(b, true);
   if ('error' in parsed) return c.json({ error: parsed.error }, 400);
   const value = parsed.value;
-  const res = await c.env.DB.prepare(
+  // Absent fields keep their value. A row still carrying a legacy sort order
+  // (-1e9 pinned, >= 1e9 archived, see serializeCountdown) gets the real
+  // flags and sort order 0 on this save, unless the request sets them.
+  const row = await c.env.DB.prepare(
     `UPDATE countdowns SET
-      name = COALESCE(?, name), date = COALESCE(?, date), kind = COALESCE(?, kind),
-      reminders = COALESCE(?, reminders), repeat_flag = CASE WHEN ? THEN ? ELSE repeat_flag END,
-      calculation = COALESCE(?, calculation), display_mode = COALESCE(?, display_mode),
-      style = COALESCE(?, style), color = COALESCE(?, color),
-      icon = CASE WHEN ? THEN ? ELSE icon END, sort_order = COALESCE(?, sort_order)
-      WHERE id = ? AND user_id = ?`,
+      name = COALESCE(?1, name), date = COALESCE(?2, date), kind = COALESCE(?3, kind),
+      reminders = COALESCE(?4, reminders), repeat_flag = CASE WHEN ?5 THEN ?6 ELSE repeat_flag END,
+      calculation = COALESCE(?7, calculation), display_mode = COALESCE(?8, display_mode),
+      style = COALESCE(?9, style), color = COALESCE(?10, color),
+      icon = CASE WHEN ?11 THEN ?12 ELSE icon END,
+      note = COALESCE(?13, note),
+      reminder_time = CASE WHEN ?14 THEN ?15 ELSE reminder_time END,
+      lunar = COALESCE(?16, lunar), number_format = COALESCE(?17, number_format),
+      show_in_calendar = COALESCE(?18, show_in_calendar),
+      pinned = COALESCE(?19, CASE WHEN ?21 IS NULL AND sort_order <= -1000000000 THEN 1 ELSE pinned END),
+      archived = COALESCE(?20, CASE WHEN ?21 IS NULL AND sort_order >= 1000000000 THEN 1 ELSE archived END),
+      archived_at = CASE
+        WHEN ?20 IS NULL THEN CASE WHEN ?21 IS NULL AND sort_order >= 1000000000 THEN COALESCE(archived_at, ?22) ELSE archived_at END
+        WHEN ?20 = 1 THEN CASE WHEN archived = 1 OR sort_order >= 1000000000 THEN COALESCE(archived_at, ?22) ELSE ?22 END
+        ELSE NULL END,
+      sort_order = COALESCE(?21, CASE WHEN sort_order <= -1000000000 OR sort_order >= 1000000000 THEN 0 ELSE sort_order END)
+      WHERE id = ?23 AND user_id = ?24
+      RETURNING *`,
   )
     .bind(
       value.name, value.date, value.kind,
       value.reminders ? JSON.stringify(value.reminders) : null,
       Object.hasOwn(b, 'repeatFlag') ? 1 : 0, value.repeatFlag,
       value.calculation, value.displayMode, value.style, value.color,
-      Object.hasOwn(b, 'icon') ? 1 : 0, value.icon, value.sortOrder,
+      Object.hasOwn(b, 'icon') ? 1 : 0, value.icon,
+      value.note,
+      Object.hasOwn(b, 'reminderTime') ? 1 : 0, value.reminderTime,
+      value.lunar, value.numberFormat, value.showInCalendar,
+      value.pinned, value.archived, value.sortOrder, Date.now(),
       c.req.param('countdownId'),
       userId,
     )
-    .run();
-  if (!res.meta.changes) return c.json({ error: 'countdown not found' }, 404);
-  const row = await c.env.DB.prepare('SELECT * FROM countdowns WHERE id = ? AND user_id = ?')
-    .bind(c.req.param('countdownId'), userId)
     .first();
-  return c.json(serializeCountdown(row!));
+  if (!row) return c.json({ error: 'countdown not found' }, 404);
+  return c.json(serializeCountdown(row));
 });
 
 misc.delete('/countdown/:countdownId', async (c) => {

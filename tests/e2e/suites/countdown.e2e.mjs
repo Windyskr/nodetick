@@ -38,6 +38,43 @@ export async function run({ h, server, session }) {
     eq(c.date, '2027-01-01', 'updated date');
   });
 
+  let lunarId;
+  h.test('countdown create: lunar yearly birthday with reminders, note and style', () => {
+    const c = h.j([
+      'countdown', 'create', '--name', `${pfx}-moon`, '--date', '1990-10-03', '--kind', 'birthday', '--repeat', 'yearly', '--lunar',
+      '--reminders', '1-week,same-day', '--reminder-time', '08:30', '--note', 'Mooncakes', '--style', '4', '--format', 'ymd', '--pin',
+    ], 'countdown create lunar');
+    eq(c.lunar, true, 'lunar');
+    eq(c.repeatFlag, 'yearly', 'repeat');
+    eq(JSON.stringify(c.reminders), '["same-day","1-week"]', 'reminders, nearest lead first');
+    eq(c.reminderTime, '08:30', 'reminder time');
+    eq(c.note, 'Mooncakes', 'note');
+    eq(c.style, 4, 'style');
+    eq(c.numberFormat, 'ymd', 'number format');
+    eq(c.pinned, true, 'pinned');
+    lunarId = c.id;
+  });
+
+  h.test('countdown create: unknown reminder token rejected by the server', () => {
+    h.runFails(
+      ['countdown', 'create', '--name', 'x', '--date', '2027-01-01', '--reminders', 'tomorrow'],
+      'reminders must be a list of',
+      'countdown create bad reminder',
+    );
+  });
+
+  h.test('countdown update: archive, list --archived, restore and reset the reminder time', () => {
+    const archived = h.j(['countdown', 'update', lunarId, '--archive', '--no-pin', '--reminder-time', 'default', '--repeat', 'none'], 'countdown archive');
+    eq(archived.archived, true, 'archived');
+    eq(archived.pinned, false, 'unpinned');
+    eq(archived.reminderTime, null, 'default reminder time');
+    eq(archived.repeatFlag, null, 'no repeat');
+    ok(h.j(['countdown', 'list', '--archived'], 'countdown list archived').some((c) => c.id === lunarId), 'listed as archived');
+    ok(!h.runOk(['countdown', 'list'], 'countdown list text').stdout.includes(`${pfx}-moon`), 'hidden from the active list');
+    eq(h.j(['countdown', 'update', lunarId, '--no-archive'], 'countdown restore').archived, false, 'restored');
+    h.runOk(['countdown', 'delete', lunarId], 'countdown delete lunar');
+  });
+
   h.test('countdown update: unknown id fails', () => {
     h.runFails(
       ['countdown', 'update', '0'.repeat(24), '--name', 'ghost'],

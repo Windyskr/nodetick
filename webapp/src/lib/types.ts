@@ -173,16 +173,30 @@ export interface Focus {
 export interface Countdown {
   id: string;
   name: string | null;
+  /** YYYY-MM-DD; for a lunar countdown, the solar day of its original lunar date. */
   date: string | null;
   kind: 'countdown' | 'anniversary' | 'birthday' | 'holiday';
+  /** Tokens: same-day, 1-day, 2-days, 3-days, 1-week, 1-month. */
   reminders: string[];
+  /** 'yearly' | 'monthly' | null; yearly + lunar repeats on the lunar date. */
   repeatFlag: string | null;
   calculation: 'standard' | 'workday';
+  /** Legacy smart-list option, kept for API compatibility; the UI uses showInCalendar. */
   displayMode: 'on-day' | 'always';
   style: number;
   color: string;
   icon: string | null;
   sortOrder: number;
+  note: string;
+  pinned: boolean;
+  archived: boolean;
+  archivedTime: string | null;
+  /** HH:MM; null = the all-day reminder time from the notification settings. */
+  reminderTime: string | null;
+  lunar: boolean;
+  numberFormat: 'days' | 'ymd';
+  showInCalendar: boolean;
+  createdTime: string | null;
 }
 
 export interface ApiToken {

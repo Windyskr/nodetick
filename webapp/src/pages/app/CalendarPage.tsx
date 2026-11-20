@@ -7,6 +7,8 @@ import { addDays, allDayDate, dayDistance, dayOf, daysInRange, moveDateToDay, ti
 import { RoundCheck } from '../../components/RoundCheck';
 import { MenuItem, Popover } from '../../components/Popover';
 import { isSubmitEnter } from '../../lib/keys';
+import { lunarDayName, solarToLunar } from '../../lib/lunar';
+import { CountdownChip, useCalendarCountdowns } from './CountdownChips';
 
 const WEEKDAYS: Record<string, string[]> = {
   en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -73,21 +75,10 @@ function dayNumber(day: string): number {
   return Number(day.slice(8, 10));
 }
 
+/** 初一 … 三十 from the 1900–2100 table (lib/lunar.ts), which countdowns share; ICU is a day off around some new moons. */
 function lunarDayLabel(day: string): string {
-  try {
-    const parts = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', { day: 'numeric' }).formatToParts(new Date(`${day}T00:00:00`));
-    const value = Number(parts.find((part) => part.type === 'day')?.value);
-    if (!Number.isInteger(value) || value < 1 || value > 30) return '';
-    if (value === 10) return '初十';
-    if (value === 20) return '二十';
-    if (value === 30) return '三十';
-    const ones = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-    if (value < 10) return `初${ones[value]}`;
-    if (value < 20) return `十${ones[value - 10]}`;
-    return `廿${ones[value - 20]}`;
-  } catch {
-    return '';
-  }
+  const lunar = solarToLunar(day);
+  return lunar ? lunarDayName(lunar.day) : '';
 }
 
 function shiftYear(day: string, delta: number): string {
@@ -349,6 +340,7 @@ function AllDayGrid({
   onDragOver,
   onDrop,
   onAdd,
+  extras,
 }: {
   days: string[];
   byDay: Map<string, Task[]>;
@@ -366,6 +358,8 @@ function AllDayGrid({
   onDragOver: (day: string) => void;
   onDrop: (day: string, event: DragEvent<HTMLElement>) => void;
   onAdd: (day: string) => void;
+  /** Read-only all-day entries (countdowns) above the tasks. */
+  extras?: (day: string) => ReactNode;
 }) {
   const columns = `72px repeat(${days.length}, minmax(132px, 1fr))`;
   return (
@@ -382,6 +376,7 @@ function AllDayGrid({
             onDrop={(event) => onDrop(day, event)}
             className={`group/day min-h-[58px] border-b border-l border-line px-1.5 py-1 ${dragOverDay === day ? 'bg-tt-light/50' : ''}`}
           >
+            {extras?.(day)}
             {(byDay.get(day) ?? []).filter((task) => !isTimed(task)).map((task) => (
               <CalendarTask
                 key={task.id}
@@ -427,6 +422,7 @@ function AgendaView({
   onDragOver,
   onDrop,
   onAdd,
+  extras,
 }: {
   days: string[];
   byDay: Map<string, Task[]>;
@@ -447,6 +443,8 @@ function AgendaView({
   onDragOver: (day: string) => void;
   onDrop: (day: string, event: DragEvent<HTMLElement>) => void;
   onAdd: (day: string) => void;
+  /** Read-only all-day entries (countdowns) with the all-day tasks. */
+  extras?: (day: string) => ReactNode;
 }) {
   return (
     <div className="min-h-0 min-w-0 flex-1 overflow-auto rounded-2xl border border-line">
@@ -454,6 +452,7 @@ function AgendaView({
           const list = byDay.get(day) ?? [];
           const allDay = list.filter((task) => !isTimed(task));
           const timed = list.filter(isTimed);
+          const chips = extras?.(day);
           return (
             <section
               key={day}
@@ -474,10 +473,11 @@ function AgendaView({
                     </span>
                   </div>
 
-                  {allDay.length > 0 && (
+                  {(allDay.length > 0 || chips) && (
                     <div className="mb-6">
                       <div className="mb-1 text-[10px] uppercase tracking-wide text-ink-3">{allDayLabel}</div>
                       <div className="space-y-1">
+                        {chips}
                         {allDay.map((task) => (
                           <CalendarTask
                             key={task.id}
@@ -508,7 +508,7 @@ function AgendaView({
                       onDragStart={onDragStart}
                       onDragEnd={onDragEnd}
                     />
-                  )) : list.length === 0 ? (
+                  )) : list.length === 0 && !chips ? (
                     <div className="py-1 text-[14px] text-ink-3">{noTasksLabel}</div>
                   ) : null}
 
@@ -544,6 +544,7 @@ function MultiWeekView({
   onDragOver,
   onDrop,
   onAdd,
+  extras,
 }: {
   days: string[];
   byDay: Map<string, Task[]>;
@@ -562,6 +563,8 @@ function MultiWeekView({
   onDragOver: (day: string) => void;
   onDrop: (day: string, event: DragEvent<HTMLElement>) => void;
   onAdd: (day: string) => void;
+  /** Read-only all-day entries (countdowns) above the tasks. */
+  extras?: (day: string) => ReactNode;
 }) {
   return (
     <div className="min-h-0 min-w-0 flex-1 overflow-auto rounded-xl border border-line">
@@ -589,6 +592,7 @@ function MultiWeekView({
                   <button type="button" title={addTaskLabel} onClick={() => onAdd(day)} className="text-ink-3 opacity-0 transition-opacity hover:text-tt group-hover/day:opacity-100"><Plus size={12} /></button>
                 </div>
                 <div className="space-y-1">
+                  {extras?.(day)}
                   {list.slice(0, 8).map((task) => (
                     <CalendarTask
                       key={task.id}
@@ -645,6 +649,17 @@ export default function CalendarPage() {
   }, [selectedDay]);
   const multiDayDays = useMemo(() => Array.from({ length: 3 }, (_, index) => addDays(selectedDay, index)), [selectedDay]);
   const multiWeekDays = useMemo(() => Array.from({ length: 14 }, (_, index) => addDays(startOfWeek(selectedDay), index)), [selectedDay]);
+
+  // Countdown chips (read-only, open the countdown) for any day the views show.
+  const [chipStart, chipEnd] = useMemo(() => {
+    const bounds = [grid[0], grid[grid.length - 1], weekDays[0], weekDays[6], multiWeekDays[0], multiWeekDays[13], multiDayDays[2], selectedDay].sort();
+    return [bounds[0], bounds[bounds.length - 1]];
+  }, [grid, weekDays, multiWeekDays, multiDayDays, selectedDay]);
+  const countdownsByDay = useCalendarCountdowns(chipStart, chipEnd);
+  const countdownChips = (day: string) => {
+    const list = countdownsByDay.get(day);
+    return list?.length ? list.map((countdown) => <CountdownChip key={countdown.id} countdown={countdown} />) : null;
+  };
 
   const byDay = useMemo(() => {
     const map = new Map<string, Task[]>();
@@ -896,6 +911,7 @@ export default function CalendarPage() {
                       )}
                     </div>
                     <div className="min-h-0 flex-1 space-y-[3px] overflow-y-auto">
+                      {countdownChips(day)}
                       {list.slice(0, 4).map((task) => (
                         <CalendarTask
                           key={task.id}
@@ -938,6 +954,7 @@ export default function CalendarPage() {
               onDragOver={setDragOverDay}
               onDrop={dropOn}
               onAdd={(day) => { setAddingDay(day); setDraft(''); }}
+              extras={countdownChips}
             />
             <TimeGrid
               days={rangedDays}
@@ -978,6 +995,7 @@ export default function CalendarPage() {
             onDragOver={setDragOverDay}
             onDrop={dropOn}
             onAdd={(day) => { setAddingDay(day); setDraft(''); }}
+            extras={countdownChips}
           />
         )}
 
@@ -1000,6 +1018,7 @@ export default function CalendarPage() {
             onDragOver={setDragOverDay}
             onDrop={dropOn}
             onAdd={(day) => { setAddingDay(day); setDraft(''); }}
+            extras={countdownChips}
           />
         )}
 

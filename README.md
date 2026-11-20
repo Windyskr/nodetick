@@ -23,7 +23,7 @@
 - **四象限**：按优先级把任务分进四个象限
 - **习惯**：7 天打卡条和连胜记录
 - **专注**：番茄计时器和周统计
-- **倒计时**：倒数纪念日，可按月或按年重复；设在 29–31 日的每月重复遇到小月时在月末提醒，2 月 29 日的每年重复在平年按 2 月 28 日提醒
+- **倒数纪念日**：五种卡片样式（经典 / 纯色 / 日历 / 柔和 / 圆环）、调色板和 emoji 图标，按天数或年月日显示；支持农历日期（含闰月）和「农历每年」重复，适合农历生日和春节、中秋等节日；按月或按年重复时，29–31 日遇到小月按月末，2 月 29 日在平年按 2 月 28 日；提醒可多选当天、提前 1 / 2 / 3 天、1 周、1 个月，并可单独设置提醒时间；详情面板显示星期、农历、岁数 / 周年、年月日间隔和可编辑的备注；支持置顶、归档与恢复，按日期 / 自定义（拖动）/ 创建时间排序，卡片或列表视图，按类型分组，可在日历中显示为全天条目
 - **统计**：头像菜单里的「统计」页按近 7 天 / 30 天 / 12 周 / 12 个月统计完成任务数（与上期对比）、到期任务完成率、准时完成率和当前逾期；完成趋势柱状图、过去一年的完成日历，以及按清单、标签、优先级、星期和时段的分布；可只看一个清单，每张图都能切换成表格
 - **摘要**：按条件汇总任务（开发中，见[路线图](#路线图)）
 - **通知**：通过 Web Push 推送任务、习惯和纪念日提醒；每台设备单独开关，在一台设备上关闭不影响其他设备；推送文案跟随该设备的界面语言（中 / 英）；支持分类开关、全天事项提醒时间和测试通知，点击通知直达对应任务（需先[开启浏览器通知](#开启浏览器通知可选)）
@@ -247,6 +247,7 @@ nodetick task search 牛奶 --status 0
 nodetick habit checkin <habitId> --stamp 20260831 --value 5
 nodetick focus list --from "2026-08-01T00:00:00+0000" --to "2026-08-30T23:59:59+0000" --type pomodoro
 nodetick countdown create --name "发布日" --date 2026-12-31
+nodetick countdown create --name "妈妈生日" --date 1965-09-10 --kind birthday --repeat yearly --lunar --reminders same-day,1-week --reminder-time 08:00
 nodetick countdown update <countdownId> --date 2027-01-01
 nodetick countdown delete <countdownId>
 
@@ -335,9 +336,9 @@ nodetick backup import ./my-backup.json   # 按 id 合并导入，不删除现�
 | GET | `/focus` | 专注记录列表（时间范围最多 30 天） |
 | POST | `/focus` | 创建专注记录 |
 | GET / DELETE | `/focus/{focusId}?type=` | 获取 / 删除专注记录 |
-| GET | `/countdown` | 倒计时列表 |
+| GET | `/countdown` | 倒计时列表（另含 `note`、`pinned`、`archived`、`reminderTime`、`lunar`、`numberFormat`、`showInCalendar` 等 NodeTick 字段） |
 | POST | `/countdown` | 创建倒计时 ★ |
-| POST / DELETE | `/countdown/{countdownId}` | 更新 / 删除倒计时 ★ |
+| POST / DELETE | `/countdown/{countdownId}` | 更新（只改传入的字段）/ 删除倒计时 ★ |
 | GET / POST | `/filter` | 过滤器列表 / 创建过滤器（条件含清单、标签、日期、优先级、状态，以及关键词 `keywords` 和类型 `kinds`）★ |
 | POST / DELETE | `/filter/{filterId}` | 更新 / 删除过滤器 ★ |
 
@@ -401,7 +402,7 @@ OAuth（client id 为 `nodetick-cli`）：
 
 </details>
 
-**字段约定**以官方 CLI 的用法为准：`status`（0 未完成 / 2 已完成 / -1 已放弃）、`priority`（0 无 / 1 低 / 3 中 / 5 高）、`etag` 乐观锁、提醒 `TRIGGER` 字符串、`RRULE` / `ERULE` 重复规则。提醒和重复规则按原样存储和返回。完成重复任务时按规则生成下一次，支持 `FREQ`（天 / 周 / 月 / 年）、`INTERVAL`、`BYDAY`（含 `2TU`「第二个周二」、`-1FR`「最后一个周五」）、`BYMONTHDAY`（`-1` 为月末）、`BYMONTH`、`BYSETPOS`、`UNTIL` 和 `COUNT`；`COUNT` 是含当前这次在内还剩的次数，每生成一次减一。日期必须是真实存在的日期，格式为 `yyyy-MM-dd`，可带时间和时区（如 `2026-04-07T09:00:00+0800`）；字段类型不对（例如标题传了对象）返回 400。
+**字段约定**以官方 CLI 的用法为准：`status`（0 未完成 / 2 已完成 / -1 已放弃）、`priority`（0 无 / 1 低 / 3 中 / 5 高）、`etag` 乐观锁、提醒 `TRIGGER` 字符串、`RRULE` / `ERULE` 重复规则。提醒和重复规则按原样存储和返回。完成重复任务时按规则生成下一次，支持 `FREQ`（天 / 周 / 月 / 年）、`INTERVAL`、`BYDAY`（含 `2TU`「第二个周二」、`-1FR`「最后一个周五」）、`BYMONTHDAY`（`-1` 为月末）、`BYMONTH`、`BYSETPOS`、`UNTIL` 和 `COUNT`；`COUNT` 是含当前这次在内还剩的次数，每生成一次减一。倒计时的 `reminders` 取 `same-day`、`1-day`、`2-days`、`3-days`、`1-week`、`1-month`，`reminderTime` 为 `HH:MM` 或 `null`（用全天事项提醒时间），`repeatFlag` 为 `yearly`、`monthly` 或 `null`；`lunar: true` 时 `date` 是该农历日期对应的公历日（1900-01-31 至 2100-12-31），`yearly` 按农历每年重复。日期必须是真实存在的日期，格式为 `yyyy-MM-dd`，可带时间和时区（如 `2026-04-07T09:00:00+0800`）；字段类型不对（例如标题传了对象）返回 400。
 
 ## 安全模型
 
@@ -442,7 +443,7 @@ SESSION_SECRET=<32 位以上随机字符串>
 ## 路线图
 
 - [ ] 为专注增加正计时、更完整的累计统计和完整记录历史。
-- [ ] 完善倒计时的提醒、重复、备注、样式、归档和显示设置，进一步对齐官方“倒数纪念日”。
+- [x] 完善倒计时的提醒、重复、备注、样式、归档和显示设置，进一步对齐官方“倒数纪念日”。
 - [x] 搜索增加清单、标签、日期、优先级、类型、状态筛选，以及保存为过滤器。
 - [ ] 完成摘要持久化，并接通模板、保存、复制和分享功能。
 - [ ] 增加习惯自定义重复规则、编辑、多次数值打卡和历史统计。

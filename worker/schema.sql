@@ -224,8 +224,18 @@ CREATE TABLE IF NOT EXISTS countdowns (
   color TEXT NOT NULL DEFAULT '#4772FA',
   icon TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
+  archived_at INTEGER,
+  reminder_time TEXT,
+  lunar INTEGER NOT NULL DEFAULT 0,
+  number_format TEXT NOT NULL DEFAULT 'days',
+  show_in_calendar INTEGER NOT NULL DEFAULT 1
 );
+CREATE INDEX IF NOT EXISTS idx_countdowns_user_order ON countdowns(user_id, sort_order, created_at);
+CREATE INDEX IF NOT EXISTS idx_countdowns_reminders ON countdowns(user_id) WHERE reminders != '[]' AND archived = 0;
 
 CREATE TABLE IF NOT EXISTS notification_settings (
   user_id TEXT PRIMARY KEY,
