@@ -5,6 +5,7 @@ import { errorMessage } from '../../lib/errors';
 import type { ApiToken } from '../../lib/types';
 import { useT, useTF } from '../../i18n';
 import MsTodoImportDialog from './MsTodoImportDialog';
+import TickTickImportDialog from './TickTickImportDialog';
 
 export default function TokensPage() {
   const t = useT();
@@ -21,6 +22,7 @@ export default function TokensPage() {
   const [feedToken, setFeedToken] = useState<string | null>(null);
   const [feedCopied, setFeedCopied] = useState(false);
   const [msImportOpen, setMsImportOpen] = useState(false);
+  const [ttImportOpen, setTtImportOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -172,6 +174,13 @@ export default function TokensPage() {
             </button>
             <button
               type="button"
+              onClick={() => setTtImportOpen(true)}
+              className="flex items-center gap-1.5 rounded-md border border-line px-3 py-2 text-[13px] text-ink-2 hover:border-tt hover:text-tt"
+            >
+              <Import size={14} /> {t('ttImport')}
+            </button>
+            <button
+              type="button"
               onClick={() => setMsImportOpen(true)}
               className="flex items-center gap-1.5 rounded-md border border-line px-3 py-2 text-[13px] text-ink-2 hover:border-tt hover:text-tt"
             >
@@ -211,6 +220,7 @@ export default function TokensPage() {
           <p className="mt-2 text-[12px] leading-snug text-ink-3">{t('backupHint')}</p>
         </div>
         {msImportOpen && <MsTodoImportDialog onClose={() => setMsImportOpen(false)} />}
+        {ttImportOpen && <TickTickImportDialog onClose={() => setTtImportOpen(false)} />}
 
         <h2 className="mb-2 mt-8 text-[15px] font-semibold">{t('feedTitle')}</h2>
         <div className="rounded-xl border border-line p-4">

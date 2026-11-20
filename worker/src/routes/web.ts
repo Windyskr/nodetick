@@ -30,6 +30,7 @@ import {
 import { BackupImportError, exportBackup, importBackup } from '../services/backup.js';
 import { buildIcsCalendar } from '../ics.js';
 import { msTodoImport } from './msTodoImport.js';
+import { ticktickImport } from './ticktickImport.js';
 type State = { Bindings: Env; Variables: { userId?: string } };
 
 export const web = new Hono<State>();
@@ -397,6 +398,8 @@ web.post('/import', async (c) => {
 
 // Microsoft To Do import: device code sign-in relay and chunked task import.
 web.route('/import/microsoft', msTodoImport);
+// TickTick backup (CSV) import: the browser parses the file and posts each list in chunks.
+web.route('/import/ticktick', ticktickImport);
 
 /** iCal feed of scheduled tasks for calendar clients. */
 web.get('/export/calendar.ics', async (c) => {

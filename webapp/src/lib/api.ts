@@ -18,6 +18,7 @@ import type {
   TaskFilter,
 } from './types';
 import type { MsDeviceCode, MsImportChunk, MsImportChunkResult, MsTokenPoll } from './msTodo';
+import type { TickTickChunk, TickTickChunkResult } from './ticktick';
 
 export class ApiError extends Error {
   constructor(
@@ -90,6 +91,9 @@ export const api = {
   msTodoDeviceCode: () => post<MsDeviceCode>('/api/import/microsoft/device', {}),
   msTodoPollToken: (deviceCode: string) => post<MsTokenPoll>('/api/import/microsoft/token', { deviceCode }),
   msTodoImport: (chunk: MsImportChunk) => post<MsImportChunkResult>('/api/import/microsoft/tasks', chunk),
+
+  // --- TickTick backup import (/api) ---
+  ticktickImport: (chunk: TickTickChunk) => post<TickTickChunkResult>('/api/import/ticktick/tasks', chunk),
 
   // --- Browser notifications ---
   notificationConfig: () => get<NotificationConfig>('/open/v1/notification/config'),

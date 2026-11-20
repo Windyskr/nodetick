@@ -26,7 +26,7 @@ What [NodeWarden](https://github.com/shuaiplus/nodewarden) is to Bitwarden, Node
 - **Countdowns**: count down to the dates that matter, with monthly or yearly repeats; a monthly repeat set on the 29th–31st reminds you on the last day of shorter months, and a yearly repeat on February 29 reminds you on February 28 in common years
 - **Summary**: a digest of tasks that match your criteria (in progress, see the [Roadmap](#roadmap))
 - **Notifications**: Web Push reminders for tasks, habits and countdowns; switched on per device, so turning them off on one device leaves the others alone; push text follows each device's UI language (Chinese / English); per-category switches, a reminder time for all-day items and test notifications; clicking a notification opens the task (requires [enabling browser notifications](#enable-browser-notifications-optional) first)
-- **Account & data**: change your password; admins add and delete users and reset passwords on the **User management** page; JSON backup and restore; import lists and tasks from Microsoft To Do (requires [setting up a Microsoft app](#enable-the-microsoft-to-do-import-optional) first); a calendar subscription link (ICS, works with Google Calendar, Apple Calendar and others); API token management
+- **Account & data**: change your password; admins add and delete users and reset passwords on the **User management** page; JSON backup and restore; import lists, folders, Kanban columns and tasks from a TickTick backup (see [Migrating from TickTick](#migrating-from-ticktick)); import lists and tasks from Microsoft To Do (requires [setting up a Microsoft app](#enable-the-microsoft-to-do-import-optional) first); a calendar subscription link (ICS, works with Google Calendar, Apple Calendar and others); API token management
 - **General**: Chinese and English UI (follows the browser language; switch it from the avatar menu); Blue / Violet / Green / Dark themes; hide the feature modules and smart lists you don't use in Settings; on phones and other narrow screens, the task sidebar moves into a drawer and task details open full-screen
 
 | Calendar | Eisenhower Matrix |
@@ -52,6 +52,17 @@ In the task list you can also:
 - Postpone all overdue tasks in one click; hover over a task row to set its date quickly
 - Duplicate, move or delete tasks from the row menu, and undo mistakes from the toast
 - Edit the description, subtasks, tags and comments in the detail panel; task rows show badges for reminders, repeats and descriptions
+
+### Migrating from TickTick
+
+1. In TickTick, open **Settings → Account → Backup & Import** and generate a backup. You get a `.csv` file.
+2. On NodeTick's **API tokens** page (`/app/tokens`), click **Import from TickTick** under **Backup & restore**, choose the file and pick the lists to import. The browser parses the file, then imports it list by list.
+
+- Folders become list groups; Kanban lists keep their columns; TickTick's inbox goes into the Inbox.
+- Subtasks keep their parents and checklist items become subtasks; tags, descriptions, priorities, repeat rules and start/due times (all-day and multi-day included) come along. Reminders on all-day tasks become a number of days ahead, at your all-day reminder time.
+- Completed and won't-do tasks are skipped unless you tick the box. TickTick backups contain no habits, focus records, comments or attachments.
+- Importing the same backup again only adds new tasks; tasks imported earlier are never overwritten or duplicated, even if you changed or deleted them in NodeTick.
+- TickTick doesn't document the backup format, so the importer reads columns by name and tolerates missing ones; rows it can't read are reported and skipped.
 
 ## Architecture
 
@@ -375,6 +386,7 @@ Session endpoints used by the web app, authenticated by cookie:
 | GET | `/api/import/microsoft/config` | Whether the server has a Microsoft app configured |
 | POST | `/api/import/microsoft/device`, `/api/import/microsoft/token` | Start a device code sign-in / poll for its result (relayed to Microsoft) |
 | POST | `/api/import/microsoft/tasks` | Import a batch of one list's tasks (Graph format, up to 200 per request; already imported tasks are skipped) |
+| POST | `/api/import/ticktick/tasks` | Import a batch of one list's tasks from a TickTick backup (the browser parses the CSV; up to 200 per request; already imported tasks are skipped) |
 
 OAuth (client id `nodetick-cli`):
 
