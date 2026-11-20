@@ -3,7 +3,9 @@ import { test, expect } from './fixtures';
 const PAGES = ['/app/tasks/inbox', '/app/tasks/all', '/app/calendar', '/app/matrix', '/app/search', '/app/summary', '/app/habit', '/app/focus', '/app/countdown', '/app/tokens', '/app/admin', '/app/stats'];
 
 /** Words that may stay in Latin script in the Chinese UI. */
-const ALLOWED_IN_ZH = new Set(['NodeTick', 'API', 'JSON', 'iCal', 'ICS', 'Microsoft', 'To', 'Do', 'Web', 'Push', 'CLI', 'OAuth', 'URL', 'ID', 'AM', 'PM', 'Google', 'Apple', 'Outlook', 'Bearer', 'Token', 'ntk', 'npm', 'TickTick']);
+const ALLOWED_IN_ZH = new Set(['NodeTick', 'API', 'JSON', 'iCal', 'ICS', 'Microsoft', 'To', 'Do', 'Web', 'Push', 'CLI', 'OAuth', 'URL', 'ID', 'AM', 'PM', 'Google', 'Apple', 'Outlook', 'Bearer', 'Token', 'ntk', 'npm', 'TickTick',
+  // Key names in shortcut hints ("粗体 (Ctrl+B)") stay as printed on the keyboard.
+  'Ctrl', 'Shift', 'Alt', 'Esc', 'Enter', 'Tab']);
 
 /**
  * Text a user reads: visible text nodes plus titles, labels and placeholders.

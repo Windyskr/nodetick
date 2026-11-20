@@ -1,12 +1,13 @@
 import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
-import { Heading1, Heading2, Heading3, Link2, List, ListOrdered, ListTodo, Minus, Quote, SquareCode } from 'lucide-react';
-import { useT } from '../../i18n';
+import { Clock, Heading1, Heading2, Heading3, Link2, List, ListOrdered, ListTodo, Minus, Quote, SquareCode } from 'lucide-react';
+import { useI18n, useT } from '../../i18n';
+import { dateText } from './slash';
 import { LINK_KEYS, MARK_BUTTONS, ToolButton, toggleMark } from './BubbleToolbar';
 
 const Divider = () => <span className="mx-1 h-4 w-px shrink-0 bg-line" />;
 
-/** Toolbar above the text (`toolbar="fixed"`): blocks, inline formats, link. */
+/** Toolbar above the text (`toolbar="fixed"`): blocks, inline formats, link, divider and the current time. */
 export function EditorToolbar({ editor, onLink }: { editor: Editor; onLink: () => void }) {
   const t = useT();
   const state = useEditorState({
@@ -48,6 +49,7 @@ export function EditorToolbar({ editor, onLink }: { editor: Editor; onLink: () =
       <ToolButton label={t('editorCodeBlock')} active={state.codeBlock} onClick={() => run((c) => c.toggleCodeBlock())}><SquareCode size={16} /></ToolButton>
       <ToolButton label={`${t('editorLink')} (${LINK_KEYS})`} active={state.link} onClick={onLink}><Link2 size={16} /></ToolButton>
       <ToolButton label={t('editorDivider')} onClick={() => run((c) => c.setHorizontalRule())}><Minus size={16} /></ToolButton>
+      <ToolButton label={t('editorNow')} onClick={() => run((c) => c.insertContent(dateText('now', useI18n.getState().lang)))}><Clock size={16} /></ToolButton>
     </div>
   );
 }

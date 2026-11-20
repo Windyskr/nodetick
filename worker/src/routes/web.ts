@@ -349,7 +349,7 @@ web.delete('/admin/users/:id', async (c) => {
     'sessions', 'api_tokens', 'oauth_codes', 'project_groups', 'projects', 'task_columns',
     'tasks', 'task_comments', 'tags', 'filters', 'habits', 'habit_checkins', 'habit_checkin_entries', 'habit_records',
     'focus_records', 'countdowns', 'notification_settings', 'push_subscriptions',
-    'notification_deliveries',
+    'notification_deliveries', 'summary_templates', 'summary_state',
   ]) {
     await c.env.DB.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(id).run();
   }

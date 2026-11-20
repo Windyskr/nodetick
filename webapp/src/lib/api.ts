@@ -23,6 +23,7 @@ import type {
 } from './types';
 import type { MsDeviceCode, MsImportChunk, MsImportChunkResult, MsTokenPoll } from './msTodo';
 import type { TickTickChunk, TickTickChunkResult } from './ticktick';
+import type { SummaryConfig, SummaryState, SummaryTemplate } from './summary';
 
 /** Writable countdown fields (the server fills id, archivedTime and createdTime). */
 export type CountdownInput = Omit<Countdown, 'id' | 'archivedTime' | 'createdTime'>;
@@ -212,6 +213,18 @@ export const api = {
   updateCountdown: (id: string, patch: Partial<CountdownInput>) =>
     post<Countdown>(`/open/v1/countdown/${id}`, patch),
   deleteCountdown: (id: string) => del<void>(`/open/v1/countdown/${id}`),
+
+  // --- Summary page (NodeTick extension) ---
+  summaryState: () => get<SummaryState>('/open/v1/summary/state'),
+  /** Save any of config, draft and draftKey; `draft: null` drops the edited text. */
+  saveSummaryState: (patch: Partial<Pick<SummaryState, 'config' | 'draft' | 'draftKey'>>) =>
+    post<SummaryState>('/open/v1/summary/state', patch),
+  listSummaryTemplates: () => get<SummaryTemplate[]>('/open/v1/summary/template'),
+  createSummaryTemplate: (input: { name: string; config: SummaryConfig }) =>
+    post<SummaryTemplate>('/open/v1/summary/template', input),
+  updateSummaryTemplate: (id: string, patch: { name?: string; config?: SummaryConfig }) =>
+    post<SummaryTemplate>(`/open/v1/summary/template/${encodeURIComponent(id)}`, patch),
+  deleteSummaryTemplate: (id: string) => del<void>(`/open/v1/summary/template/${encodeURIComponent(id)}`),
 };
 
 /** Checkin range covering the whole year of `stamp`. */

@@ -29,7 +29,7 @@ export class BackupImportError extends Error {
 export async function exportBackup(env: Env, userId: string): Promise<BackupDocument> {
   const all = async (table: string, order: string) =>
     (await env.DB.prepare(`SELECT * FROM ${table} WHERE user_id = ? ORDER BY ${order}`).bind(userId).all()).results;
-  const [projects, groups, tags, filters, tasks, habits, checkins, checkinEntries, habitRecords, focus, countdowns] = await Promise.all([
+  const [projects, groups, tags, filters, tasks, habits, checkins, checkinEntries, habitRecords, focus, countdowns, summaryTemplates] = await Promise.all([
     all('projects', 'sort_order'),
     all('project_groups', 'sort_order'),
     all('tags', 'sort_order'),
@@ -47,6 +47,7 @@ export async function exportBackup(env: Env, userId: string): Promise<BackupDocu
     ).bind(userId).all().then((r) => r.results),
     all('focus_records', 'created_at'),
     all('countdowns', 'sort_order'),
+    all('summary_templates', 'sort_order'),
   ]);
   return {
     app: BACKUP_APP_ID,
@@ -63,6 +64,7 @@ export async function exportBackup(env: Env, userId: string): Promise<BackupDocu
     habitRecords,
     focusRecords: focus,
     countdowns,
+    summaryTemplates,
   };
 }
 
@@ -124,6 +126,7 @@ export async function importBackup(
   upsert('projects', doc.projects, ['id', 'name', 'color', 'sort_order', 'view_mode', 'kind', 'group_id', 'closed', 'permission', 'etag', 'created_at']);
   upsert('tags', doc.tags, ['id', 'name', 'label', 'color', 'sort_order', 'parent_id', 'created_at']);
   upsert('filters', doc.filters, ['id', 'name', 'filter_json', 'sort_order', 'created_at', 'modified_at']);
+  upsert('summary_templates', doc.summaryTemplates, ['id', 'name', 'config_json', 'sort_order', 'created_at', 'modified_at']);
   upsert(
     'tasks',
     doc.tasks,

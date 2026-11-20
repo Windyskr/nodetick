@@ -251,7 +251,8 @@
   outline-offset: 1px;
 }
 
-.nt-prose li[data-checked='true'] > div {
+/* Only the item's own line: text and sub-items under it keep their look, as in TickTick. */
+.nt-prose li[data-checked='true'] > div > :first-child {
   color: var(--color-ink-3);
   text-decoration: line-through;
 }

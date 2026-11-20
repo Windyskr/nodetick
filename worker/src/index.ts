@@ -7,6 +7,7 @@ import { tasks } from './routes/tasks.js';
 import { projects } from './routes/projects.js';
 import { misc } from './routes/misc.js';
 import { notifications } from './routes/notifications.js';
+import { summary } from './routes/summary.js';
 import { web } from './routes/web.js';
 import { feed } from './routes/feed.js';
 import { dispatchDueNotifications } from './services/notifications.js';
@@ -76,6 +77,7 @@ api.route('/', tasks);
 api.route('/', projects);
 api.route('/', misc);
 api.route('/', notifications);
+api.route('/', summary);
 app.route('/open/v1', api);
 
 app.notFound((c) => c.json({ error: 'not found' }, 404));

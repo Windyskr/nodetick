@@ -25,7 +25,7 @@ What [NodeWarden](https://github.com/shuaiplus/nodewarden) is to Bitwarden, Node
 - **Focus**: Pomodoro and stopwatch timers that keep running across page changes and reloads, with progress in the side rail; short and long breaks, auto-start, an end-of-session chime (plus a notification when the tab is in the background) and white noise; start focusing from a task's menu, and see a task's total focus time in its details; a complete record history you can edit, delete and backfill; daily / weekly / monthly / yearly stats with change from the previous period, trends, task and list rankings, best focus hours and a yearly heat map
 - **Countdowns**: five card styles (classic, solid, calendar, soft, ring), a color palette and emoji icons, shown as days or years/months/days; Chinese lunar dates (leap months included) with lunar yearly repeats for birthdays and festivals; monthly and yearly repeats (a 29th–31st falls on a short month's last day, Feb 29 on Feb 28 in common years); reminders on the day and 1, 2 or 3 days, 1 week or 1 month before, at their own time; a detail panel with weekday, lunar date, age or anniversary count, a y/m/d interval and an editable note; pin, archive and restore; sort by date, custom order (drag) or creation; card or list view; group by type; optionally shown as all-day entries in the calendar
 - **Statistics**: the **Statistics** page in the avatar menu shows, for the last 7 days / 30 days / 12 weeks / 12 months, completed tasks (compared with the previous period), the completion rate of tasks due, the on-time rate and what is overdue now; a completion trend, a year of completions as a calendar heat map, and breakdowns by list, tag, priority, weekday and time of day; narrow it to one list, and switch any chart to a table
-- **Summary**: a digest of tasks that match your criteria (in progress, see the [Roadmap](#roadmap))
+- **Summary**: turns a period's tasks into an editable Markdown document for daily, weekly or yearly reports. Pick today / tomorrow / yesterday / this, next or last week / this or last month / this or last year or a custom range, and filter by list, status (completed / in progress / incomplete / won't do), priority and tag; group by status, list, completion date, task date, tag or priority; each line can show the status, progress, completion date, task date, parent task, tags, focus time, list and details (description and subtasks); optionally add the next period's tasks. Save the settings as templates and switch in one click; edits to the document are saved as you type, follow you to other devices, and can be regenerated from the tasks at any time. Copy it (formatting survives pasting into documents), save it as a PDF, an image or a note in a list, email it, or use the system share sheet on phones
 - **Notifications**: Web Push reminders for tasks, habits and countdowns; switched on per device, so turning them off on one device leaves the others alone; push text follows each device's UI language (Chinese / English); per-category switches, a reminder time for all-day items, a daily digest (one push a day with today's tasks and the overdue count) and test notifications; clicking a notification opens the task (requires [enabling browser notifications](#enable-browser-notifications-optional) first)
 - **Account & data**: change your password; admins add and delete users and reset passwords on the **User management** page; JSON backup and restore; import lists, folders, Kanban columns and tasks from a TickTick backup (see [Migrating from TickTick](#migrating-from-ticktick)); import lists and tasks from Microsoft To Do (requires [setting up a Microsoft app](#enable-the-microsoft-to-do-import-optional) first); a calendar subscription link (ICS, works with Google Calendar, Apple Calendar and others); API token management
 - **General**: keyboard shortcuts (`N` adds a task, `/` searches, `G` plus a letter jumps to Today, Calendar, Habits and other views; press `?` for the full list); Chinese and English UI (follows the browser language; switch it from the avatar menu); Blue / Violet / Green / Dark themes; hide the feature modules and smart lists you don't use in Settings; on phones and other narrow screens, the task sidebar moves into a drawer and task details open full-screen
@@ -331,7 +331,7 @@ The base path is `{server}/open/v1`, and the endpoints follow the [TickTick Open
 </details>
 
 <details>
-<summary><b>Tags, habits, focus, countdowns, filters</b></summary>
+<summary><b>Tags, habits, focus, countdowns, filters, summary</b></summary>
 
 | Method | Path | Description |
 | --- | --- | --- |
@@ -359,6 +359,9 @@ The base path is `{server}/open/v1`, and the endpoints follow the [TickTick Open
 | POST / DELETE | `/countdown/{countdownId}` | Update (only the fields sent) / delete a countdown ★ |
 | GET / POST | `/filter` | List filters / create a filter (lists, tags, date, priority and status, plus `keywords` and `kinds`) ★ |
 | POST / DELETE | `/filter/{filterId}` | Update / delete a filter ★ |
+| GET / POST | `/summary/state` | The Summary page's settings (`config`) and the edited draft (`draft`, `draftKey`); POST changes only the fields sent, `draft: null` drops the draft ★ |
+| GET / POST | `/summary/template` | List summary templates / create one `{name, config}` (up to 100 per user) ★ |
+| POST / DELETE | `/summary/template/{templateId}` | Update (`name`, `config`, `sortOrder`) / delete a summary template ★ |
 
 </details>
 
@@ -420,7 +423,7 @@ OAuth (client id `nodetick-cli`):
 
 </details>
 
-**Field conventions** follow the official CLI: `status` (0 open / 2 completed / -1 abandoned), `priority` (0 none / 1 low / 3 medium / 5 high), `etag` for optimistic locking, reminder `TRIGGER` strings, and `RRULE` / `ERULE` repeat rules. Reminders and repeat rules are stored and returned as is. Completing a repeating task spawns the next occurrence from its rule, which may use `FREQ` (daily / weekly / monthly / yearly), `INTERVAL`, `BYDAY` (including `2TU` for the second Tuesday and `-1FR` for the last Friday), `BYMONTHDAY` (`-1` is the last day), `BYMONTH`, `BYSETPOS`, `UNTIL` and `COUNT`; `COUNT` is the number of occurrences left including the current one and drops by one with each spawned occurrence. Countdown `reminders` are `same-day`, `1-day`, `2-days`, `3-days`, `1-week` and `1-month`; `reminderTime` is `HH:MM` or `null` (the all-day reminder time); `repeatFlag` is `yearly`, `monthly` or `null`; with `lunar: true`, `date` is the Gregorian day of the lunar date (1900-01-31 to 2100-12-31) and `yearly` repeats on the lunar calendar. Dates must be real calendar dates in `yyyy-MM-dd` format, optionally with a time and time zone (such as `2026-04-07T09:00:00+0800`); a field of the wrong type (an object as the title, for example) gets a 400.
+**Field conventions** follow the official CLI: `status` (0 open / 2 completed / -1 abandoned; completing or abandoning records `completedTime`), `priority` (0 none / 1 low / 3 medium / 5 high), `etag` for optimistic locking, reminder `TRIGGER` strings, and `RRULE` / `ERULE` repeat rules. Reminders and repeat rules are stored and returned as is. Completing a repeating task spawns the next occurrence from its rule, which may use `FREQ` (daily / weekly / monthly / yearly), `INTERVAL`, `BYDAY` (including `2TU` for the second Tuesday and `-1FR` for the last Friday), `BYMONTHDAY` (`-1` is the last day), `BYMONTH`, `BYSETPOS`, `UNTIL` and `COUNT`; `COUNT` is the number of occurrences left including the current one and drops by one with each spawned occurrence. Countdown `reminders` are `same-day`, `1-day`, `2-days`, `3-days`, `1-week` and `1-month`; `reminderTime` is `HH:MM` or `null` (the all-day reminder time); `repeatFlag` is `yearly`, `monthly` or `null`; with `lunar: true`, `date` is the Gregorian day of the lunar date (1900-01-31 to 2100-12-31) and `yearly` repeats on the lunar calendar. Dates must be real calendar dates in `yyyy-MM-dd` format, optionally with a time and time zone (such as `2026-04-07T09:00:00+0800`); a field of the wrong type (an object as the title, for example) gets a 400.
 
 ## Security model
 
@@ -463,7 +466,7 @@ To debug push notifications, also add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` an
 - [x] Focus: add a stopwatch mode, fuller cumulative stats and a complete record history.
 - [x] Countdowns: round out reminders, repeats, notes, styles, archiving and display settings to match TickTick's own Countdown feature more closely.
 - [x] Search: filter by list, tag, date, priority, type and status, and save a search as a filter.
-- [ ] Summary: persist summaries and wire up templates, saving, copying and sharing.
+- [x] Summary: persist summaries and wire up templates, saving, copying and sharing.
 - [x] Habits: custom repeat rules, editing, multiple numeric check-ins and historical stats.
 - [x] Upgrade task descriptions to a rich-text editor with `/` quick insert, closer to TickTick's editor.
 - [ ] Localize the remaining hard-coded English strings, and add E2E tests for loading, error, empty and responsive states in production.

@@ -2245,7 +2245,8 @@ describe('abandoned tasks', () => {
       })
     ).json()) as Record<string, unknown>;
     expect(updated.status).toBe(-1);
-    expect(updated.completedTime).toBeNull();
+    // Closed as won't do: stamped like a completion, as in TickTick.
+    expect(typeof updated.completedTime).toBe('string');
 
     const active = (await (
       await SELF.fetch(`${HOST}/open/v1/task/filter`, {

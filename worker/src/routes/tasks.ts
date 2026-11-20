@@ -679,13 +679,15 @@ tasks.post('/task/:taskId', async (c) => {
     focusSummaries = JSON.stringify([current]);
   }
 
-  // status: 0 = active, 2 = completed (drives complete/uncomplete from the webapp).
+  // status: 0 = active, 2 = completed, -1 = won't do. Like TickTick, closing a
+  // task either way stamps completedTime (when it was closed); reopening clears it.
   let status = Number(existing.status ?? 0);
   let completedTime = existing.completed_time;
   if (b.status != null) {
     const wanted = Number(b.status);
+    const closed = wanted === 2 || wanted === -1;
+    completedTime = !closed ? null : wanted === status ? (existing.completed_time ?? nowIso()) : nowIso();
     status = wanted;
-    completedTime = wanted === 2 ? (existing.completed_time ?? nowIso()) : null;
   }
 
   const tags = Array.isArray(b.tags) ? b.tags.map(String) : null;

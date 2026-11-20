@@ -144,6 +144,25 @@ CREATE TABLE IF NOT EXISTS filters (
 );
 CREATE INDEX IF NOT EXISTS idx_filters_user_order ON filters(user_id, sort_order, created_at);
 
+CREATE TABLE IF NOT EXISTS summary_templates (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  config_json TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  modified_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_summary_templates_user_order ON summary_templates(user_id, sort_order, created_at);
+
+CREATE TABLE IF NOT EXISTS summary_state (
+  user_id TEXT PRIMARY KEY,
+  config_json TEXT NOT NULL,
+  draft TEXT,
+  draft_key TEXT,
+  modified_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS habits (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,

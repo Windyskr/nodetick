@@ -52,6 +52,9 @@ export interface ToastState {
     | 'shareCopied'
     | 'summaryCopied'
     | 'summaryTemplateSaved'
+    | 'summaryTemplateDeleted'
+    | 'summaryNoteSaved'
+    | 'summaryEmailCopied'
     | 'searchFilterSaved'
     | 'toastError';
   messageArg?: string;
