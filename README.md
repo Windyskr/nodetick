@@ -1,5 +1,7 @@
 # NodeTick 🐘
 
+中文 | [English](README.en.md)
+
 **跑在 Cloudflare 上的自托管 TickTick 兼容任务服务器，附带网页应用和命令行工具。**
 
 正如 [NodeWarden](https://github.com/shuaiplus/nodewarden) 之于 Bitwarden，NodeTick 之于 TickTick：任务、清单、习惯和专注数据都存放在你自己的 Cloudflare 账号里。
@@ -23,7 +25,7 @@
 - **倒计时**：倒数纪念日，可按月或按年重复；设在 29–31 日的每月重复遇到小月时在月末提醒，2 月 29 日的每年重复在平年按 2 月 28 日提醒
 - **摘要**：按条件汇总任务（开发中，见[路线图](#路线图)）
 - **通知**：通过 Web Push 推送任务、习惯和纪念日提醒；每台设备单独开关，在一台设备上关闭不影响其他设备；推送文案跟随该设备的界面语言（中 / 英）；支持分类开关、全天事项提醒时间和测试通知，点击通知直达对应任务（需先[开启浏览器通知](#开启浏览器通知可选)）
-- **账号与数据**：修改密码；管理员在「用户管理」页添加、删除用户和重置密码；JSON 备份与恢复；日历订阅链接（ICS，可添加到 Google 日历、Apple 日历等）；API 令牌管理
+- **账号与数据**：修改密码；管理员在「用户管理」页添加、删除用户和重置密码；JSON 备份与恢复；从 Microsoft To Do 导入清单和任务（需先[配置 Microsoft 应用](#开启-microsoft-to-do-导入可选)）；日历订阅链接（ICS，可添加到 Google 日历、Apple 日历等）；API 令牌管理
 - **通用**：中英双语（跟随浏览器语言，可在头像菜单切换）；蓝 / 紫 / 绿 / 深色主题；可在设置里隐藏不用的功能模块和智能清单；手机等窄屏上，任务页的侧栏收进抽屉，任务详情全屏打开
 
 | 日历 | 四象限 |
@@ -106,6 +108,9 @@ pnpm run deploy     # 先构建网页应用，再部署 Worker 和静态资源
 
 首次部署时，Wrangler 会自动创建名为 `nodetick-db` 的 D1 数据库（账号里已有同名数据库则直接使用），不需要填写 `database_id`。
 
+> [!TIP]
+> 数据库的位置在创建时确定，之后不能修改；自动创建时放在离执行部署的网络最近的地区。每次查询都要往返一次数据库，离用户远了会明显变慢（东京访问美西的库，每次查询约 130 毫秒）。用户主要在亚洲的话，第一次部署前先手动创建：`pnpm --filter worker exec wrangler d1 create nodetick-db --location apac`（亚太区实际落在香港）。其他取值见 [D1 文档](https://developers.cloudflare.com/d1/configuration/data-location/)。
+
 **3. 设置会话密钥**
 
 ```bash
@@ -156,6 +161,33 @@ pnpm --filter worker exec wrangler secret put VAPID_PRIVATE_KEY
 
 私钥不要写进任何文件或提交到仓库。配置完成后，Cron Trigger 每分钟扫描一次到期的提醒，通过 Web Push 推送到已订阅的浏览器。
 
+### 开启 Microsoft To Do 导入（可选）
+
+Microsoft To Do 没有导出功能，导入通过 Microsoft Graph 读取清单和任务，需要一个 Microsoft Entra 应用注册。登录用设备码方式：网页上显示一个代码，用户到微软的登录页输入。这种方式不需要回调地址，所以一个应用注册可以给多个 NodeTick 部署共用。
+
+**1. 注册应用**
+
+1. 登录 [Microsoft Entra 管理中心](https://entra.microsoft.com)，进入「应用注册」→「新注册」。2024 年 6 月起新应用必须注册在目录（租户）里；只有个人账号、没有目录的，可以先注册 Azure 免费账户，会自带一个默认目录。
+2. 名称随意（如 `NodeTick`）；「受支持的帐户类型」选「任何组织目录中的帐户和个人 Microsoft 帐户」；重定向 URI 留空。
+3. 在「身份验证」里把「允许公共客户端流」设为「是」并保存。
+4. 在「API 权限」里添加 Microsoft Graph 的委托权限 `Tasks.Read`。这个权限用户可以自己同意，不需要管理员授权。
+
+**2. 填入 client ID**
+
+复制应用概述页的「应用程序(客户端) ID」，在 Cloudflare 控制台添加变量 `MS_TODO_CLIENT_ID`，或写进 `worker/wrangler.toml` 的 `[vars]` 后重新 `pnpm run deploy`。client ID 不是密钥，可以公开。
+
+只用个人账号时，可以把 `MS_TODO_TENANT` 设为 `consumers`（应用的帐户类型要包含个人帐户）；只用工作或学校账号时，设为 `organizations` 或租户 ID。部分组织禁止设备码登录。
+
+**3. 导入**
+
+在网页应用的「API 令牌」页（`/app/tokens`），点「备份与恢复」里的「从 Microsoft To Do 导入」，登录后勾选要导入的清单。导入规则：
+
+- 每个清单导入为一个清单，To Do 自带的「任务」清单导入到收集箱；Flagged email（Outlook 标记邮件）清单默认不勾选。
+- 步骤导入为子任务；备注、类别（导入为标签）、重要标记（导入为高优先级）、截止日期和重复规则都会带上；已完成的任务默认不导入，可以勾选。
+- 截止日期导入为全天任务。提醒在截止当天、或任务没有截止日期时，任务改为提醒时刻的定时任务并准时提醒；提醒在截止日之前时，保留全天任务，按「全天事项提醒时间」换算成提前量。
+- 附件和清单分组不导入（Graph 不提供清单分组）。
+- 只申请只读权限，不会改动 Microsoft To Do。再次导入只添加新任务，之前导入的任务即使在 NodeTick 里改过或删除到回收站，也不会被覆盖或重复导入。
+
 ### 配置项
 
 | 名称 | 类型 | 必填 | 说明 |
@@ -164,6 +196,8 @@ pnpm --filter worker exec wrangler secret put VAPID_PRIVATE_KEY
 | `VAPID_PUBLIC_KEY` | 变量 | 否 | Web Push 公钥 |
 | `VAPID_SUBJECT` | 变量 | 否 | 推送发送者的联系方式（`mailto:` 或 `https:`） |
 | `VAPID_PRIVATE_KEY` | Secret | 否 | Web Push 私钥 |
+| `MS_TODO_CLIENT_ID` | 变量 | 否 | Microsoft Entra 应用的客户端 ID，设置后开启 Microsoft To Do 导入 |
+| `MS_TODO_TENANT` | 变量 | 否 | Microsoft 登录的租户：`common`（默认）、`consumers`、`organizations` 或租户 ID |
 
 变量可以在 Cloudflare 控制台的 Worker 设置里添加，立即生效，之后部署也会保留（`wrangler.toml` 开启了 `keep_vars`）；也可以写进 `worker/wrangler.toml` 的 `[vars]`，重新部署后生效，并覆盖控制台里的同名变量。Secret 用 `pnpm --filter worker exec wrangler secret put <名称>` 设置。
 
@@ -337,6 +371,9 @@ nodetick backup import ./my-backup.json   # 按 id 合并导入，不删除现�
 | GET / POST | `/api/export`、`/api/import` | 下载备份 / 导入备份 |
 | GET | `/api/export/calendar.ics` | 下载 ICS 日历文件 |
 | GET / POST | `/api/feed`、`/api/feed/regenerate` | 查看 / 重新生成日历订阅链接（旧链接立即失效） |
+| GET | `/api/import/microsoft/config` | 服务器是否配置了 Microsoft 应用 |
+| POST | `/api/import/microsoft/device`、`/api/import/microsoft/token` | 开始设备码登录 / 轮询登录结果（转发给 Microsoft） |
+| POST | `/api/import/microsoft/tasks` | 导入一个清单的一批任务（Graph 格式，每次最多 200 个，已导入的跳过） |
 
 OAuth（client id 为 `nodetick-cli`）：
 
@@ -347,7 +384,7 @@ OAuth（client id 为 `nodetick-cli`）：
 
 </details>
 
-**字段约定**以官方 CLI 的用法为准：`status`（0 未完成 / 2 已完成 / -1 已放弃）、`priority`（0 无 / 1 低 / 3 中 / 5 高）、`etag` 乐观锁、提醒 `TRIGGER` 字符串、`RRULE` / `ERULE` 重复规则。提醒和重复规则按原样存储和返回。日期必须是真实存在的日期，格式为 `yyyy-MM-dd`，可带时间和时区（如 `2026-04-07T09:00:00+0800`）；字段类型不对（例如标题传了对象）返回 400。
+**字段约定**以官方 CLI 的用法为准：`status`（0 未完成 / 2 已完成 / -1 已放弃）、`priority`（0 无 / 1 低 / 3 中 / 5 高）、`etag` 乐观锁、提醒 `TRIGGER` 字符串、`RRULE` / `ERULE` 重复规则。提醒和重复规则按原样存储和返回。完成重复任务时按规则生成下一次，支持 `FREQ`（天 / 周 / 月 / 年）、`INTERVAL`、`BYDAY`（含 `2TU`「第二个周二」、`-1FR`「最后一个周五」）、`BYMONTHDAY`（`-1` 为月末）、`BYMONTH`、`BYSETPOS`、`UNTIL` 和 `COUNT`；`COUNT` 是含当前这次在内还剩的次数，每生成一次减一。日期必须是真实存在的日期，格式为 `yyyy-MM-dd`，可带时间和时区（如 `2026-04-07T09:00:00+0800`）；字段类型不对（例如标题传了对象）返回 400。
 
 ## 安全模型
 
@@ -355,6 +392,7 @@ OAuth（client id 为 `nodetick-cli`）：
 - **密码**使用 PBKDF2-SHA-256（10 万次迭代，是 Cloudflare 运行时允许的上限），每个密码有独立的 16 字节随机盐；哈希里记录了迭代次数，以后调整参数不影响已有用户。
 - **账号**：第一个注册的用户是管理员，之后公开注册关闭，新账号只能由管理员添加。
 - **日历订阅链接**带 128 位随机密钥，只能读取有日期的任务；可随时重新生成，旧链接立即失效。
+- **Microsoft To Do 导入**只申请只读的 `Tasks.Read` 权限。Worker 只在登录时转发设备码请求，Microsoft 的访问令牌只保存在浏览器内存里，不写入数据库；网页的 CSP 为此只额外放行 `https://graph.microsoft.com`。
 - **会话 Cookie** 设置了 HttpOnly、Secure、SameSite=Lax；`/api/*` 的写请求还要求同源（校验 Origin / Referer）。OAuth 授权确认表单使用签名 CSRF 令牌。
 - **防暴力破解**：同一 IP 或同一账号连续登录失败 10 次锁定 2 分钟，失败响应固定延时以抑制时序探测；每个 IP 每 15 分钟最多尝试注册 5 次。登录、注册和锁定事件写入审计日志。
 - **防护头**：所有响应带 CSP、`X-Frame-Options: DENY` 等安全头，请求体上限 1 MB。
