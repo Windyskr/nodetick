@@ -15,6 +15,7 @@ import { isSubmitEnter } from '../../lib/keys';
 import { hasTag } from '../../lib/tags';
 import { useFocus } from '../../stores/focus';
 import { TaskFocusTotal } from './focus/TaskFocusTotal';
+import { RichTextEditor } from '../../components/editor';
 
 /**
  * Right-hand task detail panel, TickTick-style: title, description,
@@ -27,7 +28,8 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
   const t = useT();
   const f = useTF();
   const [title, setTitle] = useState(task.title);
-  const [desc, setDesc] = useState(task.content);
+  /** A description edit that hasn't been saved yet (kept in the editor if the save fails). */
+  const [descDraft, setDescDraft] = useState<string | null>(null);
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [commentDraft, setCommentDraft] = useState('');
   const [newSubtask, setNewSubtask] = useState('');
@@ -37,7 +39,6 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
 
   useEffect(() => {
     setTitle(task.title);
-    setDesc(task.content);
     let alive = true;
     api.listComments(task.projectId, task.id).then(
       (rows) => alive && setComments(rows),
@@ -50,15 +51,22 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
 
   // Keep local edit buffers in sync when the task changes elsewhere.
   useEffect(() => setTitle(task.title), [task.title]);
-  useEffect(() => setDesc(task.content), [task.content]);
 
   const commitTitle = () => {
     const next = title.trim();
     if (next && next !== task.title) void saveTask(task.id, { title: next });
     else setTitle(task.title);
   };
-  const commitDesc = () => {
-    if (desc !== task.content) void saveTask(task.id, { content: desc });
+  // The editor reports Markdown while typing (debounced), on blur and when
+  // the panel closes; saves of one task go out in order (saveTask).
+  const commitDesc = (content: string) => {
+    if (content === task.content) {
+      setDescDraft(null);
+      return;
+    }
+    setDescDraft(content);
+    // A failed save keeps the draft, so the text stays; the app reports the error.
+    void saveTask(task.id, { content }).then(() => setDescDraft((draft) => (draft === content ? null : draft)));
   };
 
   const setSchedule = (schedule: TaskSchedule) => {
@@ -211,13 +219,12 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
             el.style.height = `${el.scrollHeight}px`;
           }}
         />
-        <textarea
-          value={desc}
+        <RichTextEditor
+          value={descDraft ?? task.content}
+          onChange={commitDesc}
           placeholder={t('taskContentPlaceholder')}
-          rows={5}
-          onChange={(e) => setDesc(e.target.value)}
-          onBlur={commitDesc}
-          className={`mt-1 w-full resize-none bg-transparent text-[13.5px] leading-relaxed text-ink-2 outline-none placeholder:text-ink-3 ${variant === 'modal' ? 'min-h-[48px]' : 'min-h-[96px]'}`}
+          ariaLabel={t('description')}
+          className={`mt-1 ${variant === 'modal' ? 'min-h-[48px]' : 'min-h-[96px]'}`}
         />
 
         {/* subtasks */}
@@ -235,7 +242,8 @@ export default function TaskDetail({ task, variant = 'panel' }: { task: Task; va
               </span>
               <button
                 type="button"
-                title="Remove subtask"
+                title={t('removeSubtask')}
+                aria-label={t('removeSubtask')}
                 className="hidden text-ink-3 hover:text-p-high group-hover:block"
                 onClick={() => setItems(task.items.filter((i) => i.id !== item.id))}
               >

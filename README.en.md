@@ -55,7 +55,16 @@ In the task list you can also:
 
 - Postpone all overdue tasks in one click; hover over a task row to set its date quickly
 - Duplicate, move or delete tasks from the row menu, and undo mistakes from the toast
-- Edit the description, subtasks, tags and comments in the detail panel; task rows show badges for reminders, repeats and descriptions
+- Edit the description (rich text, see [Task descriptions](#task-descriptions)), subtasks, tags and comments in the detail panel; task rows show badges for reminders, repeats and descriptions
+
+### Task descriptions
+
+The description is a rich-text editor. It is still stored as Markdown in `content`, so the CLI, the API and calendar feeds see the same text.
+
+- Type Markdown to format: `# ` headings, `- ` lists, `1. ` numbers, `[] ` checklists, `> ` quotes, ```` ``` ```` code, `---` dividers, `**bold**`, `==highlight==`, `[text](url)`, also right after Chinese text
+- Type `/` (or `、` at the start of a line with Chinese punctuation) for the quick-insert menu, filtered in English, Chinese or pinyin; select text for the formatting toolbar; Ctrl/⌘ + B, I, U and K work
+- Each line is a line of the stored text and unchanged lines are saved exactly as they were, so plain text from the CLI or TickTick is never escaped or reflowed
+- Saves about a second after you stop typing, on blur, when switching tasks or closing the panel, and never when nothing changed; with "Show details", task rows show the description's first line
 
 ### Migrating from TickTick
 
@@ -456,7 +465,7 @@ To debug push notifications, also add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` an
 - [x] Search: filter by list, tag, date, priority, type and status, and save a search as a filter.
 - [ ] Summary: persist summaries and wire up templates, saving, copying and sharing.
 - [x] Habits: custom repeat rules, editing, multiple numeric check-ins and historical stats.
-- [ ] Upgrade task descriptions to a rich-text editor with `/` quick insert, closer to TickTick's editor.
+- [x] Upgrade task descriptions to a rich-text editor with `/` quick insert, closer to TickTick's editor.
 - [ ] Localize the remaining hard-coded English strings, and add E2E tests for loading, error, empty and responsive states in production.
 - [x] Treat the first natural-language date in quick add as a special element: the text stays in the input with a blue recognized state, and clicking it or pressing Backspace at its edge only cancels the recognition without deleting the text.
 - [x] Calendar Year / Month / Week / Day / Schedule / 3-day / 2-week views and time-range scheduling.

@@ -11,6 +11,7 @@ import { MenuItem, Popover } from '../../components/Popover';
 import { useT, type Key } from '../../i18n';
 import { projectDisplayName } from '../../lib/project';
 import { highlightParts } from '../../lib/search';
+import { descriptionPreview } from '../../lib/markdownText';
 
 const EMOJI_RE = /^\p{Extended_Pictographic}/u;
 
@@ -144,7 +145,8 @@ export function TaskRow({
         {snippet}
         {showDetails && (
           <div className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-[11px] text-ink-3">
-            {(task.content || task.desc) && <span className="truncate">{t('hasDescription')}</span>}
+            {/* The description's first line, as text (search rows show their own excerpt). */}
+            {(task.content || task.desc) && <span className="truncate">{(!snippet && descriptionPreview(task.content || task.desc)) || t('hasDescription')}</span>}
             {task.tags.slice(0, 3).map((tag) => (
               <span key={tag} className="shrink-0">#{tag}</span>
             ))}

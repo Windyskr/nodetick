@@ -1,5 +1,6 @@
 import type { Task } from './types';
 import { tagKey } from './tags';
+import { markdownToPlainText } from './markdownText';
 
 /** Upper bound on terms, so a pasted paragraph can't make every keystroke slow. */
 const MAX_TERMS = 12;
@@ -28,12 +29,7 @@ export interface TaskMatch {
 
 /** Markdown markers that read as noise in a one-line excerpt. */
 function plainLine(text: string): string {
-  return text
-    .replace(/^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+)/gm, '')
-    .replace(/(\*\*|__|~~|`)/g, '')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return markdownToPlainText(text).replace(/\s+/g, ' ').trim();
 }
 
 /** About `radius` characters on each side of the hit, cut at the text's ends. */
