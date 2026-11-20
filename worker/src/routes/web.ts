@@ -29,6 +29,7 @@ import {
 } from '../services/security.js';
 import { BackupImportError, exportBackup, importBackup } from '../services/backup.js';
 import { buildIcsCalendar } from '../ics.js';
+import { msTodoImport } from './msTodoImport.js';
 type State = { Bindings: Env; Variables: { userId?: string } };
 
 export const web = new Hono<State>();
@@ -394,6 +395,9 @@ web.post('/import', async (c) => {
   }
 });
 
+// Microsoft To Do import: device code sign-in relay and chunked task import.
+web.route('/import/microsoft', msTodoImport);
+
 /** iCal feed of scheduled tasks for calendar clients. */
 web.get('/export/calendar.ics', async (c) => {
   const userId = await getSessionUser(c);
@@ -436,12 +440,18 @@ web.post('/feed/regenerate', async (c) => {
 });
 
 web.get('/me', async (c) => {
-  const userId = await getSessionUser(c);
-  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
-  const user = await c.env.DB.prepare('SELECT email, is_admin FROM users WHERE id = ?')
-    .bind(userId)
-    .first<{ email: string; is_admin: number }>();
-  return c.json({ id: userId, email: user?.email ?? 'unknown', isAdmin: !!user?.is_admin });
+  // Session and user in one query: the webapp asks this on every load.
+  const sessionId = getSessionId(c);
+  const user = sessionId
+    ? await c.env.DB.prepare(
+      `SELECT u.id, u.email, u.is_admin FROM sessions s JOIN users u ON u.id = s.user_id
+       WHERE s.id = ? AND s.expires_at > ?`,
+    )
+      .bind(sessionId, Date.now())
+      .first<{ id: string; email: string; is_admin: number }>()
+    : null;
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  return c.json({ id: user.id, email: user.email, isAdmin: !!user.is_admin });
 });
 
 web.get('/tokens', async (c) => {

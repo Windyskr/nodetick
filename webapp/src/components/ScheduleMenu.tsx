@@ -12,7 +12,8 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useI18n, useT } from '../i18n';
+import { useI18n, useT, useTF } from '../i18n';
+import { describeRepeat } from '../lib/repeat';
 import {
   addDays,
   allDayDate,
@@ -55,26 +56,6 @@ const REPEAT_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const;
 /** JS getDay() index (Sun=0) → RRULE code. */
 const DAY_CODE = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const;
 
-/** Human label for any stored repeat rule the menu can produce. */
-function describeRepeat(
-  flag: string | null | undefined,
-  label: (key: 'repeatNone' | 'repeatDaily' | 'repeatWeekly' | 'repeatWeekdays' | 'repeatMonthly' | 'repeatYearly' | 'repeatSet') => string,
-): string {
-  if (!flag) return label('repeatNone');
-  const body = flag.replace(/^RRULE:/i, '').toUpperCase();
-  const parts = new Map(body.split(';').map((p) => p.split('=') as [string, string]));
-  const freq = parts.get('FREQ');
-  const byDay = parts.get('BYDAY')?.split(',').filter(Boolean) ?? [];
-  if (freq === 'DAILY') {
-    if (byDay.length === 5 && ['MO', 'TU', 'WE', 'TH', 'FR'].every((d) => byDay.includes(d))) return label('repeatWeekdays');
-    return label('repeatDaily');
-  }
-  if (freq === 'WEEKLY') return label('repeatWeekly');
-  if (freq === 'MONTHLY') return label('repeatMonthly');
-  if (freq === 'YEARLY') return label('repeatYearly');
-  return label('repeatSet');
-}
-
 function weeklyFlag(days: string[]): string {
   const ordered = REPEAT_CODES.filter((code) => days.includes(code));
   return `RRULE:FREQ=WEEKLY;BYDAY=${ordered.join(',')}`;
@@ -110,6 +91,7 @@ export function ScheduleMenu({
   onSave,
 }: ScheduleMenuProps) {
   const t = useT();
+  const f = useTF();
   const lang = useI18n((state) => state.lang);
   const today = todayStr();
   const start = dateTimeParts(startDate, initialAllDay);
@@ -207,7 +189,7 @@ export function ScheduleMenu({
         : reminders[0] === 'TRIGGER:-PT1H'
           ? t('reminder1h')
           : t('reminderSet');
-  const repeatLabel = describeRepeat(repeatFlag, t);
+  const repeatLabel = describeRepeat(repeatFlag, lang, f);
 
   return (
     <div className="w-[360px] max-w-[calc(100vw-24px)] p-3" onClick={(event) => event.stopPropagation()}>

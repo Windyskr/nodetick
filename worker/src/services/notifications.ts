@@ -76,7 +76,7 @@ function validTimeZone(value: string): string {
   }
 }
 
-function localParts(date: Date, timeZone: string): Record<string, number> {
+export function localParts(date: Date, timeZone: string): Record<string, number> {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric', month: '2-digit', day: '2-digit',
@@ -86,7 +86,7 @@ function localParts(date: Date, timeZone: string): Record<string, number> {
 }
 
 /** Convert a wall-clock date/time in an IANA zone to a UTC timestamp. */
-function zonedTimestamp(day: string, time: string, timeZone: string): number | null {
+export function zonedTimestamp(day: string, time: string, timeZone: string): number | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
   const clock = /^(\d{2}):(\d{2})$/.exec(time);
   if (!match || !clock) return null;
@@ -181,9 +181,11 @@ async function settings(db: D1Database): Promise<SettingRow[]> {
 
 async function taskCandidates(db: D1Database, setting: SettingRow, now: number): Promise<Candidate[]> {
   if (!setting.task_enabled) return [];
+  // Runs every minute: the partial index holds only active tasks with
+  // reminders, so completed and plain tasks are never read (D1 bills rows read).
   const rows = await db.prepare(
-    `SELECT id, title, start_date, due_date, is_all_day, reminders FROM tasks
-     WHERE user_id = ? AND status = 0 AND deleted = 0 AND reminders IS NOT NULL
+    `SELECT id, title, start_date, due_date, is_all_day, reminders FROM tasks INDEXED BY idx_tasks_reminders
+     WHERE user_id = ? AND reminders IS NOT NULL AND status = 0 AND deleted = 0
        AND (due_date IS NOT NULL OR start_date IS NOT NULL)`,
   ).bind(setting.user_id).all<Record<string, unknown>>();
   const out: Candidate[] = [];
@@ -321,8 +323,8 @@ async function claim(db: D1Database, candidate: Candidate): Promise<boolean> {
 }
 
 export async function dispatchDueNotifications(env: Env, now = Date.now()): Promise<{ candidates: number; sent: number; failed: number }> {
-  await ensureSchema(env);
   if (!pushConfigured(env)) return { candidates: 0, sent: 0, failed: 0 };
+  await ensureSchema(env);
   const all: Candidate[] = [];
   for (const setting of await settings(env.DB)) {
     if (!setting.enabled) continue;
@@ -344,6 +346,9 @@ export async function dispatchDueNotifications(env: Env, now = Date.now()): Prom
       "UPDATE notification_deliveries SET status = ?, sent_at = ? WHERE dedupe_key = ?",
     ).bind(result.sent > 0 ? 'sent' : 'failed', Date.now(), candidate.dedupeKey).run();
   }
-  await env.DB.prepare('DELETE FROM notification_deliveries WHERE created_at < ?').bind(now - 90 * 86400000).run();
+  // Pruning 90-day-old delivery records once an hour is plenty.
+  if (new Date(now).getUTCMinutes() === 0) {
+    await env.DB.prepare('DELETE FROM notification_deliveries WHERE created_at < ?').bind(now - 90 * 86400000).run();
+  }
   return { candidates: all.length, sent, failed };
 }

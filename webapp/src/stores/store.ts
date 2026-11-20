@@ -177,10 +177,10 @@ export const useStore = create<AppState>((set, getState) => ({
 
   boot: async () => {
     try {
-      const me = await api.me();
-      set({ me });
-      await getState().refresh();
-      set({ booted: true, error: null });
+      // Who am I and the data go out together: one wait for the server
+      // instead of two. Signed out, both answer 401 without touching D1.
+      const [me] = await Promise.all([api.me(), getState().refresh()]);
+      set({ me, booted: true, error: null });
       return true;
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -231,45 +231,45 @@ export const useStore = create<AppState>((set, getState) => ({
   clearSelection: () => set({ selectedIds: [] }),
   setNavOpen: (navOpen) => set({ navOpen }),
 
+  // Batch actions reuse the single-task actions, which update the store from
+  // each response; reloading everything (8 requests, every task) is kept for
+  // the cases where the server also rewires parents and subtasks.
   batchComplete: async () => {
-    const { selectedIds, tasks } = getState();
+    const { selectedIds, tasks, toggleComplete } = getState();
     const targets = tasks.filter((t) => selectedIds.includes(t.id) && t.status !== 2);
-    await Promise.all(targets.map((t) => api.completeTask(t.projectId, t.id)));
-    await getState().refresh();
+    await Promise.all(targets.map((t) => toggleComplete(t, { silent: true })));
     getState().clearSelection();
   },
 
   batchTrash: async () => {
-    const { selectedIds, tasks } = getState();
+    const { selectedIds, tasks, trashTask } = getState();
     const targets = tasks.filter((t) => selectedIds.includes(t.id));
-    await Promise.all(targets.map((t) => api.deleteTask(t.projectId, t.id)));
-    await getState().refresh();
+    await Promise.all(targets.map((t) => trashTask(t, { silent: true })));
+    // Trashing a parent detaches its subtasks on the server.
+    if (targets.some((t) => t.childIds.length)) await getState().refresh();
     getState().clearSelection();
   },
 
   batchMove: async (projectId) => {
-    const { selectedIds, tasks } = getState();
+    const { selectedIds, tasks, moveTask } = getState();
     const targets = tasks.filter((t) => selectedIds.includes(t.id) && t.projectId !== projectId);
-    await Promise.all(targets.map((t) => api.updateTask(t.id, { projectId })));
-    await getState().refresh();
+    await Promise.all(targets.map((t) => moveTask(t, projectId)));
+    // Moving to another list detaches it from its parent and its subtasks.
+    if (targets.some((t) => t.parentId || t.childIds.length)) await getState().refresh();
     getState().clearSelection();
   },
 
   batchSetDate: async (dueDate, isAllDay) => {
-    const { selectedIds, tasks } = getState();
+    const { selectedIds, tasks, saveTask } = getState();
     const targets = tasks.filter((t) => selectedIds.includes(t.id));
-    await Promise.all(
-      targets.map((t) => api.updateTask(t.id, { projectId: t.projectId, dueDate, isAllDay })),
-    );
-    await getState().refresh();
+    await Promise.all(targets.map((t) => saveTask(t.id, { projectId: t.projectId, dueDate, isAllDay })));
     getState().clearSelection();
   },
 
   batchPriority: async (priority) => {
-    const { selectedIds, tasks } = getState();
+    const { selectedIds, tasks, saveTask } = getState();
     const targets = tasks.filter((t) => selectedIds.includes(t.id));
-    await Promise.all(targets.map((t) => api.updateTask(t.id, { projectId: t.projectId, priority })));
-    await getState().refresh();
+    await Promise.all(targets.map((t) => saveTask(t.id, { projectId: t.projectId, priority })));
     getState().clearSelection();
   },
 
@@ -531,8 +531,7 @@ export const useStore = create<AppState>((set, getState) => ({
       const d = t.dueDate?.slice(0, 10);
       return d && d < today && !t.parentId && (!ids || ids.includes(t.id));
     });
-    await Promise.all(overdue.map((t) => api.updateTask(t.id, postponePatch(t, today))));
-    await getState().refresh();
+    await Promise.all(overdue.map((t) => getState().saveTask(t.id, postponePatch(t, today))));
   },
 
   addProject: async (name, viewMode = 'list') => {

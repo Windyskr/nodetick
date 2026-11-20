@@ -36,6 +36,11 @@ database_name = "nodetick-db"
 #   pnpm --filter worker generate:vapid
 # VAPID_PUBLIC_KEY = "replace-with-your-public-vapid-key"
 # VAPID_SUBJECT = "mailto:admin@example.com"
+#
+# Optional Microsoft To Do import: the Application (client) ID of a Microsoft
+# Entra app with "Allow public client flows" on (see the README). Not a secret.
+# MS_TODO_CLIENT_ID = "00000000-0000-0000-0000-000000000000"
+# MS_TODO_TENANT = "common"   # or consumers / organizations / a tenant id
 
 [triggers]
 crons = ["* * * * *"]

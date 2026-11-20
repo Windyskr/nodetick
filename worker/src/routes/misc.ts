@@ -11,6 +11,7 @@ import {
 } from '../serialize.js';
 import { genId, nonStringField, nowIso, parseApiDate, parseJsonArray, readJsonObject, RequestBodyTooLargeError, isRequestBodyTooLarge } from '../util.js';
 import { BackupImportError, exportBackup, importBackup } from '../services/backup.js';
+import { runBatches } from '../db.js';
 import { tagKey } from './tasks.js';
 
 type State = { Bindings: Env; Variables: Vars };
@@ -407,15 +408,16 @@ misc.post('/tag/:tagName', async (c) => {
     )
       .bind(userId)
       .all<{ id: string; tags: string }>();
+    const updates: D1PreparedStatement[] = [];
     for (const r of rows.results) {
       const tags = parseJsonArray<string>(r.tags).map(String);
       // Task rows keep the typed case ("Work"); match on the tag name.
       if (!tags.some((tag) => tagKey(tag) === oldName)) continue;
       const next = [...new Set(tags.map((tag) => (tagKey(tag) === oldName ? rawName : tag)))];
-      await c.env.DB.prepare('UPDATE tasks SET tags = ?, modified_time = ?, etag = etag + 1 WHERE id = ? AND user_id = ?')
-        .bind(JSON.stringify(next), nowIso(), r.id, userId)
-        .run();
+      updates.push(c.env.DB.prepare('UPDATE tasks SET tags = ?, modified_time = ?, etag = etag + 1 WHERE id = ? AND user_id = ?')
+        .bind(JSON.stringify(next), nowIso(), r.id, userId));
     }
+    await runBatches(c.env.DB, updates);
   }
 
   const row = await c.env.DB.prepare('SELECT * FROM tags WHERE user_id = ? AND name = ?')
@@ -437,14 +439,15 @@ misc.delete('/tag/:tagName', async (c) => {
   )
     .bind(userId)
     .all<{ id: string; tags: string }>();
+  const updates: D1PreparedStatement[] = [];
   for (const r of rows.results) {
     const tags = parseJsonArray<string>(r.tags).map(String);
     if (!tags.some((tag) => tagKey(tag) === name)) continue;
     const next = tags.filter((tag) => tagKey(tag) !== name);
-    await c.env.DB.prepare('UPDATE tasks SET tags = ?, modified_time = ?, etag = etag + 1 WHERE id = ? AND user_id = ?')
-      .bind(next.length ? JSON.stringify(next) : null, nowIso(), r.id, userId)
-      .run();
+    updates.push(c.env.DB.prepare('UPDATE tasks SET tags = ?, modified_time = ?, etag = etag + 1 WHERE id = ? AND user_id = ?')
+      .bind(next.length ? JSON.stringify(next) : null, nowIso(), r.id, userId));
   }
+  await runBatches(c.env.DB, updates);
   return c.body(null, 200);
 });
 
@@ -479,16 +482,18 @@ misc.get('/habit/checkins', async (c) => {
     return c.json({ error: `check-in range must not exceed ${MAX_CHECKIN_RANGE_DAYS} days` }, 400);
   }
   const year = Math.floor(from / 10000);
-  const out = [];
-  for (const habitId of habitIds) {
-    const rows = await c.env.DB.prepare(
-      'SELECT * FROM habit_checkins WHERE habit_id = ? AND user_id = ? AND stamp BETWEEN ? AND ? ORDER BY stamp ASC',
-    )
-      .bind(habitId, userId, from, to)
-      .all();
-    out.push({ habitId, year, checkins: rows.results.map(serializeCheckin) });
-  }
-  return c.json(out);
+  // One query for every habit: the ids travel as a JSON array, since D1 caps
+  // bound parameters at 100 per statement.
+  const rows = await c.env.DB.prepare(
+    `SELECT * FROM habit_checkins
+     WHERE habit_id IN (SELECT value FROM json_each(?)) AND user_id = ? AND stamp BETWEEN ? AND ?
+     ORDER BY stamp ASC`,
+  )
+    .bind(JSON.stringify(habitIds), userId, from, to)
+    .all();
+  const byHabit = new Map<string, ReturnType<typeof serializeCheckin>[]>(habitIds.map((id) => [id, []]));
+  for (const row of rows.results) byHabit.get(String(row.habit_id))?.push(serializeCheckin(row));
+  return c.json(habitIds.map((habitId) => ({ habitId, year, checkins: byHabit.get(habitId)! })));
 });
 
 misc.get('/habit/:habitId/records', async (c) => {
@@ -623,11 +628,6 @@ misc.post('/habit/:habitId', async (c) => {
 misc.post('/habit/:habitId/checkin', async (c) => {
   const userId = c.get('userId');
   const habitId = c.req.param('habitId');
-  const habit = await c.env.DB.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?')
-    .bind(habitId, userId)
-    .first();
-  if (!habit) return c.json({ error: 'habit not found' }, 404);
-
   const b = await readJsonObject(c.req);
   const stamp = validStamp(b.stamp);
   if (stamp == null) {
@@ -641,9 +641,14 @@ misc.post('/habit/:habitId/checkin', async (c) => {
     return c.json({ error: 'value, goal and status must be finite numbers; time fields must be short' }, 400);
   }
 
-  await c.env.DB.prepare(
+  // One round trip: the habit check, the upsert (which only runs for the
+  // user's own habit) and the year's check-ins go out as one batch.
+  const year = Math.floor(stamp / 10000);
+  const [habit, , checkins] = await c.env.DB.batch<Record<string, unknown>>([
+    c.env.DB.prepare('SELECT id FROM habits WHERE id = ? AND user_id = ?').bind(habitId, userId),
+    c.env.DB.prepare(
     `INSERT INTO habit_checkins (id, user_id, habit_id, stamp, value, goal, status, time, op_time, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM habits WHERE id = ? AND user_id = ?)
      ON CONFLICT(habit_id, stamp) DO UPDATE SET
        value = COALESCE(excluded.value, value),
        goal = COALESCE(excluded.goal, goal),
@@ -662,16 +667,15 @@ misc.post('/habit/:habitId/checkin', async (c) => {
       b.time != null ? String(b.time) : null,
       b.opTime != null ? String(b.opTime) : nowIso(),
       Date.now(),
-    )
-    .run();
-
-  const year = Math.floor(stamp / 10000);
-  const rows = await c.env.DB.prepare(
-    "SELECT * FROM habit_checkins WHERE habit_id = ? AND user_id = ? AND CAST(stamp / 10000 AS INTEGER) = ? ORDER BY stamp ASC",
-  )
-    .bind(habitId, userId, year)
-    .all();
-  return c.json({ habitId, year, checkins: rows.results.map(serializeCheckin) });
+      habitId,
+      userId,
+    ),
+    c.env.DB.prepare(
+      'SELECT * FROM habit_checkins WHERE habit_id = ? AND user_id = ? AND stamp BETWEEN ? AND ? ORDER BY stamp ASC',
+    ).bind(habitId, userId, year * 10000 + 101, year * 10000 + 1231),
+  ]);
+  if (!habit.results.length) return c.json({ error: 'habit not found' }, 404);
+  return c.json({ habitId, year, checkins: checkins.results.map(serializeCheckin) });
 });
 
 misc.post('/habit/:habitId/record', async (c) => {
@@ -815,10 +819,11 @@ misc.post('/focus', async (c) => {
   if (duration != null && duration > MAX_FOCUS_SECONDS) {
     return c.json({ error: 'duration is too long' }, 400);
   }
-  await c.env.DB.prepare(
+  const row = await c.env.DB.prepare(
     `INSERT INTO focus_records
       (id, user_id, type, task_id, note, start_time, end_time, duration, pause_duration, relation, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     RETURNING *`,
   )
     .bind(
       id,
@@ -833,9 +838,6 @@ misc.post('/focus', async (c) => {
       Array.isArray(b.relationType) ? JSON.stringify(b.relationType) : null,
       Date.now(),
     )
-    .run();
-  const row = await c.env.DB.prepare('SELECT * FROM focus_records WHERE id = ? AND user_id = ?')
-    .bind(id, userId)
     .first();
   return c.json(serializeFocus(row!));
 });

@@ -27,29 +27,30 @@ function finiteNumber(value: unknown, fallback: number | null = null): number | 
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-async function ensureInbox(db: D1Database, userId: string): Promise<void> {
-  const existing = await db.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?')
-    .bind(INBOX_ID, userId)
-    .first();
-  if (existing) return;
-  await db.prepare(
+/** Statement that creates the user's inbox unless it already exists. */
+export function insertInbox(db: D1Database, userId: string): D1PreparedStatement {
+  return db.prepare(
     `INSERT OR IGNORE INTO projects (id, user_id, name, color, sort_order, closed, group_id, view_mode, permission, kind, etag, created_at)
      VALUES (?, ?, 'Inbox', '#4772FA', 0, 0, NULL, 'list', 'write', 'TASK', 0, ?)`,
   )
-    .bind(INBOX_ID, userId, Date.now())
-    .run();
+    .bind(INBOX_ID, userId, Date.now());
 }
 
 // --- Projects ---
 
 projects.get('/project', async (c) => {
   const userId = c.get('userId');
-  await ensureInbox(c.env.DB, userId);
-  const rows = await c.env.DB.prepare(
+  const list = () => c.env.DB.prepare(
     'SELECT * FROM projects WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC',
   )
     .bind(userId)
     .all();
+  let rows = await list();
+  // The inbox is created on first listing; afterwards the list itself shows it exists.
+  if (!rows.results.some((row) => row.id === INBOX_ID)) {
+    await insertInbox(c.env.DB, userId).run();
+    rows = await list();
+  }
   return c.json(rows.results.map(serializeProject));
 });
 
@@ -142,9 +143,10 @@ projects.post('/project', async (c) => {
   const sortOrder = finiteNumber(b.sortOrder, 0);
   if (sortOrder == null) return c.json({ error: 'sortOrder must be a finite number' }, 400);
   const id = genId();
-  await c.env.DB.prepare(
+  const row = await c.env.DB.prepare(
     `INSERT INTO projects (id, user_id, name, color, sort_order, view_mode, kind, group_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     RETURNING *`,
   )
     .bind(
       id,
@@ -157,8 +159,7 @@ projects.post('/project', async (c) => {
       groupId,
       Date.now(),
     )
-    .run();
-  const row = await c.env.DB.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?').bind(id, userId).first();
+    .first();
   return c.json(serializeProject(row!));
 });
 
@@ -174,20 +175,14 @@ projects.get('/project/:projectId', async (c) => {
 projects.get('/project/:projectId/data', async (c) => {
   const userId = c.get('userId');
   const projectId = c.req.param('projectId');
-  const project = await c.env.DB.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?')
-    .bind(projectId, userId)
-    .first();
+  // Three reads, one round trip.
+  const [projectRows, taskRows, columnRows] = await c.env.DB.batch<Record<string, unknown>>([
+    c.env.DB.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?').bind(projectId, userId),
+    c.env.DB.prepare('SELECT * FROM tasks WHERE project_id = ? AND user_id = ? AND deleted = 0 AND status = 0').bind(projectId, userId),
+    c.env.DB.prepare('SELECT * FROM task_columns WHERE project_id = ? AND user_id = ? ORDER BY sort_order ASC').bind(projectId, userId),
+  ]);
+  const project = projectRows.results[0] as Record<string, unknown> | undefined;
   if (!project) return c.json({ error: 'project not found' }, 404);
-  const taskRows = await c.env.DB.prepare(
-    "SELECT * FROM tasks WHERE project_id = ? AND user_id = ? AND deleted = 0 AND status = 0",
-  )
-    .bind(projectId, userId)
-    .all();
-  const columnRows = await c.env.DB.prepare(
-    'SELECT * FROM task_columns WHERE project_id = ? AND user_id = ? ORDER BY sort_order ASC',
-  )
-    .bind(projectId, userId)
-    .all();
   return c.json({
     project: serializeProject(project),
     tasks: taskRows.results.map(serializeTask),
@@ -213,13 +208,14 @@ projects.post('/project/:projectId', async (c) => {
   }
   const sortOrder = finiteNumber(b.sortOrder);
   if (b.sortOrder != null && sortOrder == null) return c.json({ error: 'sortOrder must be a finite number' }, 400);
-  const res = await c.env.DB.prepare(
+  const row = await c.env.DB.prepare(
     `UPDATE projects SET
        name = COALESCE(?, name), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
        view_mode = COALESCE(?, view_mode), kind = COALESCE(?, kind),
        group_id = CASE WHEN ? = 1 THEN ? ELSE group_id END,
        closed = COALESCE(?, closed), etag = etag + 1
-     WHERE id = ? AND user_id = ?`,
+     WHERE id = ? AND user_id = ?
+     RETURNING *`,
   )
     .bind(
       b.name != null ? String(b.name) : null,
@@ -233,30 +229,23 @@ projects.post('/project/:projectId', async (c) => {
       c.req.param('projectId'),
       userId,
     )
-    .run();
-  if (!res.meta.changes) return c.json({ error: 'project not found' }, 404);
-  const row = await c.env.DB.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?')
-    .bind(c.req.param('projectId'), userId)
     .first();
-  return c.json(serializeProject(row!));
+  if (!row) return c.json({ error: 'project not found' }, 404);
+  return c.json(serializeProject(row));
 });
 
 projects.delete('/project/:projectId', async (c) => {
   const userId = c.get('userId');
   const projectId = c.req.param('projectId');
-  const res = await c.env.DB.prepare('DELETE FROM projects WHERE id = ? AND user_id = ?')
-    .bind(projectId, userId)
-    .run();
-  if (!res.meta.changes) return c.json({ error: 'project not found' }, 404);
-  await c.env.DB.prepare('DELETE FROM tasks WHERE project_id = ? AND user_id = ?')
-    .bind(projectId, userId)
-    .run();
-  await c.env.DB.prepare('DELETE FROM task_columns WHERE project_id = ? AND user_id = ?')
-    .bind(projectId, userId)
-    .run();
-  await c.env.DB.prepare('DELETE FROM task_comments WHERE project_id = ? AND user_id = ?')
-    .bind(projectId, userId)
-    .run();
+  // One transaction: the list's tasks, columns and comments go with it, or nothing does.
+  const exists = 'EXISTS (SELECT 1 FROM projects WHERE id = ? AND user_id = ?)';
+  const [, , , removed] = await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM tasks WHERE project_id = ? AND user_id = ? AND ${exists}`).bind(projectId, userId, projectId, userId),
+    c.env.DB.prepare(`DELETE FROM task_columns WHERE project_id = ? AND user_id = ? AND ${exists}`).bind(projectId, userId, projectId, userId),
+    c.env.DB.prepare(`DELETE FROM task_comments WHERE project_id = ? AND user_id = ? AND ${exists}`).bind(projectId, userId, projectId, userId),
+    c.env.DB.prepare('DELETE FROM projects WHERE id = ? AND user_id = ?').bind(projectId, userId),
+  ]);
+  if (!removed.meta.changes) return c.json({ error: 'project not found' }, 404);
   return c.body(null, 200);
 });
 

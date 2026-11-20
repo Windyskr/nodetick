@@ -1,4 +1,5 @@
 import { Env } from '../env.js';
+import { runBatches } from '../db.js';
 
 /**
  * Full-account backup: dump every user-owned row into one JSON document and
@@ -80,9 +81,11 @@ export async function importBackup(
     throw new BackupImportError('not a NodeTick backup file', 400);
   }
 
-  let imported = 0;
-  let skipped = 0;
-  const upsert = async (table: string, rows: unknown, columns: string[]) => {
+  // Every row becomes one statement; they run in D1 batches at the end, so a
+  // large backup stays within the per-request query limit and a rejected
+  // file (413) writes nothing.
+  const statements: D1PreparedStatement[] = [];
+  const upsert = (table: string, rows: unknown, columns: string[]) => {
     if (!Array.isArray(rows)) return;
     if (rows.length > MAX_IMPORT_ITEMS) {
       throw new BackupImportError(`too many ${table} rows`, 413);
@@ -106,36 +109,36 @@ export async function importBackup(
       if (habitScoped) values.push(row.habit_id ?? null, userId);
       const placeholders = names.map(() => '?').join(', ');
       const where = guards.length ? ` WHERE ${guards.join(' AND ')}` : '';
-      const result = await env.DB.prepare(
+      statements.push(env.DB.prepare(
         `INSERT OR REPLACE INTO ${table} (${names.join(', ')}) SELECT ${placeholders}${where}`,
-      ).bind(...values).run();
-      if (result.meta.changes) imported++;
-      else skipped++;
+      ).bind(...values));
     }
   };
 
   // Columns mirror schema.sql; keep this list in sync when tables change.
-  await upsert('project_groups', doc.projectGroups, ['id', 'name', 'view_mode', 'sort_order', 'created_at']);
-  await upsert('projects', doc.projects, ['id', 'name', 'color', 'sort_order', 'view_mode', 'kind', 'group_id', 'closed', 'permission', 'etag', 'created_at']);
-  await upsert('tags', doc.tags, ['id', 'name', 'label', 'color', 'sort_order', 'parent_id', 'created_at']);
-  await upsert('filters', doc.filters, ['id', 'name', 'filter_json', 'sort_order', 'created_at', 'modified_at']);
-  await upsert(
+  upsert('project_groups', doc.projectGroups, ['id', 'name', 'view_mode', 'sort_order', 'created_at']);
+  upsert('projects', doc.projects, ['id', 'name', 'color', 'sort_order', 'view_mode', 'kind', 'group_id', 'closed', 'permission', 'etag', 'created_at']);
+  upsert('tags', doc.tags, ['id', 'name', 'label', 'color', 'sort_order', 'parent_id', 'created_at']);
+  upsert('filters', doc.filters, ['id', 'name', 'filter_json', 'sort_order', 'created_at', 'modified_at']);
+  upsert(
     'tasks',
     doc.tasks,
     ['id', 'project_id', 'title', 'content', 'task_desc', 'kind', 'start_date', 'due_date', 'time_zone', 'is_all_day',
       'priority', 'pinned', 'status', 'sort_order', 'repeat_flag', 'reminders', 'items', 'tags', 'parent_id', 'child_ids',
       'column_id', 'completed_time', 'focus_summaries', 'etag', 'created_time', 'modified_time', 'deleted', 'deleted_time'],
   );
-  await upsert(
+  upsert(
     'habits',
     doc.habits,
     ['id', 'name', 'icon_res', 'color', 'sort_order', 'status', 'encouragement', 'type', 'goal', 'step', 'unit',
       'repeat_rule', 'reminders', 'section_id', 'style', 'etag', 'created_at'],
   );
-  await upsert('habit_checkins', doc.habitCheckins, ['id', 'habit_id', 'stamp', 'value', 'goal', 'status', 'time', 'op_time', 'created_at']);
-  await upsert('habit_records', doc.habitRecords, ['id', 'habit_id', 'stamp', 'content', 'emoji', 'op_time', 'created_at']);
-  await upsert('focus_records', doc.focusRecords, ['id', 'type', 'task_id', 'note', 'start_time', 'end_time', 'duration', 'pause_duration', 'relation', 'status', 'etag', 'created_at']);
-  await upsert('countdowns', doc.countdowns, ['id', 'name', 'date', 'kind', 'reminders', 'repeat_flag', 'calculation', 'display_mode', 'style', 'color', 'icon', 'sort_order', 'created_at']);
+  upsert('habit_checkins', doc.habitCheckins, ['id', 'habit_id', 'stamp', 'value', 'goal', 'status', 'time', 'op_time', 'created_at']);
+  upsert('habit_records', doc.habitRecords, ['id', 'habit_id', 'stamp', 'content', 'emoji', 'op_time', 'created_at']);
+  upsert('focus_records', doc.focusRecords, ['id', 'type', 'task_id', 'note', 'start_time', 'end_time', 'duration', 'pause_duration', 'relation', 'status', 'etag', 'created_at']);
+  upsert('countdowns', doc.countdowns, ['id', 'name', 'date', 'kind', 'reminders', 'repeat_flag', 'calculation', 'display_mode', 'style', 'color', 'icon', 'sort_order', 'created_at']);
 
-  return { imported, skipped };
+  let imported = 0;
+  for (const result of await runBatches(env.DB, statements)) if (result.meta.changes) imported++;
+  return { imported, skipped: statements.length - imported };
 }

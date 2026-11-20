@@ -116,6 +116,8 @@ export async function issueApiToken(
 
 type ApiEnv = { Bindings: Env; Variables: Vars };
 
+const TOKEN_TOUCH_INTERVAL_MS = 60 * 60 * 1000;
+
 /**
  * Auth for /open/v1/*. Accepts either a Bearer API token (CLI / external
  * clients) or the web session cookie (the SPA calls the same endpoints from
@@ -129,19 +131,23 @@ export const requireApiToken: MiddlewareHandler<ApiEnv> = async (c, next) => {
     if (!m) return c.json({ error: 'Unauthorized' }, 401);
     const tokenHash = await sha256Hex(m[1]);
     const row = await c.env.DB.prepare(
-      'SELECT id, user_id FROM api_tokens WHERE token_hash = ? AND revoked = 0',
+      'SELECT id, user_id, last_used_at FROM api_tokens WHERE token_hash = ? AND revoked = 0',
     )
       .bind(tokenHash)
-      .first<{ id: string; user_id: string }>();
+      .first<{ id: string; user_id: string; last_used_at: number | null }>();
     if (!row) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
     c.set('userId', row.user_id);
-    c.executionCtx.waitUntil(
-      c.env.DB.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?')
-        .bind(Date.now(), row.id)
-        .run(),
-    );
+    // The tokens page shows the day of last use; refreshing it hourly saves a
+    // D1 write on every CLI call.
+    if (!row.last_used_at || Date.now() - Number(row.last_used_at) > TOKEN_TOUCH_INTERVAL_MS) {
+      c.executionCtx.waitUntil(
+        c.env.DB.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?')
+          .bind(Date.now(), row.id)
+          .run(),
+      );
+    }
     await next();
     return;
   }

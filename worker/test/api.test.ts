@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { env, reset, SELF } from 'cloudflare:test';
+import { createExecutionContext, env, reset, SELF, waitOnExecutionContext } from 'cloudflare:test';
+import worker from '../src/index.js';
 import { issueApiToken } from '../src/auth.js';
+import { ensureSchema, resetSchemaCheck } from '../src/db.js';
 import {
   countdownFallsOn,
   dispatchDueNotifications,
@@ -16,6 +18,7 @@ import { parseApiDate } from '../src/util.js';
 // the isolation assumed by this suite.
 afterEach(async () => {
   await reset();
+  resetSchemaCheck();
 });
 
 const HOST = 'https://nodetick.test';
@@ -931,6 +934,41 @@ describe('tasks / projects / tags', () => {
     expect(parentRow?.child_ids ?? '').not.toContain(String(child.id));
   });
 
+  it('keeps child_ids in step through create, re-parent, trash, restore and corrupt data', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // inbox
+    const create = async (body: Record<string, unknown>) =>
+      (await (await SELF.fetch(`${HOST}/open/v1/task`, { method: 'POST', headers: auth(token), body: JSON.stringify({ projectId: 'inbox', ...body }) })).json()) as { id: string };
+    const childIds = async (id: string) =>
+      (await env.DB.prepare('SELECT child_ids FROM tasks WHERE id = ?').bind(id).first<{ child_ids: string | null }>())?.child_ids ?? null;
+    const parent = await create({ title: 'Parent' });
+    const a = await create({ title: 'A', parentId: parent.id });
+    const b = await create({ title: 'B', parentId: parent.id });
+    expect(JSON.parse((await childIds(parent.id))!)).toEqual([a.id, b.id]);
+
+    // Re-parenting to the same parent never duplicates the id.
+    await SELF.fetch(`${HOST}/open/v1/task/${a.id}`, { method: 'POST', headers: auth(token), body: JSON.stringify({ parentId: parent.id }) });
+    expect(JSON.parse((await childIds(parent.id))!)).toEqual([a.id, b.id]);
+
+    // Trash and restore move the id out and back in.
+    expect((await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${a.id}`, { method: 'DELETE', headers: auth(token) })).status).toBe(200);
+    expect(JSON.parse((await childIds(parent.id))!)).toEqual([b.id]);
+    expect((await SELF.fetch(`${HOST}/open/v1/task/trash/${a.id}/restore`, { method: 'POST', headers: auth(token) })).status).toBe(200);
+    expect(JSON.parse((await childIds(parent.id))!)).toEqual([b.id, a.id]);
+
+    // Trashing the parent detaches both children.
+    expect((await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${parent.id}`, { method: 'DELETE', headers: auth(token) })).status).toBe(200);
+    expect(await childIds(parent.id)).toBeNull();
+    const orphans = await env.DB.prepare('SELECT COUNT(*) AS n FROM tasks WHERE parent_id = ?').bind(parent.id).first<{ n: number }>();
+    expect(orphans?.n).toBe(0);
+
+    // A corrupt child_ids value is replaced rather than failing the request.
+    const other = await create({ title: 'Other' });
+    await env.DB.prepare("UPDATE tasks SET child_ids = 'not json' WHERE id = ?").bind(other.id).run();
+    const c = await create({ title: 'C', parentId: other.id });
+    expect(JSON.parse((await childIds(other.id))!)).toEqual([c.id]);
+  });
+
   it('pins and unpins tasks through the task update endpoint', async () => {
     const { token } = await bootstrap();
     const project = (await (
@@ -1693,6 +1731,27 @@ describe('recurring tasks', () => {
     expect(clone!.dueDate).toBe('2030-01-14T00:00:00+0000');
   });
 
+  it('follows nth-weekday rules and ends the series when COUNT runs out', async () => {
+    const { token } = await bootstrap();
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
+    const task = (await (
+      await SELF.fetch(`${HOST}/open/v1/task`, {
+        method: 'POST',
+        headers: auth(token),
+        // 2099-06-09 is the second Tuesday of June.
+        body: JSON.stringify({ title: 'Team lunch', projectId: 'inbox', dueDate: '2099-06-09T12:00:00+0800', repeatFlag: 'RRULE:FREQ=MONTHLY;BYDAY=2TU;COUNT=2' }),
+      })
+    ).json()) as { id: string };
+    const complete = async (id: string) =>
+      (await (await SELF.fetch(`${HOST}/open/v1/project/inbox/task/${id}/complete`, { method: 'POST', headers: auth(token) })).json()) as
+        { id: string; dueDate: string; repeatFlag: string } | null;
+
+    const next = await complete(task.id);
+    expect(next).toMatchObject({ dueDate: '2099-07-14T12:00:00+0800', repeatFlag: 'RRULE:FREQ=MONTHLY;BYDAY=2TU;COUNT=1' });
+    // The last occurrence spawns nothing.
+    expect(await complete(next!.id)).toBeNull();
+  });
+
   it('returns a null body when completing a non-recurring task', async () => {
     const { token } = await bootstrap();
     await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // ensure inbox exists
@@ -1909,6 +1968,37 @@ describe('open backup endpoints', () => {
       body: JSON.stringify({ app: 'other' }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it("deletes a list with its tasks, columns and comments, and never another user's", async () => {
+    const { token: owner } = await bootstrap();
+    const post = async (tok: string, path: string, body: unknown) =>
+      (await SELF.fetch(`${HOST}/open/v1${path}`, { method: 'POST', headers: auth(tok), body: JSON.stringify(body) })).json() as Promise<Record<string, unknown>>;
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(owner) }); // ensure inbox
+    const project = await post(owner, '/project', { name: 'Work' });
+    const column = await post(owner, `/project/${project.id}/column`, { name: 'Doing' });
+    const task = await post(owner, '/task', { title: 'Report', projectId: project.id, columnId: column.id });
+    await post(owner, `/project/${project.id}/task/${task.id}/comment`, { title: 'note' });
+    const habit = await post(owner, '/habit', { name: 'Run' });
+    await env.DB.prepare(
+      'INSERT INTO users (id, email, password_hash, salt, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    ).bind('other-user', 'other@example.com', 'test-only', '33'.repeat(16), 0, Date.now()).run();
+    const other = await issueApiToken(env.DB, 'other-user', 'test');
+    const count = async (table: string) => (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>())?.n;
+
+    expect((await SELF.fetch(`${HOST}/open/v1/project/${project.id}`, { method: 'DELETE', headers: auth(other) })).status).toBe(404);
+    expect((await SELF.fetch(`${HOST}/open/v1/project/${project.id}/data`, { headers: auth(other) })).status).toBe(404);
+    const foreignCheckin = await SELF.fetch(`${HOST}/open/v1/habit/${habit.id}/checkin`, {
+      method: 'POST', headers: auth(other), body: JSON.stringify({ stamp: 20260105, value: 1 }),
+    });
+    expect(foreignCheckin.status).toBe(404);
+    expect([await count('tasks'), await count('task_columns'), await count('task_comments'), await count('habit_checkins')]).toEqual([1, 1, 1, 0]);
+
+    const data = (await (await SELF.fetch(`${HOST}/open/v1/project/${project.id}/data`, { headers: auth(owner) })).json()) as { tasks: unknown[]; columns: unknown[] };
+    expect([data.tasks.length, data.columns.length]).toEqual([1, 1]);
+    expect((await SELF.fetch(`${HOST}/open/v1/project/${project.id}`, { method: 'DELETE', headers: auth(owner) })).status).toBe(200);
+    expect([await count('tasks'), await count('task_columns'), await count('task_comments'), await count('projects')]).toEqual([0, 0, 0, 1]);
+    expect((await SELF.fetch(`${HOST}/open/v1/project/${project.id}`, { method: 'DELETE', headers: auth(owner) })).status).toBe(404);
   });
 
   it("never moves another user's rows when importing their export", async () => {
@@ -2337,5 +2427,217 @@ describe('push notification language', () => {
     // Switching the UI language re-subscribes the same endpoint with the new language.
     expect((await subscribe('https://push.example/a', { lang: 'zh' })).status).toBe(200);
     expect(await langOf('https://push.example/a')).toBe('zh');
+  });
+});
+
+describe('database usage', () => {
+  /** SQLite's plan for a query, one line per step. */
+  async function plan(sql: string, ...params: unknown[]): Promise<string> {
+    const rows = await env.DB.prepare(`EXPLAIN QUERY PLAN ${sql}`).bind(...params).all<{ detail: string }>();
+    return rows.results.map((row) => row.detail).join('\n');
+  }
+
+  it('reads only the rows hot queries need', async () => {
+    await ensureSchema(env);
+    // The per-minute reminder scan touches active tasks with reminders only.
+    expect(await plan(
+      `SELECT id FROM tasks INDEXED BY idx_tasks_reminders
+       WHERE user_id = ? AND reminders IS NOT NULL AND status = 0 AND deleted = 0
+         AND (due_date IS NOT NULL OR start_date IS NOT NULL)`,
+      'u',
+    )).toContain('USING INDEX idx_tasks_reminders');
+    // Task lists by status (the webapp's active / abandoned / completed / trash loads, feeds).
+    expect(await plan('SELECT * FROM tasks WHERE user_id = ? AND deleted = 0 AND status IN (?, ?)', 'u', 0, -1))
+      .toContain('USING INDEX idx_tasks_user_status (user_id=? AND deleted=? AND status=?)');
+    expect(await plan('SELECT * FROM tasks WHERE user_id = ? AND status = 2 AND deleted = 0 ORDER BY completed_time DESC', 'u'))
+      .toContain('USING INDEX idx_tasks_user_status (user_id=? AND deleted=? AND status=?)');
+    expect(await plan('SELECT * FROM tasks WHERE user_id = ? AND deleted = 1 ORDER BY deleted_time DESC', 'u'))
+      .toContain('USING INDEX idx_tasks_user_status (user_id=? AND deleted=?)');
+  });
+
+  it('upgrades a database whose schema version is out of date', async () => {
+    await ensureSchema(env);
+    await env.DB.prepare('DROP INDEX idx_tasks_reminders').run();
+    const reminderIndex = () =>
+      env.DB.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_tasks_reminders'").first<{ sql: string }>();
+    // The stored version still matches: a new isolate trusts it.
+    resetSchemaCheck();
+    await ensureSchema(env);
+    expect(await reminderIndex()).toBeNull();
+    // A deploy with a changed schema.sql has a new version: full check.
+    await env.DB.prepare("UPDATE schema_meta SET version = 'older'").run();
+    resetSchemaCheck();
+    await ensureSchema(env);
+    expect((await reminderIndex())?.sql).toContain('WHERE reminders IS NOT NULL AND status = 0 AND deleted = 0');
+    expect((await env.DB.prepare('SELECT version FROM schema_meta').first<{ version: string }>())?.version).not.toBe('older');
+  });
+
+  it('runs the full check again after a query hits a missing table', async () => {
+    await ensureSchema(env);
+    await env.DB.prepare('DROP TABLE countdowns').run();
+    const { cookie } = await bootstrap();
+    const broken = await SELF.fetch(`${HOST}/open/v1/countdown`, { headers: { Cookie: cookie } });
+    expect(broken.status).toBe(500);
+    // The error made the next request re-check despite the matching version row.
+    const healed = await SELF.fetch(`${HOST}/open/v1/countdown`, { headers: { Cookie: cookie } });
+    expect(healed.status).toBe(200);
+  });
+
+  /**
+   * The worker with a D1 binding that counts queries the way the Free plan's
+   * per-request limit does: each statement run is one, a batch is one.
+   */
+  function countingWorker() {
+    let queries = 0;
+    const unwrapped = new WeakMap<object, D1PreparedStatement>();
+    const wrap = (statement: D1PreparedStatement): D1PreparedStatement => {
+      const proxy = new Proxy(statement, {
+        get(target, prop) {
+          const value = Reflect.get(target, prop, target);
+          if (typeof value !== 'function') return value;
+          if (prop === 'bind') return (...args: unknown[]) => wrap(value.apply(target, args));
+          if (prop === 'run' || prop === 'all' || prop === 'first' || prop === 'raw') {
+            return (...args: unknown[]) => {
+              queries++;
+              return value.apply(target, args);
+            };
+          }
+          return value.bind(target);
+        },
+      });
+      unwrapped.set(proxy, statement);
+      return proxy;
+    };
+    const db = new Proxy(env.DB, {
+      get(target, prop) {
+        const value = Reflect.get(target, prop, target);
+        if (typeof value !== 'function') return value;
+        if (prop === 'prepare') return (sql: string) => wrap(value.call(target, sql));
+        if (prop === 'batch') {
+          return (statements: D1PreparedStatement[]) => {
+            queries++;
+            return value.call(target, statements.map((statement) => unwrapped.get(statement) ?? statement));
+          };
+        }
+        return value.bind(target);
+      },
+    });
+    const fetch = (path: string, init?: RequestInit) =>
+      worker.fetch(new Request(`${HOST}${path}`, init), { ...env, DB: db }, createExecutionContext());
+    return { fetch, queries: () => queries, reset: () => { queries = 0; } };
+  }
+
+  it('keeps per-request queries flat however much data a request touches', async () => {
+    const { token, cookie } = await bootstrap();
+    const me = (await (await SELF.fetch(`${HOST}/api/me`, { headers: { Cookie: cookie } })).json()) as { id: string };
+    await SELF.fetch(`${HOST}/open/v1/project`, { headers: auth(token) }); // inbox
+    const now = '2026-11-20T00:00:00.000+0000';
+    await env.DB.batch(Array.from({ length: 120 }, (_, i) => env.DB.prepare(
+      "INSERT INTO tasks (id, user_id, project_id, title, tags, created_time, modified_time) VALUES (?, ?, 'inbox', ?, '[\"Work\"]', ?, ?)",
+    ).bind(`task${String(i).padStart(20, '0')}`, me.id, `Task ${i}`, now, now)));
+    await env.DB.prepare("INSERT INTO tags (id, user_id, name, label, created_at) VALUES ('tag1', ?, 'work', 'Work', ?)").bind(me.id, Date.now()).run();
+    await env.DB.batch(Array.from({ length: 60 }, (_, i) => env.DB.prepare(
+      'INSERT INTO habits (id, user_id, name, created_at) VALUES (?, ?, ?, ?)',
+    ).bind(`habit${String(i).padStart(19, '0')}`, me.id, `Habit ${i}`, Date.now())));
+    const counter = countingWorker();
+    await counter.fetch('/open/v1/project', { headers: auth(token) }); // warm the schema check
+
+    // Renaming a tag rewrites 120 tasks.
+    counter.reset();
+    const renamed = await counter.fetch('/open/v1/tag/work', { method: 'POST', headers: auth(token), body: JSON.stringify({ name: 'job', label: 'Job' }) });
+    expect(renamed.status).toBe(200);
+    // The old code ran one UPDATE per task (127 queries here).
+    expect(counter.queries()).toBeGreaterThan(0);
+    expect(counter.queries()).toBeLessThan(15);
+    const retagged = await env.DB.prepare("SELECT COUNT(*) AS n FROM tasks WHERE tags = '[\"job\"]'").first<{ n: number }>();
+    expect(retagged?.n).toBe(120);
+
+    // Deleting it strips it from all of them again.
+    counter.reset();
+    expect((await counter.fetch('/open/v1/tag/job', { method: 'DELETE', headers: auth(token) })).status).toBe(200);
+    expect(counter.queries()).toBeLessThan(15);
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM tasks WHERE tags IS NOT NULL').first<{ n: number }>())?.n).toBe(0);
+
+    // Check-ins for 60 habits come from one query.
+    counter.reset();
+    const ids = Array.from({ length: 60 }, (_, i) => `habit${String(i).padStart(19, '0')}`).join(',');
+    const checkins = await counter.fetch(`/open/v1/habit/checkins?habitIds=${ids}&from=20261101&to=20261130`, { headers: auth(token) });
+    expect(((await checkins.json()) as unknown[]).length).toBe(60);
+    expect(counter.queries()).toBeLessThan(10);
+
+    // Importing a 300-task backup.
+    const backup = {
+      app: 'nodetick',
+      tasks: Array.from({ length: 300 }, (_, i) => ({ id: `bk${String(i).padStart(22, '0')}`, project_id: 'inbox', title: `Imported ${i}` })),
+    };
+    counter.reset();
+    const imported = await counter.fetch('/open/v1/backup/import', { method: 'POST', headers: auth(token), body: JSON.stringify(backup) });
+    expect(await imported.json()).toEqual({ imported: 300, skipped: 0 });
+    expect(counter.queries()).toBeLessThan(10);
+  });
+
+  it('answers the webapp hot paths in one or two database round trips', async () => {
+    const { cookie } = await bootstrap();
+    const counter = countingWorker();
+    const headers = { Cookie: cookie, 'Content-Type': 'application/json' };
+    const call = async (path: string, init: RequestInit = {}) => {
+      counter.reset();
+      const res = await counter.fetch(path, { ...init, headers });
+      expect(res.status, path).toBe(200);
+      return { body: res.headers.get('content-type')?.includes('json') ? await res.json() : null, queries: counter.queries() };
+    };
+    await call('/open/v1/project'); // warm the schema check, create the inbox
+
+    // Each count includes the session lookup.
+    expect((await call('/api/me')).queries).toBe(1);
+    expect((await call('/open/v1/project')).queries).toBe(2);
+    const created = await call('/open/v1/task', { method: 'POST', body: JSON.stringify({ projectId: 'inbox', title: 'Hot', tags: ['work', 'home'] }) });
+    expect(created.queries).toBe(2);
+    const task = created.body as { id: string };
+    expect((await call(`/open/v1/task/${task.id}`, { method: 'POST', body: JSON.stringify({ projectId: 'inbox', title: 'Hotter', tags: ['work'] }) })).queries).toBe(3);
+    expect((await call(`/open/v1/project/inbox/task/${task.id}/complete`, { method: 'POST' })).queries).toBe(2);
+    expect((await call(`/open/v1/project/inbox/task/${task.id}`, { method: 'DELETE' })).queries).toBe(3);
+
+    // A repeating task's completion also inserts the next occurrence.
+    const repeating = (await call('/open/v1/task', { method: 'POST', body: JSON.stringify({ projectId: 'inbox', title: 'Daily', dueDate: '2099-01-01T09:00:00+0000', repeatFlag: 'RRULE:FREQ=DAILY' }) })).body as { id: string };
+    const completed = await call(`/open/v1/project/inbox/task/${repeating.id}/complete`, { method: 'POST' });
+    expect(completed.queries).toBe(3);
+    expect(completed.body).toMatchObject({ dueDate: '2099-01-02T09:00:00+0000', title: 'Daily' });
+
+    const tags = await env.DB.prepare('SELECT name FROM tags ORDER BY name').all<{ name: string }>();
+    expect(tags.results.map((t) => t.name)).toEqual(['home', 'work']);
+  });
+
+  it('records token use at most once an hour', async () => {
+    const { token } = await bootstrap();
+    const call = async () => {
+      const ctx = createExecutionContext();
+      await worker.fetch(new Request(`${HOST}/open/v1/project`, { headers: auth(token) }), env, ctx);
+      await waitOnExecutionContext(ctx);
+    };
+    const lastUsed = async () => (await env.DB.prepare('SELECT last_used_at FROM api_tokens').first<{ last_used_at: number | null }>())?.last_used_at;
+    await call();
+    expect(await lastUsed()).toBeGreaterThan(Date.now() - 60_000);
+    const recent = Date.now() - 60_000;
+    await env.DB.prepare('UPDATE api_tokens SET last_used_at = ?').bind(recent).run();
+    await call();
+    expect(await lastUsed()).toBe(recent);
+    await env.DB.prepare('UPDATE api_tokens SET last_used_at = ?').bind(Date.now() - 2 * 3600_000).run();
+    await call();
+    expect(await lastUsed()).toBeGreaterThan(Date.now() - 60_000);
+  });
+
+  it('checks the schema once per isolate, with a one-row read', async () => {
+    await ensureSchema(env);
+    const prepare = vi.spyOn(env.DB, 'prepare');
+    try {
+      await Promise.all([ensureSchema(env), ensureSchema(env)]);
+      expect(prepare).not.toHaveBeenCalled();
+      resetSchemaCheck();
+      await Promise.all([ensureSchema(env), ensureSchema(env)]);
+      expect(prepare.mock.calls.map(([sql]) => String(sql))).toEqual(['SELECT version FROM schema_meta WHERE id = 1']);
+    } finally {
+      prepare.mockRestore();
+    }
   });
 });

@@ -1,3 +1,8 @@
+CREATE TABLE IF NOT EXISTS schema_meta (
+  id INTEGER PRIMARY KEY,
+  version TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
@@ -103,6 +108,8 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_user_project ON tasks(user_id, project_id, deleted);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_status ON tasks(user_id, deleted, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_reminders ON tasks(user_id) WHERE reminders IS NOT NULL AND status = 0 AND deleted = 0;
 
 CREATE TABLE IF NOT EXISTS task_comments (
   id TEXT PRIMARY KEY,

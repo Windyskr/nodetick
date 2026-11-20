@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { Env } from './env.js';
-import { ensureSchema } from './db.js';
+import { ensureSchema, resetSchemaCheck } from './db.js';
 import { requireApiToken } from './auth.js';
 import { oauth } from './oauth.js';
 import { tasks } from './routes/tasks.js';
@@ -86,6 +86,9 @@ app.onError((err, c) => {
   // Log full details server-side; return a generic message so internals
   // (stack traces, SQL text, binding names) never reach the client.
   console.error('unhandled error:', err);
+  // The schema check runs once per isolate; a database restored to an older
+  // schema shows up as a missing table or column, so check it again.
+  if (/no such (table|column)/i.test(String(err))) resetSchemaCheck(true);
   return withSecurityHeaders(c.json({ error: 'internal server error' }, 500));
 });
 

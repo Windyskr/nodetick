@@ -8,6 +8,13 @@ export interface Env {
   VAPID_PRIVATE_KEY?: string;
   /** A mailto: or https: contact identifying this push sender. */
   VAPID_SUBJECT?: string;
+  /**
+   * Application (client) ID of a Microsoft Entra app with public client flows
+   * enabled. Turns on the Microsoft To Do import (device code sign-in).
+   */
+  MS_TODO_CLIENT_ID?: string;
+  /** Entra authority for that sign-in: common (default), consumers, organizations or a tenant id. */
+  MS_TODO_TENANT?: string;
 }
 
 export type Vars = { userId: string };

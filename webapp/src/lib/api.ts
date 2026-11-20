@@ -17,6 +17,7 @@ import type {
   TaskComment,
   TaskFilter,
 } from './types';
+import type { MsDeviceCode, MsImportChunk, MsImportChunkResult, MsTokenPoll } from './msTodo';
 
 export class ApiError extends Error {
   constructor(
@@ -83,6 +84,12 @@ export const api = {
   // --- Calendar subscription feed (/api) ---
   getFeedToken: () => get<{ token: string }>('/api/feed'),
   regenerateFeed: () => post<{ token: string }>('/api/feed/regenerate', {}),
+
+  // --- Microsoft To Do import (/api) ---
+  msTodoConfig: () => get<{ configured: boolean }>('/api/import/microsoft/config'),
+  msTodoDeviceCode: () => post<MsDeviceCode>('/api/import/microsoft/device', {}),
+  msTodoPollToken: (deviceCode: string) => post<MsTokenPoll>('/api/import/microsoft/token', { deviceCode }),
+  msTodoImport: (chunk: MsImportChunk) => post<MsImportChunkResult>('/api/import/microsoft/tasks', chunk),
 
   // --- Browser notifications ---
   notificationConfig: () => get<NotificationConfig>('/open/v1/notification/config'),
