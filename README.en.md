@@ -196,10 +196,10 @@ Microsoft To Do has no export, so the import reads lists and tasks through Micro
 
 **1. Register an app**
 
-1. Sign in to the [Microsoft Entra admin center](https://entra.microsoft.com) and go to **App registrations** → **New registration**. Since June 2024, new apps must be registered in a directory (tenant); with only a personal account and no directory, sign up for a free Azure account, which comes with a default directory.
-2. Pick any name (such as `NodeTick`); under **Supported account types** choose **Accounts in any organizational directory and personal Microsoft accounts**; leave the redirect URI empty.
-3. Under **Authentication**, set **Allow public client flows** to **Yes** and save.
-4. Under **API permissions**, add the Microsoft Graph delegated permission `Tasks.Read`. Users can consent to it themselves; no admin consent is needed.
+1. Sign in to the [Azure portal](https://portal.azure.com) or the [Microsoft Entra admin center](https://entra.microsoft.com) and go to **App registrations** → **New registration**. Since June 2024, new apps must be registered in a directory (tenant). With only a personal account (outlook.com and the like) and no directory, the Entra admin center says the account does not exist in the tenant, and the Azure portal's App registrations page says that creating applications outside of a directory has been deprecated. In that case, first [sign up for a free Azure account](https://azure.microsoft.com/pricing/purchase-options/azure-account) with that account (phone and card verification; nothing is charged unless you upgrade to pay-as-you-go). It comes with a default directory; then register the app in the Azure portal. The directory and the app registration do not depend on the subscription and keep working after the free credit ends.
+2. Pick any name (such as `NodeTick`); under **Supported account types** choose the option covering any Entra ID tenant plus personal Microsoft accounts (**Accounts in any organizational directory and personal Microsoft accounts** in the older UI); leave the redirect URI empty.
+3. Under **Authentication**, set **Allow public client flows** to **Yes** and save. In the newer **Authentication (Preview)** page, it is a toggle on the **Settings** tab.
+4. Under **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**, select `Tasks.Read`. Personal accounts can consent to it themselves when signing in. The app has no verified publisher, so work or school accounts from other organizations may need their organization's admin to approve it.
 
 **2. Set the client ID**
 

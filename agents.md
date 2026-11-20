@@ -9,11 +9,11 @@
 - 沿用绑定的条件是配置里的 `database_name` 和线上库同名（wrangler `D1Handler.canInherit`，4.165 起还比较 jurisdiction，本项目没设）；不同名时会按名字找库，找不到还会新建一个空库。所以生产库必须一直叫 `nodetick-db`。
 - 账号的 D1 库数量已到免费套餐上限 10 个（其余 9 个属于别的项目，不要动），临时库也建不了。
 - 2026-11-20 生产数据：1 个用户、0 个任务、0 个推送订阅，库约 283 kB。迁移前 97% 的读取（每天约 4.7 万行）来自每次请求都跑的表结构检查（`sqlite_master` 64 行）；现在每个实例只读 `schema_meta` 一行。看 D1 消耗：`pnpm --filter worker exec wrangler d1 info nodetick-db`、`… d1 insights nodetick-db --sort-by reads`。
-- Secret：`SESSION_SECRET`、`VAPID_PRIVATE_KEY`（与本地 `.dev.vars` 是同一副密钥对）。`VAPID_PUBLIC_KEY`、`VAPID_SUBJECT` 是控制台变量，靠 `keep_vars = true` 在部署时保留。
+- Secret：`SESSION_SECRET`、`VAPID_PRIVATE_KEY`（与本地 `.dev.vars` 是同一副密钥对）。`VAPID_PUBLIC_KEY`、`VAPID_SUBJECT` 是控制台变量，靠 `keep_vars = true` 在部署时保留。`MS_TODO_CLIENT_ID`（To Do 导入用的 Entra 应用客户端 ID）是 2026-11-20 用 `wrangler deploy --var` 加的，同样靠 `keep_vars` 保留；仓库公开，所以没写进 `wrangler.toml`，值用 `wrangler versions view <版本>` 查。回滚到 `abb484fc` 之前的版本会把这个变量一起丢掉，要重新加。
 - 注册已关闭，首个注册用户是管理员。
-- 版本（新的在前）：`a7d5cefa-a9eb-41e7-bbf8-776db9844741`（2026-11-20 16:31 SGT，提交 `cd70b60`，路线图全部功能；部署后首个请求补建了摘要表、打卡明细表和新列、新索引，Cron 正常）、`5b137473-baae-4775-840b-a07f4b28f639`（2026-11-20，提交 `dab787f`，wrangler 4.165.0，D1 沿用香港库）、`0ee94213-982d-461c-a5f5-dd343a6b569d`（2026-11-20，第一次绑定香港新库，部署时代码未提交，内容同 `3e35189`）、`df1dfff6-43e0-434a-98ff-23912c07d2f1`（2026-11-20）、`f1c6aa24-a86c-4e5c-a0bf-fb9a7a84a6f2`（2026-11-19 16:14 UTC，内容没有记录）、`8c5a9f24-a087-4512-b2e5-e417eeb13b51`（2026-11-19）。
+- 版本（新的在前）：`abb484fc-413d-4464-9000-b45d3f5d48e4`（2026-11-20 17:01 SGT，提交 `97287a0`，代码同 `cd70b60`，只多了变量 `MS_TODO_CLIENT_ID`；Cron 正常）、`a7d5cefa-a9eb-41e7-bbf8-776db9844741`（2026-11-20 16:31 SGT，提交 `cd70b60`，路线图全部功能；部署后首个请求补建了摘要表、打卡明细表和新列、新索引，Cron 正常）、`5b137473-baae-4775-840b-a07f4b28f639`（2026-11-20，提交 `dab787f`，wrangler 4.165.0，D1 沿用香港库）、`0ee94213-982d-461c-a5f5-dd343a6b569d`（2026-11-20，第一次绑定香港新库，部署时代码未提交，内容同 `3e35189`）、`df1dfff6-43e0-434a-98ff-23912c07d2f1`（2026-11-20）、`f1c6aa24-a86c-4e5c-a0bf-fb9a7a84a6f2`（2026-11-19 16:14 UTC，内容没有记录）、`8c5a9f24-a087-4512-b2e5-e417eeb13b51`（2026-11-19）。
 - 回滚：可以 `wrangler rollback` 到 `0ee94213` 及之后的版本（都绑定香港库）；更早的版本绑定着已删除的旧库，**不能**回滚到它们。要退回旧代码，就检出旧提交后正常 `pnpm run deploy`，绑定会沿用新库（旧代码兼容新增的表和索引）。
-- 数据备份（都在 `~/nodetick-backups/`，权限 600）：`nodetick-prod-20261120-163117.sql`（部署 `a7d5cefa` 前），`nodetick-prod-20261120-110400.sql`（迁移前最后一份，导入新库前在本地导入并验证过），更早的 `…20261119-234132.sql`、`…20261120-001341.sql`。旧库的 Time Travel 书签随旧库删除已失效；新库的 Time Travel 从 2026-11-20 起算，恢复用 `pnpm --filter worker exec wrangler d1 time-travel restore nodetick-db --bookmark=<书签>`。
+- 数据备份（都在 `~/nodetick-backups/`，权限 600）：`nodetick-prod-20261120-170045.sql`（部署 `abb484fc` 前），`nodetick-prod-20261120-163117.sql`（部署 `a7d5cefa` 前），`nodetick-prod-20261120-110400.sql`（迁移前最后一份，导入新库前在本地导入并验证过），更早的 `…20261119-234132.sql`、`…20261120-001341.sql`。旧库的 Time Travel 书签随旧库删除已失效；新库的 Time Travel 从 2026-11-20 起算，恢复用 `pnpm --filter worker exec wrangler d1 time-travel restore nodetick-db --bookmark=<书签>`。
 
 ## 坑
 
@@ -53,7 +53,7 @@
 - Cloudflare 控制台（Git 构建）部署没实际跑过，pnpm 12 经 Corepack 运行这一步未验证。
 - 网页每次打开都加载全部已完成任务。几千个时，单个请求的序列化约 4ms（Node 粗测 3,000 个任务），加上 D1 结果解析，冷实例接近免费套餐每次 10ms 的 CPU 上限；真遇到再把已完成任务改为按需加载。
 - `/task/move` 每个任务要 3–8 次查询，一次请求移动较多任务会超过 50 次的上限（CLI 一次只移一个，网页的批量移动走 `POST /task/{id}`）。
-- Microsoft To Do 导入没用真实微软账号跑过：代码已随 `0ee94213` 上线，但还没注册 Entra 应用、`MS_TODO_CLIENT_ID` 未设置，所以界面显示「未配置」。任务列表上的 `$expand=checklistItems,linkedResources` 是 Graph 文档没写的用法，被拒（400）时前端自动退回只展开 `checklistItems`；如果两种都不行，步骤导入会失败，需要改成逐个任务读取。
+- Microsoft To Do 导入只用个人账号实测过（2026-11-20，见记录）。应用没做发布者验证，门户提示其他组织的用户不能自己同意，所以工作或学校账号可能要管理员批准，这种情况没测过。任务列表上的 `$expand=checklistItems,linkedResources` 是 Graph 文档没写的用法，被拒（400）时前端自动退回只展开 `checklistItems`；实测时步骤导入正常，但没有记录走的是哪一种。
 - 摘要的专注时长来自 `/focus/stats`，时间范围超过 371 天（自定义的长范围）时不显示专注时长。导出图片靠 SVG `foreignObject` 画到 canvas，Safari 可能拒绝导出（会提示「此浏览器无法生成图片」），PDF 和复制不受影响。
 
 ## 记录
@@ -69,3 +69,4 @@
 - 2026-11-20（续）：部署 `0ee94213`（To Do 导入、重复规则、两轮性能优化），同时把 D1 从美西迁到香港：导出 → 本地导入并用新代码验证 → 删除旧库 → 以 `--location apac` 新建同名库 → 导入 → 临时写入 `database_id` 部署一次后改回。中断约 3 分钟；17 行数据全部核对一致，部署后第一个请求自动补上 `schema_meta` 和两个索引。
 - 2026-11-20（续）：worker 的 wrangler 4.127.1 → 4.165.0，`@cloudflare/vitest-pool-workers` 0.22 → 0.23，`@cloudflare/workers-types` v4 → v5（5.20261119.1）；`pnpm peers check` 无告警，类型检查、全部测试、`wrangler deploy --dry-run` 和本地冒烟都通过。随后用 4.165.0 部署 `5b137473`：不写 `database_id` 也正确沿用了香港库（`env.DB (inherited)`，版本详情里的 id 为 `01623c4d…`），Cron 正常。
 - 2026-11-20（续）：按路线图逐项提交，推送到 GitHub 并部署 `a7d5cefa`（部署前导出了生产库）：搜索筛选与保存为过滤器、出错 / 离线状态和浏览器 E2E、TickTick 备份导入、统计页、快速添加识别时间与重复、快捷键、倒数纪念日（农历、提前提醒、样式、归档）、嵌套标签、习惯（重复规则、多次打卡、历史统计）、每日提醒、专注（正计时、完整记录、统计）、富文本描述（TipTap + 自写 Markdown 层）、摘要（模板、草稿、导出）；放弃任务也记 `completedTime`；看板卡片标题换行，笔记不再显示勾选框；E2E 增加摘要流程和对话框文案检查。路线图全部完成。部署后第一个请求（未登录的 `/open/v1/…` 也会触发表结构检查）就补建了 `summary_state`、`summary_templates`、`habit_checkin_entries`、`focus_records.added` 等新表、列和索引；之后的 Cron 运行结果为 ok。
+- 2026-11-20（续）：注册 To Do 导入用的 Entra 应用，在维护者个人账号的默认目录里（帐户类型「任何 Entra ID 租户 + 个人 Microsoft 帐户」、无重定向 URI、允许公共客户端流、委托权限 `Tasks.Read`）。个人账号原本没有目录，Entra 管理中心直接拒绝登录，Azure 门户的应用注册页提示「在目录外部创建应用程序的功能已被弃用」；开通 Azure 免费账户（手机加银行卡验证）后才有默认目录。在 Paseo 内置浏览器里新建 outlook.com 账号被微软风控拦下（「帐户创建已被阻止」）。新版门户里「允许公共客户端流」在 Authentication (Preview) →「设置」标签下。随后导出生产库并部署 `abb484fc`，只加了这个变量。之后维护者用个人账号在线上实际导入：微软登录页可以直接同意授权，10 个未完成任务全部导入，其中 2 个任务的步骤成为检查项。README 的注册步骤按新版门户和这次的经历更新。

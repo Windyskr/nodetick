@@ -196,10 +196,10 @@ Microsoft To Do 没有导出功能，导入通过 Microsoft Graph 读取清单�
 
 **1. 注册应用**
 
-1. 登录 [Microsoft Entra 管理中心](https://entra.microsoft.com)，进入「应用注册」→「新注册」。2024 年 6 月起新应用必须注册在目录（租户）里；只有个人账号、没有目录的，可以先注册 Azure 免费账户，会自带一个默认目录。
-2. 名称随意（如 `NodeTick`）；「受支持的帐户类型」选「任何组织目录中的帐户和个人 Microsoft 帐户」；重定向 URI 留空。
-3. 在「身份验证」里把「允许公共客户端流」设为「是」并保存。
-4. 在「API 权限」里添加 Microsoft Graph 的委托权限 `Tasks.Read`。这个权限用户可以自己同意，不需要管理员授权。
+1. 登录 [Azure 门户](https://portal.azure.com)或 [Microsoft Entra 管理中心](https://entra.microsoft.com)，进入「应用注册」→「新注册」。2024 年 6 月起新应用必须注册在目录（租户）里。只有个人账号（outlook.com 等）、没有目录时，Entra 管理中心会提示账号不在租户中，Azure 门户的应用注册页会提示「在目录外部创建应用程序的功能已被弃用」。这时先用这个账号[开通 Azure 免费账户](https://azure.microsoft.com/pricing/purchase-options/azure-account)（要验证手机和银行卡，不升级为即用即付就不扣费），会自带一个默认目录，然后在 Azure 门户里注册。目录和应用注册不依赖订阅，免费额度到期后照常可用。
+2. 名称随意（如 `NodeTick`）；「受支持的帐户类型」选「任何 Entra ID 租户 + 个人 Microsoft 帐户」（旧版界面叫「任何组织目录中的帐户和个人 Microsoft 帐户」）；重定向 URI 留空。
+3. 在「身份验证」里把「允许公共客户端流」设为「是」并保存。新版界面叫「Authentication (Preview)」，这一项是「设置」标签里的开关。
+4. 在「API 权限」→「添加权限」→「Microsoft Graph」→「委托的权限」里勾选 `Tasks.Read`。个人账号登录时可以自己同意这个权限。应用没做发布者验证，其他组织的工作或学校账号可能要该组织的管理员批准。
 
 **2. 填入 client ID**
 
