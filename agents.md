@@ -35,8 +35,15 @@
 - pnpm：`-w` 是 workspace 根目录，不是 npm 的 `--workspace`，选包用 `--filter`；`pnpm --filter worker exec …` 在 `worker/` 下运行，相对路径以它为准；新增带安装脚本的依赖要加进 `pnpm-workspace.yaml` 的 `allowBuilds`，否则安装报 `ERR_PNPM_IGNORED_BUILDS`。
 - Claude Code 的 worktree 从 `origin/main` 创建，开工前先 `git fetch`，确认本地 `main` 没有落后（2026-11-19 曾落后 19 个提交）。
 - zsh 里 `$VAR:path` 会被当成修饰符（`:w`、`:e` 等），git 引用写成 `"${VAR}:path"`。
-- README 截图：本地 `wrangler dev` 临时库加演示账号，Playwright `page.clock` 固定时间避免跨零点；环境没有 emoji 字体，演示数据别用 emoji。
+- README 截图：本地 `wrangler dev` 临时库加演示账号，Playwright `page.clock` 固定时间避免跨零点；环境没有 emoji 字体，演示数据别用 emoji（倒数纪念日的默认图标也是 emoji，要显式给 `♥`、`★` 这类符号）。已完成的历史任务用 `POST /open/v1/backup/import` 写入，才能带上过去的 `completed_time`。
 - README 有中文 `README.md`（默认）和英文 `README.en.md` 两份，结构逐节对应、截图共用（中文界面）；改一份要同步另一份。
+- `schema.sql` 里不要写注释：`ensureSchema` 按 `;` 切分语句再逐条建表、补列、补索引，注释会混进语句里。`ADD COLUMN … NOT NULL` 必须带 `DEFAULT`，否则老库补列失败。
+- 农历换算表有两份：`worker/src/lunar.ts`（Cron 提醒）和 `webapp/src/lib/lunar.ts`（界面），改一份要同步另一份。不要改用 `Intl` 的 `ca-chinese`：新月落在午夜前后几分钟时 ICU 会差一天，逐日扫描也超出 Cron 的 CPU 预算。
+- 倒计时提醒的 Cron 查询用部分索引 `idx_countdowns_reminders`（`INDEXED BY` 写死），改查询时 WHERE 里要保留索引的两个条件，和任务提醒的 `idx_tasks_reminders` 一样。
+- `pnpm test:web` 会先构建网页应用；手动用 `wrangler dev` 看改动时，重新构建后要重启 `wrangler dev` 才会提供新文件。
+- Playwright 驱动富文本编辑器：按 End 或 Ctrl+End 后等约 100ms 再输入，ProseMirror 是异步移动光标的。
+- 停本地服务按 PID 杀（`ps aux | grep '[w]rangler dev --port 8797'`），`pkill -f '<命令行>'` 会匹配到执行它的 shell 本身。
+- 摘要页的设置、模板和编辑中的草稿都存在服务端（`summary_state`、`summary_templates`）；草稿按「设置 + 当时的日期范围」做键，换了范围就显示按任务生成的内容，原草稿留在库里直到被覆盖。
 
 ## 遗留问题
 
@@ -47,6 +54,7 @@
 - 网页每次打开都加载全部已完成任务。几千个时，单个请求的序列化约 4ms（Node 粗测 3,000 个任务），加上 D1 结果解析，冷实例接近免费套餐每次 10ms 的 CPU 上限；真遇到再把已完成任务改为按需加载。
 - `/task/move` 每个任务要 3–8 次查询，一次请求移动较多任务会超过 50 次的上限（CLI 一次只移一个，网页的批量移动走 `POST /task/{id}`）。
 - Microsoft To Do 导入没用真实微软账号跑过：代码已随 `0ee94213` 上线，但还没注册 Entra 应用、`MS_TODO_CLIENT_ID` 未设置，所以界面显示「未配置」。任务列表上的 `$expand=checklistItems,linkedResources` 是 Graph 文档没写的用法，被拒（400）时前端自动退回只展开 `checklistItems`；如果两种都不行，步骤导入会失败，需要改成逐个任务读取。
+- 摘要的专注时长来自 `/focus/stats`，时间范围超过 371 天（自定义的长范围）时不显示专注时长。导出图片靠 SVG `foreignObject` 画到 canvas，Safari 可能拒绝导出（会提示「此浏览器无法生成图片」），PDF 和复制不受影响。
 
 ## 记录
 
@@ -60,3 +68,4 @@
 - 2026-11-20（续）：按生产数据再优化一轮：表结构检查改为读 `schema_meta` 一行；新建/保存/完成/删除任务、清单列表、`/api/me`、习惯打卡、看板数据、清单增删改都压到 1–2 次往返（`RETURNING`、`db.batch`、子任务列表用 SQL JSON 函数改）；网页启动时 `/api/me` 与数据并行加载。未部署，数据库也还在 WNAM。
 - 2026-11-20（续）：部署 `0ee94213`（To Do 导入、重复规则、两轮性能优化），同时把 D1 从美西迁到香港：导出 → 本地导入并用新代码验证 → 删除旧库 → 以 `--location apac` 新建同名库 → 导入 → 临时写入 `database_id` 部署一次后改回。中断约 3 分钟；17 行数据全部核对一致，部署后第一个请求自动补上 `schema_meta` 和两个索引。
 - 2026-11-20（续）：worker 的 wrangler 4.127.1 → 4.165.0，`@cloudflare/vitest-pool-workers` 0.22 → 0.23，`@cloudflare/workers-types` v4 → v5（5.20261119.1）；`pnpm peers check` 无告警，类型检查、全部测试、`wrangler deploy --dry-run` 和本地冒烟都通过。随后用 4.165.0 部署 `5b137473`：不写 `database_id` 也正确沿用了香港库（`env.DB (inherited)`，版本详情里的 id 为 `01623c4d…`），Cron 正常。
+- 2026-11-20（续）：本地 `main` 按路线图逐项提交（未推送、未部署）：搜索筛选与保存为过滤器、出错 / 离线状态和浏览器 E2E、TickTick 备份导入、统计页、快速添加识别时间与重复、快捷键、倒数纪念日（农历、提前提醒、样式、归档）、嵌套标签、习惯（重复规则、多次打卡、历史统计）、每日提醒、专注（正计时、完整记录、统计）、富文本描述（TipTap + 自写 Markdown 层）、摘要（模板、草稿、导出）；放弃任务也记 `completedTime`；看板卡片标题换行，笔记不再显示勾选框；E2E 增加摘要流程和对话框文案检查。路线图全部完成。部署后首个请求会补建 `summary_state`、`summary_templates`、`focus_records.added` 等新表、列和索引。

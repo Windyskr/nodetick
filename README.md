@@ -11,7 +11,7 @@
 - **配套 CLI**：`nodetick` 的命令与官方 CLI 对齐，并且可以指定自建服务器
 - **零运维**：基于 Workers + D1，不用管服务器和数据库，没有流量费，免费套餐即可运行
 
-![NodeTick 网页应用：智能清单、按日期分组的任务列表和任务详情](docs/screenshots/tasks.png)
+![NodeTick 网页应用：智能清单、按日期分组的任务列表和带富文本描述的任务详情](docs/screenshots/tasks.png)
 
 [功能](#功能) · [架构](#架构) · [部署](#部署) · [CLI](#cli) · [API](#api) · [安全模型](#安全模型) · [本地开发](#本地开发) · [路线图](#路线图)
 
@@ -32,11 +32,15 @@
 
 | 日历 | 四象限 |
 | :---: | :---: |
-| ![日历月视图：按日期排布的任务](docs/screenshots/calendar.png) | ![四象限：按优先级分组的任务](docs/screenshots/matrix.png) |
+| ![日历月视图：按日期排布的任务和倒数纪念日](docs/screenshots/calendar.png) | ![四象限：按优先级分组的任务](docs/screenshots/matrix.png) |
+| **看板** | **摘要** |
+| ![看板：按列分组的任务卡片，显示日期、标签和子任务进度](docs/screenshots/kanban.png) | ![摘要：本周任务按清单汇总成可编辑的文档，右侧是模板、筛选和显示设置](docs/screenshots/summary.png) |
 | **习惯** | **专注（深色主题）** |
-| ![习惯：每周打卡、连胜和月度统计](docs/screenshots/habits.png) | ![番茄专注：计时器、今日统计和专注记录，深色主题](docs/screenshots/focus-dark.png) |
+| ![习惯：每周打卡、月历、连续天数和年度热力图](docs/screenshots/habits.png) | ![番茄专注：计时器、累计统计和专注记录，深色主题](docs/screenshots/focus-dark.png) |
+| **倒数纪念日** | **统计** |
+| ![倒数纪念日：圆环、经典、柔和、日历和纯色卡片](docs/screenshots/countdown.png) | ![统计：完成任务数、完成率、完成趋势和过去一年的完成日历](docs/screenshots/stats.png) |
 
-截图中的任务和习惯均为演示数据。
+截图中的任务、习惯、专注记录和纪念日均为演示数据。
 
 ### 快速添加与常用操作
 

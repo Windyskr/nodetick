@@ -11,7 +11,7 @@ What [NodeWarden](https://github.com/shuaiplus/nodewarden) is to Bitwarden, Node
 - **Companion CLI**: `nodetick` mirrors the official CLI's commands and can point at your own server
 - **No ops**: built on Workers + D1, so there are no servers or databases to look after and no bandwidth fees; the free plan is enough
 
-![NodeTick web app: smart lists, tasks grouped by date, and task details](docs/screenshots/tasks.png)
+![NodeTick web app: smart lists, tasks grouped by date, and task details with a rich-text description](docs/screenshots/tasks.png)
 
 [Features](#features) · [Architecture](#architecture) · [Deployment](#deployment) · [CLI](#cli) · [API](#api) · [Security model](#security-model) · [Local development](#local-development) · [Roadmap](#roadmap)
 
@@ -32,11 +32,15 @@ What [NodeWarden](https://github.com/shuaiplus/nodewarden) is to Bitwarden, Node
 
 | Calendar | Eisenhower Matrix |
 | :---: | :---: |
-| ![Calendar month view: tasks laid out by date](docs/screenshots/calendar.png) | ![Eisenhower Matrix: tasks grouped by priority](docs/screenshots/matrix.png) |
+| ![Calendar month view: tasks and countdowns laid out by date](docs/screenshots/calendar.png) | ![Eisenhower Matrix: tasks grouped by priority](docs/screenshots/matrix.png) |
+| **Kanban** | **Summary** |
+| ![Kanban board: task cards in columns with dates, tags and subtask progress](docs/screenshots/kanban.png) | ![Summary: this week's tasks grouped by list as an editable document, with templates, filters and display settings on the right](docs/screenshots/summary.png) |
 | **Habits** | **Focus (dark theme)** |
-| ![Habits: weekly check-ins, streaks and monthly stats](docs/screenshots/habits.png) | ![Pomodoro focus: timer, today's stats and focus records, dark theme](docs/screenshots/focus-dark.png) |
+| ![Habits: weekly check-ins, month calendar, streaks and a yearly heat map](docs/screenshots/habits.png) | ![Pomodoro focus: timer, totals and focus records, dark theme](docs/screenshots/focus-dark.png) |
+| **Countdowns** | **Statistics** |
+| ![Countdowns: ring, classic, soft, calendar and solid cards](docs/screenshots/countdown.png) | ![Statistics: completed tasks, completion rate, the completion trend and a year of completions](docs/screenshots/stats.png) |
 
-The screenshots show the Chinese UI with demo tasks and habits. The app follows your browser language, so English browsers get the English UI.
+The screenshots show the Chinese UI with demo tasks, habits, focus records and countdowns. The app follows your browser language, so English browsers get the English UI.
 
 ### Quick add and everyday actions
 
