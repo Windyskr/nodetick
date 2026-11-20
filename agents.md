@@ -11,8 +11,8 @@
 - 2026-11-20 生产数据：1 个用户、0 个任务、0 个推送订阅，库约 283 kB。迁移前 97% 的读取（每天约 4.7 万行）来自每次请求都跑的表结构检查（`sqlite_master` 64 行）；现在每个实例只读 `schema_meta` 一行。看 D1 消耗：`pnpm --filter worker exec wrangler d1 info nodetick-db`、`… d1 insights nodetick-db --sort-by reads`。
 - Secret：`SESSION_SECRET`、`VAPID_PRIVATE_KEY`（与本地 `.dev.vars` 是同一副密钥对）。`VAPID_PUBLIC_KEY`、`VAPID_SUBJECT` 是控制台变量，靠 `keep_vars = true` 在部署时保留。
 - 注册已关闭，首个注册用户是管理员。
-- 版本（新的在前）：`0ee94213-982d-461c-a5f5-dd343a6b569d`（2026-11-20，绑定香港新库；部署时工作区的改动未提交）、`df1dfff6-43e0-434a-98ff-23912c07d2f1`（2026-11-20）、`f1c6aa24-a86c-4e5c-a0bf-fb9a7a84a6f2`（2026-11-19 16:14 UTC，内容没有记录）、`8c5a9f24-a087-4512-b2e5-e417eeb13b51`（2026-11-19）。
-- 回滚：`0ee94213` 之前的版本都绑定着已删除的旧库，**不能**用 `wrangler rollback` 回到它们。要退回旧代码，就检出旧提交后正常 `pnpm run deploy`，绑定会沿用新库（旧代码兼容新增的表和索引）。
+- 版本（新的在前）：`5b137473-baae-4775-840b-a07f4b28f639`（2026-11-20，提交 `dab787f`，wrangler 4.165.0，D1 沿用香港库）、`0ee94213-982d-461c-a5f5-dd343a6b569d`（2026-11-20，第一次绑定香港新库，部署时代码未提交，内容同 `3e35189`）、`df1dfff6-43e0-434a-98ff-23912c07d2f1`（2026-11-20）、`f1c6aa24-a86c-4e5c-a0bf-fb9a7a84a6f2`（2026-11-19 16:14 UTC，内容没有记录）、`8c5a9f24-a087-4512-b2e5-e417eeb13b51`（2026-11-19）。
+- 回滚：可以 `wrangler rollback` 到 `0ee94213` 及之后的版本（都绑定香港库）；更早的版本绑定着已删除的旧库，**不能**回滚到它们。要退回旧代码，就检出旧提交后正常 `pnpm run deploy`，绑定会沿用新库（旧代码兼容新增的表和索引）。
 - 数据备份（都在 `~/nodetick-backups/`，权限 600）：`nodetick-prod-20261120-110400.sql`（迁移前最后一份，导入新库前在本地导入并验证过），更早的 `…20261119-234132.sql`、`…20261120-001341.sql`。旧库的 Time Travel 书签随旧库删除已失效；新库的 Time Travel 从 2026-11-20 起算，恢复用 `pnpm --filter worker exec wrangler d1 time-travel restore nodetick-db --bookmark=<书签>`。
 
 ## 坑
@@ -59,4 +59,4 @@
 - 2026-11-20（续）：重复规则支持「第 N 个 / 最后一个周几」（`BYDAY=2TU`、`BYSETPOS`）、多值和负数 `BYMONTHDAY`、`UNTIL`、`COUNT`（生成下一次时扣减），网页显示对应文字。按个位数用户做了一轮省资源：表结构检查每实例一次；两个任务索引，Cron 只读有提醒的未完成任务；标签改名/删除、备份导入、标签登记改批量，习惯打卡一条查询；令牌使用时间至多每小时写一次；投递记录每小时清理一次；网页批量操作不再整页刷新；带哈希的静态文件长期缓存。未部署；上线后首次请求会给生产库补建两个索引。
 - 2026-11-20（续）：按生产数据再优化一轮：表结构检查改为读 `schema_meta` 一行；新建/保存/完成/删除任务、清单列表、`/api/me`、习惯打卡、看板数据、清单增删改都压到 1–2 次往返（`RETURNING`、`db.batch`、子任务列表用 SQL JSON 函数改）；网页启动时 `/api/me` 与数据并行加载。未部署，数据库也还在 WNAM。
 - 2026-11-20（续）：部署 `0ee94213`（To Do 导入、重复规则、两轮性能优化），同时把 D1 从美西迁到香港：导出 → 本地导入并用新代码验证 → 删除旧库 → 以 `--location apac` 新建同名库 → 导入 → 临时写入 `database_id` 部署一次后改回。中断约 3 分钟；17 行数据全部核对一致，部署后第一个请求自动补上 `schema_meta` 和两个索引。
-- 2026-11-20（续）：worker 的 wrangler 4.127.1 → 4.165.0，`@cloudflare/vitest-pool-workers` 0.22 → 0.23，`@cloudflare/workers-types` v4 → v5（5.20261119.1）；`pnpm peers check` 无告警，类型检查、全部测试、`wrangler deploy --dry-run` 和本地冒烟都通过。还没用新版部署过，线上 `0ee94213` 是 4.127.1 部署的。
+- 2026-11-20（续）：worker 的 wrangler 4.127.1 → 4.165.0，`@cloudflare/vitest-pool-workers` 0.22 → 0.23，`@cloudflare/workers-types` v4 → v5（5.20261119.1）；`pnpm peers check` 无告警，类型检查、全部测试、`wrangler deploy --dry-run` 和本地冒烟都通过。随后用 4.165.0 部署 `5b137473`：不写 `database_id` 也正确沿用了香港库（`env.DB (inherited)`，版本详情里的 id 为 `01623c4d…`），Cron 正常。
