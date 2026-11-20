@@ -119,6 +119,8 @@ tests/web/
                          horizontal scrolling on any page
   language.spec.ts       no English copy in the Chinese UI and no Chinese in the
                          English UI (code samples, URLs and e-mails excepted)
+  shortcuts.spec.ts      `?` panel, `G` + letter navigation, keys typed into fields
+                         stay there, the account-menu entry
 ```
 
 ```bash

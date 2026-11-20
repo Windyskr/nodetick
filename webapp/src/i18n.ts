@@ -354,6 +354,22 @@ const en = {
   statsNoTag: 'No tag',
   statsHour: '{0}:00',
 
+  // keyboard shortcuts
+  shortcutsTitle: 'Keyboard shortcuts',
+  shortcutsGeneral: 'General',
+  shortcutsTasks: 'Tasks',
+  shortcutsQuickAdd: 'In quick add',
+  shortcutsGoTo: 'Go to',
+  shortcutNewTask: 'Add a task',
+  shortcutSearch: 'Search',
+  shortcutEscape: 'Close the task, clear the selection',
+  shortcutOpenTask: 'Open the focused task',
+  shortcutClick: 'Click',
+  shortcutMultiSelect: 'Select several tasks',
+  shortcutTag: 'Add a tag',
+  shortcutPriority: 'Set the priority (!high, !3)',
+  shortcutDate: 'Force a date (~tomorrow)',
+
   // detail panel
   setDate: 'Set date',
   schedule: 'Schedule',
@@ -1090,6 +1106,22 @@ const zh: Record<Key, string> = {
   statsOtherTags: '其他标签',
   statsNoTag: '无标签',
   statsHour: '{0} 点',
+
+  // keyboard shortcuts
+  shortcutsTitle: '快捷键',
+  shortcutsGeneral: '常用',
+  shortcutsTasks: '任务',
+  shortcutsQuickAdd: '快速添加',
+  shortcutsGoTo: '跳转',
+  shortcutNewTask: '添加任务',
+  shortcutSearch: '搜索',
+  shortcutEscape: '关闭任务详情、取消多选',
+  shortcutOpenTask: '打开选中的任务',
+  shortcutClick: '点击',
+  shortcutMultiSelect: '多选任务',
+  shortcutTag: '添加标签',
+  shortcutPriority: '设置优先级（!高、!3）',
+  shortcutDate: '强制识别日期（~明天）',
 
   setDate: '设置日期',
   schedule: '时间安排',

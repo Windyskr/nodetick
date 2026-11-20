@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState, useSyncExternalStore } from 'react';
+import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, CloudOff, Loader2 } from 'lucide-react';
 import { useStore } from '../../stores/store';
@@ -11,6 +11,7 @@ import { PageSpinner } from '../../components/PageSpinner';
 import { watchPushLanguage } from '../../lib/push';
 import { ApiError } from '../../lib/api';
 import { errorMessage, isRequestError } from '../../lib/errors';
+import ShortcutsDialog, { GO_SHORTCUTS } from './ShortcutsDialog';
 
 /** Persisted width (px) of the task detail panel; null → 36% like the original. */
 const DETAIL_WIDTH_KEY = 'ntk_detail_width';
@@ -78,6 +79,16 @@ export default function AppLayout() {
   const location = useLocation();
   const { booted, me, boot, error, selectedTaskId, selectedTask, navOpen, setNavOpen } = useStore();
   const online = useOnline();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  /** When `g` was pressed: the next key within a second picks a view. */
+  const goPressedAt = useRef(0);
+
+  // The account menu opens the shortcuts panel too.
+  useEffect(() => {
+    const open = () => setShortcutsOpen(true);
+    window.addEventListener('nodetick:shortcuts', open);
+    return () => window.removeEventListener('nodetick:shortcuts', open);
+  }, []);
   const [detailWidth, setDetailWidth] = useState<number | null>(readDetailWidth);
   const narrow = useNarrowScreen();
   const t = useT();
@@ -148,7 +159,8 @@ export default function AppLayout() {
   }, []);
 
   // TickTick-style global shortcuts: `n` jumps to the quick-add field,
-  // `/` jumps to search, Escape clears multi-selection. Typing contexts
+  // `/` jumps to search, `?` lists the shortcuts, `g` + a letter opens a view
+  // (ShortcutsDialog), Escape clears multi-selection. Typing contexts
   // (inputs, textareas, editors) are ignored.
   useEffect(() => {
     const focusSelector = (selector: string) => {
@@ -166,7 +178,22 @@ export default function AppLayout() {
       ) {
         return;
       }
-      if (event.key === '/') {
+      const go = Date.now() - goPressedAt.current < 1000;
+      goPressedAt.current = 0;
+      if (go) {
+        const target = GO_SHORTCUTS.find(([key]) => key === event.key.toLowerCase());
+        if (target) {
+          event.preventDefault();
+          navigate(target[1]);
+          return;
+        }
+      }
+      if (event.key === 'g' || event.key === 'G') {
+        goPressedAt.current = Date.now();
+      } else if (event.key === '?') {
+        event.preventDefault();
+        setShortcutsOpen(true);
+      } else if (event.key === '/') {
         event.preventDefault();
         navigate('/app/search');
         focusSelector('[data-search-input]');
@@ -297,6 +324,7 @@ export default function AppLayout() {
           {t('offlineBanner')}
         </div>
       )}
+      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
       <Toast />
     </div>
   );
