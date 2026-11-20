@@ -26,6 +26,7 @@ export default function KanbanBoard({
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [dragOver, setDragOver] = useState<string | null>(null);
+  /** The column whose quick-add field is open ('' for the ungrouped column); null when none is. */
   const [addingIn, setAddingIn] = useState<string | null>(null);
   const [columnDraft, setColumnDraft] = useState('');
 
@@ -171,7 +172,7 @@ export default function KanbanBoard({
             <TaskRow task={t} showProject={false} layout="card" />
           </div>
         ))}
-        {addingIn === columnId ? (
+        {addingIn === (columnId ?? '') ? (
           <input
             autoFocus
             value={columnDraft}
@@ -192,7 +193,7 @@ export default function KanbanBoard({
             type="button"
             title={t('addTask')}
             onClick={() => {
-              setAddingIn(columnId);
+              setAddingIn(columnId ?? '');
               setColumnDraft('');
             }}
             className="mt-1 flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12.5px] text-ink-3 opacity-0 transition-opacity hover:bg-hover hover:text-tt group-hover/col:opacity-100"
@@ -206,7 +207,8 @@ export default function KanbanBoard({
 
   return (
     <div className="flex min-h-0 flex-1 items-start gap-3 overflow-x-auto px-5 pb-6 pt-2">
-      {cell(null, t('uncategorized'), byColumn.loose)}
+      {/* Like TickTick, the ungrouped column only shows while it holds cards or the board has no columns yet. */}
+      {(byColumn.loose.length > 0 || columns.length === 0) && cell(null, t('uncategorized'), byColumn.loose)}
       {columns.map((c) => cell(c.id, c.name, byColumn.map.get(c.id) ?? []))}
       <div className="w-[270px] shrink-0">
         {adding ? (

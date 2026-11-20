@@ -78,6 +78,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { booted, me, boot, error, selectedTaskId, selectedTask, navOpen, setNavOpen } = useStore();
+  const projects = useStore((state) => state.projects);
   const online = useOnline();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   /** When `g` was pressed: the next key within a second picks a view. */
@@ -243,6 +244,11 @@ export default function AppLayout() {
   const showSidebar =
     location.pathname.startsWith('/app/tasks') || location.pathname === '/app/summary';
   const taskWorkspace = location.pathname.startsWith('/app/tasks');
+  // Boards (Kanban, timeline) use the whole width, as in TickTick: a task
+  // opens over them instead of in a permanent detail column.
+  const boardMatch = /^\/app\/tasks\/project-(.+)$/.exec(location.pathname);
+  const boardProject = boardMatch ? projects.find((project) => project.id === boardMatch[1]) : undefined;
+  const boardView = boardProject?.viewMode === 'kanban' || boardProject?.viewMode === 'timeline';
 
   // The detail panel accompanies the task-centric pages only (search results
   // are task rows too: without it, clicking a result did nothing).
@@ -250,7 +256,7 @@ export default function AppLayout() {
     selectedTaskId !== null &&
     /^\/app\/(tasks|calendar|matrix|search)/.test(location.pathname) &&
     selectedTask() !== null;
-  const floatingDetail = showDetail && !taskWorkspace && !narrow;
+  const floatingDetail = showDetail && (!taskWorkspace || boardView) && !narrow;
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -293,7 +299,7 @@ export default function AppLayout() {
           </div>
         </div>
       )}
-      {taskWorkspace && !narrow && (
+      {taskWorkspace && !boardView && !narrow && (
         <div
           className="relative h-full shrink-0 border-l border-line bg-white"
           style={{ width: detailWidth ?? '36%', minWidth: 280 }}

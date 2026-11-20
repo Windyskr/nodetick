@@ -66,6 +66,8 @@ export function scheduleLabel(
   const label = (value: string, parts: DateTimeParts) =>
     `${detailDate(value, lang)}${parts.time ? ` ${parts.time}` : ''}`;
   if (startValue && endValue) {
+    // TickTick writes a point in time as start = due: show it once, not "17:00–17:00".
+    if (start.date === end.date && start.time === end.time) return label(endValue, end);
     if (start.date === end.date && start.time && end.time) {
       return `${detailDate(startValue, lang)} ${start.time}–${end.time}`;
     }

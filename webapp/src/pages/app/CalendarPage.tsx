@@ -44,7 +44,8 @@ function taskClock(task: Task, separator = '–'): string {
   if (task.isAllDay) return '';
   const start = timeOf(task.startDate);
   const end = timeOf(task.dueDate);
-  if (start && end) return `${start}${separator}${end}`;
+  // A point in time (start = due, as TickTick writes it) shows once.
+  if (start && end && start !== end) return `${start}${separator}${end}`;
   return start ?? end ?? '';
 }
 

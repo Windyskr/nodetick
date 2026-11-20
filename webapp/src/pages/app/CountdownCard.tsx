@@ -235,8 +235,8 @@ export function CountdownCard({ countdown, today, onOpen, actions, selected = fa
     return (
       <article {...props} className={`${shell} border border-line bg-white shadow-[0_3px_14px_rgba(0,0,0,0.04)]`}>
         {pin('text-ink-3')}
-        <div className="flex h-full items-center gap-5 px-6">
-          <Ring progress={progress} color={color} size={112} stroke={9}>
+        <div className="flex h-full items-center gap-4 px-5">
+          <Ring progress={progress} color={color} size={100} stroke={8}>
             {facts.isToday || facts.days == null
               ? <span className={`${ringNumber} font-semibold leading-none`} style={{ color }}>{facts.isToday ? text.t('countdownToday') : '—'}</span>
               : <>
@@ -244,10 +244,10 @@ export function CountdownCard({ countdown, today, onOpen, actions, selected = fa
                 <span className="mt-1 text-[11px] text-ink-3">{text.unit(Math.abs(facts.days), facts.workdays)}</span>
               </>}
           </Ring>
-          <div className="min-w-0 flex-1 pr-6">
-            <div className="flex min-w-0 items-center gap-1.5 text-[15px] font-semibold">
-              <span className="text-[16px] leading-none">{icon}</span>
-              <span className="truncate">{name}</span>
+          <div className="min-w-0 flex-1 pr-4">
+            <div className="flex min-w-0 items-start gap-1.5 text-[15px] font-semibold leading-[20px]">
+              <span className="shrink-0 text-[16px] leading-[20px]">{icon}</span>
+              <span className="line-clamp-2 min-w-0 break-words">{name}</span>
             </div>
             <div className="mt-1.5 line-clamp-2 text-[12px] leading-[17px] text-ink-3">{caption}</div>
             {ymd && facts.span && <div className="mt-1.5 text-[12px] font-medium" style={{ color }}>{text.span(facts.span)}</div>}

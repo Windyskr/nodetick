@@ -189,6 +189,9 @@ describe('localized rendering', () => {
 
   it('renders a same-day task time range', () => {
     setLang('en');
+    // A point in time (start = due, as TickTick writes it) shows once.
+    expect(scheduleLabel('2026-09-10T17:00:00+0800', '2026-09-10T17:00:00+0800', false, 'en')).toBe(scheduleLabel(null, '2026-09-10T17:00:00+0800', false, 'en'));
+    expect(scheduleLabel('2026-09-10T17:00:00+0800', '2026-09-10T17:00:00+0800', false, 'en')).not.toContain('–');
     expect(scheduleLabel('2026-09-10T09:00:00+0800', '2026-09-10T11:30:00+0800', false)).toBe(
       'Sep 10 09:00–11:30',
     );
