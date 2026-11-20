@@ -417,6 +417,7 @@ To debug push notifications, also add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` an
 | `pnpm --filter worker test` | Worker integration tests (vitest + @cloudflare/vitest-pool-workers, real D1 semantics) |
 | `pnpm --filter webapp test` | Web app unit tests for pure logic (quick-add parsing, dates, i18n) |
 | `pnpm test:e2e` | Test a real server with the `nodetick` CLI; see [tests/README.md](tests/README.md) |
+| `pnpm test:web` | Build the web app and test loading, errors, empty states, narrow screens and stray strings in Chrome against an empty local database (Playwright) |
 | `pnpm build` | Compile the CLI and build the web app into `webapp/dist` |
 | `pnpm type-check` | Run `tsc` on every workspace |
 

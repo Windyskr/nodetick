@@ -417,6 +417,7 @@ SESSION_SECRET=<32 位以上随机字符串>
 | `pnpm --filter worker test` | Worker 集成测试（vitest + @cloudflare/vitest-pool-workers，真实 D1 语义） |
 | `pnpm --filter webapp test` | 网页应用的纯逻辑单元测试（快速添加解析、日期、i18n） |
 | `pnpm test:e2e` | 用 `nodetick` CLI 测试真实服务器，见 [tests/README.md](tests/README.md) |
+| `pnpm test:web` | 构建网页应用，在本地空库上用 Chrome 测试加载、出错、空状态、窄屏和中英文文案（Playwright） |
 | `pnpm build` | 编译 CLI，并构建网页应用到 `webapp/dist` |
 | `pnpm type-check` | 对所有 workspace 运行 `tsc` |
 

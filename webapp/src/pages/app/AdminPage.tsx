@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { KeyRound, Trash2, UserPlus } from 'lucide-react';
 import { api } from '../../lib/api';
+import { errorMessage } from '../../lib/errors';
 import type { AdminUser } from '../../lib/types';
 import { useStore } from '../../stores/store';
 import { useT, useTF } from '../../i18n';
@@ -26,7 +27,7 @@ export default function AdminPage() {
       setUsers(await api.adminListUsers());
       setLoaded(true);
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorMessage(err));
     }
   };
   useEffect(() => {
@@ -44,7 +45,7 @@ export default function AdminPage() {
       setAdding(false);
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorMessage(err));
     }
   };
 
@@ -55,7 +56,7 @@ export default function AdminPage() {
     try {
       await api.adminResetPassword(user.id, next);
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorMessage(err));
     }
   };
 
@@ -66,7 +67,7 @@ export default function AdminPage() {
       await api.adminDeleteUser(user.id);
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorMessage(err));
     }
   };
 

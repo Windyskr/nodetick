@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BellRing, Loader2, Send, X } from 'lucide-react';
 import { api } from '../../lib/api';
+import { errorMessage } from '../../lib/errors';
 import type { NotificationConfig, NotificationSettings } from '../../lib/types';
 import { useI18n, useT, useTF, type Key } from '../../i18n';
 import { currentPushSubscription, pushSupported, registerPushSubscription } from '../../lib/push';
@@ -56,7 +57,7 @@ export default function NotificationSettingsDialog({ onClose }: Props) {
   // Status line: a translated success message, or a raw error text.
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const done = (key: Key) => setMessage({ text: t(key), ok: true });
-  const fail = (error: unknown) => setMessage({ text: (error as Error).message, ok: false });
+  const fail = (error: unknown) => setMessage({ text: errorMessage(error), ok: false });
   const lang = useI18n((s) => s.lang);
   // Whether THIS browser receives pushes. Turning it off only detaches this
   // device; other devices keep their subscriptions.

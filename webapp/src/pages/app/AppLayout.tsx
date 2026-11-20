@@ -1,6 +1,6 @@
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, useSyncExternalStore } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { ChevronLeft, CloudOff, Loader2 } from 'lucide-react';
 import { useStore } from '../../stores/store';
 import IconRail from './IconRail';
 import Sidebar from './Sidebar';
@@ -9,6 +9,8 @@ import Toast from '../../components/Toast';
 import { useT } from '../../i18n';
 import { PageSpinner } from '../../components/PageSpinner';
 import { watchPushLanguage } from '../../lib/push';
+import { ApiError } from '../../lib/api';
+import { errorMessage, isRequestError } from '../../lib/errors';
 
 /** Persisted width (px) of the task detail panel; null → 36% like the original. */
 const DETAIL_WIDTH_KEY = 'ntk_detail_width';
@@ -24,6 +26,38 @@ function readDetailWidth(): number | null {
 
 const clampDetailWidth = (px: number) =>
   Math.min(Math.max(px, 280), Math.max(340, Math.floor(window.innerWidth * 0.6)));
+
+function subscribeOnline(onChange: () => void) {
+  window.addEventListener('online', onChange);
+  window.addEventListener('offline', onChange);
+  return () => {
+    window.removeEventListener('online', onChange);
+    window.removeEventListener('offline', onChange);
+  };
+}
+
+/** False while the browser reports no network connection. */
+function useOnline(): boolean {
+  return useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true);
+}
+
+/** Shown instead of the workspace when the first load fails for a reason other than being signed out. */
+function BootError({ message, onRetry, onSignOut }: { message: string; onRetry: () => void; onSignOut: () => void }) {
+  const t = useT();
+  return (
+    <div className="flex h-full items-center justify-center px-6" role="alert">
+      <div className="flex max-w-[360px] flex-col items-center text-center">
+        <CloudOff size={40} strokeWidth={1.5} className="text-ink-3" />
+        <h1 className="mt-4 text-[17px] font-semibold text-ink">{t('bootErrorTitle')}</h1>
+        <p className="mt-2 text-[13px] leading-5 text-ink-2">{message}</p>
+        <div className="mt-6 flex gap-2">
+          <button type="button" onClick={onSignOut} className="h-9 rounded-lg border border-line px-4 text-[13px] text-ink-2 hover:bg-hover">{t('signOut')}</button>
+          <button type="button" onClick={onRetry} className="h-9 rounded-lg bg-tt px-5 text-[13px] font-medium text-white hover:bg-tt-hover">{t('retry')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Phones: the 240px sidebar plus the 280px+ detail column left the task list no width. */
 const NARROW_QUERY = '(max-width: 767px)';
@@ -42,7 +76,8 @@ function useNarrowScreen(): boolean {
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { booted, me, boot, selectedTaskId, selectedTask, navOpen, setNavOpen } = useStore();
+  const { booted, me, boot, error, selectedTaskId, selectedTask, navOpen, setNavOpen } = useStore();
+  const online = useOnline();
   const [detailWidth, setDetailWidth] = useState<number | null>(readDetailWidth);
   const narrow = useNarrowScreen();
   const t = useT();
@@ -73,17 +108,42 @@ export default function AppLayout() {
     window.addEventListener('pointerup', up);
   };
 
-  useEffect(() => {
+  const signInAgain = () =>
+    navigate(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`, { replace: true });
+
+  const start = () => {
     void boot().then((ok) => {
       if (!ok) {
-        navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`, {
-          replace: true,
-        });
+        // A failed load (server error, offline) keeps the user here with a
+        // retry; only a missing session goes to the sign-in page.
+        if (!useStore.getState().error) signInAgain();
       } else {
         const taskId = new URLSearchParams(window.location.search).get('task');
         if (taskId) useStore.getState().selectTask(taskId);
       }
     });
+  };
+
+  useEffect(() => {
+    start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Requests that fail outside a handler (saving, completing, moving…) would
+  // otherwise fail silently: say what happened, and send an expired session
+  // to the sign-in page.
+  useEffect(() => {
+    const onRejection = (event: PromiseRejectionEvent) => {
+      if (!isRequestError(event.reason)) return;
+      event.preventDefault();
+      if (event.reason instanceof ApiError && event.reason.status === 401) {
+        signInAgain();
+        return;
+      }
+      useStore.getState().showToast({ messageKey: 'toastError', messageArg: errorMessage(event.reason) });
+    };
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => window.removeEventListener('unhandledrejection', onRejection);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -135,7 +195,21 @@ export default function AppLayout() {
       </div>
     );
   }
-  if (!me) return null;
+  if (!me) {
+    if (!error) return null;
+    return (
+      <BootError
+        message={error}
+        onRetry={() => {
+          useStore.setState({ booted: false, error: null });
+          start();
+        }}
+        onSignOut={() => {
+          void useStore.getState().logout().then(() => navigate('/login', { replace: true }));
+        }}
+      />
+    );
+  }
 
   // The secondary task sidebar belongs to the task workspace only. Calendar
   // and the other top-level tools use the full content area, like TickTick.
@@ -216,6 +290,11 @@ export default function AppLayout() {
           }}
         >
           <TaskDetail key={selectedTask()!.id} task={selectedTask()!} variant="modal" />
+        </div>
+      )}
+      {!online && (
+        <div role="status" className="fixed left-1/2 top-3 z-[70] -translate-x-1/2 rounded-full bg-[#191919] px-4 py-1.5 text-[12px] text-white shadow-[0_8px_24px_rgba(0,0,0,0.3)] ring-1 ring-white/10">
+          {t('offlineBanner')}
         </div>
       )}
       <Toast />

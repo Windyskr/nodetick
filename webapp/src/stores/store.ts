@@ -3,6 +3,7 @@ import { ApiError, api } from '../lib/api';
 import type { Me, Project, ProjectGroup, Tag, Task, TaskFilter } from '../lib/types';
 import { postponePatch } from '../components/taskSchedule';
 import { hasTag, tagKey, uniqueTags } from '../lib/tags';
+import { errorMessage } from '../lib/errors';
 
 export { INBOX_ID } from '../lib/project';
 
@@ -51,7 +52,8 @@ export interface ToastState {
     | 'shareCopied'
     | 'summaryCopied'
     | 'summaryTemplateSaved'
-    | 'searchFilterSaved';
+    | 'searchFilterSaved'
+    | 'toastError';
   messageArg?: string;
   undo?: () => void;
 }
@@ -187,7 +189,7 @@ export const useStore = create<AppState>((set, getState) => ({
         set({ me: null, booted: true });
         return false;
       }
-      set({ error: String((e as Error).message), booted: true });
+      set({ error: errorMessage(e), booted: true });
       return false;
     }
   },

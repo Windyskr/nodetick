@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Check, Copy, Download, FileUp, Import, Link2, Plus, RefreshCw, X } from 'lucide-react';
 import { api } from '../../lib/api';
+import { errorMessage } from '../../lib/errors';
 import type { ApiToken } from '../../lib/types';
 import { useT, useTF } from '../../i18n';
 import MsTodoImportDialog from './MsTodoImportDialog';
@@ -41,7 +42,7 @@ export default function TokensPage() {
       setName('');
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorMessage(err));
     }
   };
 
@@ -198,7 +199,7 @@ export default function TokensPage() {
                   if (!res.ok) throw new Error(data?.error ?? `Import failed (${res.status})`);
                   setImportResult(f('importedItems', data?.imported ?? 0));
                 } catch (err) {
-                  setError((err as Error).message);
+                  setError(errorMessage(err));
                 } finally {
                   setImporting(false);
                 }
@@ -257,10 +258,10 @@ export default function TokensPage() {
           {/* @nodetick/cli is not published (README → CLI); installing that
               name from npm would fail or fetch someone else's package. */}
           <p className="text-[#8b949e]">{t('cliFromSource')}</p>
-          <p><span className="text-[#7ee787]">$</span> pnpm --filter cli build &amp;&amp; pnpm add -g ./cli</p>
-          <p><span className="text-[#7ee787]">$</span> nodetick auth login --server {origin}</p>
+          <p><span className="text-[#7ee787]">$</span> <code>pnpm --filter cli build &amp;&amp; pnpm add -g ./cli</code></p>
+          <p><span className="text-[#7ee787]">$</span> <code>nodetick auth login --server {origin}</code></p>
           <p className="mt-2 text-[#8b949e]">{t('orPasteToken')}</p>
-          <p><span className="text-[#7ee787]">$</span> nodetick auth token &lt;ntk_…&gt; --server {origin}</p>
+          <p><span className="text-[#7ee787]">$</span> <code>nodetick auth token &lt;ntk_…&gt; --server {origin}</code></p>
         </div>
       </div>
     </div>

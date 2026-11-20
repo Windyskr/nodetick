@@ -1,12 +1,13 @@
 # Tests
 
-Three independent layers:
+Four independent layers:
 
 | Layer | Location | Runs against | Tools |
 | ----- | -------- | ------------ | ----- |
 | Server integration | `worker/test/` | in-memory Workers runtime (miniflare D1) | vitest + @cloudflare/vitest-pool-workers |
 | Webapp unit | `webapp/test/` | pure frontend logic in Node (no DOM) | vitest |
 | **E2E via the nodetick CLI** | `tests/e2e/` | a deployed (or local `wrangler dev`) server | our own CLI (`cli/dist/index.js`) |
+| **Browser E2E** | `tests/web/` | the production build of the web app on a local worker (or a deployment) | Playwright (`@playwright/test`) + Google Chrome |
 
 ## Webapp unit tests (`webapp/test/`)
 
@@ -95,3 +96,42 @@ Behavior details:
   under the test account, named `e2e-<runid>-…`.
 - `auth login` (browser OAuth) is intentionally not exercised by the suite; the
   token path covers the same server-side auth.
+
+## Browser E2E: the web app (`tests/web/`)
+
+Drives the production build of the SPA in a real browser and checks the
+states unit tests can't see: loading, failures, empty accounts, phone-sized
+screens and stray strings from the other language.
+
+```
+tests/web/
+  playwright.config.ts   one worker, Google Chrome, traces and screenshots on failure
+  server.mjs             wrangler dev on port 8798 with a throwaway D1 directory
+  global-setup.ts        registers (or signs in) the admin account
+  fixtures.ts            `account` (a fresh user per test, deleted afterwards),
+                         `page` (signed in as it), `lang`, `api`, helpers
+  states.spec.ts         first-load spinner, empty state on every page, empty
+                         state replaced by new tasks
+  errors.spec.ts         failed first load → retry screen (not the sign-in page),
+                         unreachable server, failed save toast, expired session →
+                         sign-in and back, offline banner, wrong password
+  responsive.spec.ts     390 px wide: list drawer, full-screen task detail, no
+                         horizontal scrolling on any page
+  language.spec.ts       no English copy in the Chinese UI and no Chinese in the
+                         English UI (code samples, URLs and e-mails excepted)
+```
+
+```bash
+pnpm test:web                         # builds the SPA, starts a local worker, runs everything
+pnpm exec playwright test -c tests/web/playwright.config.ts errors   # one spec, no rebuild
+
+# against a deployment (needs an admin account; users created by the tests are deleted)
+E2E_BASE_URL=https://nodetick.example.workers.dev E2E_EMAIL=admin@example.com E2E_PASSWORD='...' \
+  pnpm exec playwright test -c tests/web/playwright.config.ts
+```
+
+- Uses the installed Google Chrome (`channel: 'chrome'`). Without it, run
+  `pnpm exec playwright install chromium` once and set `E2E_CHANNEL=chromium`.
+- `E2E_PORT` moves the local server off 8798 (its inspector uses the port + 1000).
+- Failures leave a screenshot and a trace under `test-results/web/`
+  (`pnpm exec playwright show-trace <trace.zip>`).

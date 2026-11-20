@@ -451,6 +451,16 @@ const en = {
   habitNoCheckin: 'Not checked in',
   habitCheckedIn: 'Checked in',
   loading: 'Loading…',
+  errorNetwork: "Can't reach the server. Check your connection and try again.",
+  errorSignedOut: 'Your session has ended. Sign in again.',
+  errorNotFound: 'It no longer exists. It may have been deleted on another device.',
+  errorTooLarge: 'That is too large to save.',
+  errorServer: 'The server ran into a problem. Try again in a moment.',
+  errorUnknown: 'Something went wrong.',
+  toastError: '{0}',
+  bootErrorTitle: "Couldn't load your data",
+  retry: 'Try again',
+  offlineBanner: "You're offline. Changes won't be saved until you reconnect.",
 
   // focus
   focusTitle: 'Pomodoro focus',
@@ -1127,6 +1137,16 @@ const zh: Record<Key, string> = {
   habitNoCheckin: '未打卡',
   habitCheckedIn: '已打卡',
   loading: '加载中…',
+  errorNetwork: '无法连接服务器，请检查网络后重试。',
+  errorSignedOut: '登录已失效，请重新登录。',
+  errorNotFound: '内容已不存在，可能已在其他设备上删除。',
+  errorTooLarge: '内容太大，无法保存。',
+  errorServer: '服务器出错了，请稍后再试。',
+  errorUnknown: '出错了。',
+  toastError: '{0}',
+  bootErrorTitle: '数据加载失败',
+  retry: '重试',
+  offlineBanner: '网络已断开，恢复连接前所做的修改不会保存。',
 
   focusTitle: '番茄专注',
   focusedSession: '专注会话',
@@ -1435,6 +1455,10 @@ export function serverError(message: string): string {
     [/at least 8 characters/i, '请输入有效邮箱，密码至少 8 位。'],
     [/Too many failed login attempts\. Try again in (\d+) seconds/i, '登录失败次数过多，请 {0} 秒后再试。'],
     [/Too many registration attempts\. Try again in (\d+) seconds/i, '注册尝试次数过多，请 {0} 秒后再试。'],
+    [/Admin only/i, '只有管理员可以进行此操作。'],
+    [/a tag with that name already exists/i, '已有同名标签。'],
+    [/task changed before it could be moved/i, '任务在移动前被修改了，请刷新后重试。'],
+    [/request body too large/i, '内容太大，无法保存。'],
   ];
   for (const [re, zhMsg] of table) {
     const match = re.exec(message);
